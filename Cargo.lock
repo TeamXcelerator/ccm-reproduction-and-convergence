@@ -633,7 +633,7 @@ dependencies = [
 [[package]]
 name = "xc-numerics"
 version = "0.9.0"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?tag=v0.9.0#14f6dc0806041edb5960407e8424fd664b206cb7"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?tag=v0.9.1#df3c75fcefd580c89730af2d8a626406bcbbff2a"
 dependencies = [
  "anyhow",
  "rayon",
@@ -645,7 +645,7 @@ dependencies = [
 [[package]]
 name = "xc-spectral"
 version = "0.9.0"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?tag=v0.9.0#14f6dc0806041edb5960407e8424fd664b206cb7"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?tag=v0.9.1#df3c75fcefd580c89730af2d8a626406bcbbff2a"
 dependencies = [
  "anyhow",
  "nalgebra",
@@ -661,7 +661,7 @@ dependencies = [
 [[package]]
 name = "xc-zeta"
 version = "0.9.0"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?tag=v0.9.0#14f6dc0806041edb5960407e8424fd664b206cb7"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?tag=v0.9.1#df3c75fcefd580c89730af2d8a626406bcbbff2a"
 dependencies = [
  "anyhow",
  "rug",

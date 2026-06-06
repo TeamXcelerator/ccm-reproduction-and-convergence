@@ -19,9 +19,9 @@ clap = { version = "4.5", features = ["derive"] }
 rug = { version = "1.30", optional = true, default-features = false, features = ["float", "integer"] }
 
 # Xcelerator Toolkit — pinned to v0.9.0 for reproducibility.
-xc-spectral = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.9.0" }
-xc-zeta     = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.9.0" }
-xc-numerics = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.9.0" }
+xc-spectral = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.9.1" }
+xc-zeta     = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.9.1" }
+xc-numerics = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.9.1" }
 
 [profile.release]
 opt-level = 3
