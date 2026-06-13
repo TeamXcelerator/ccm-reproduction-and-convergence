@@ -34,7 +34,7 @@ echo
 for N in 800 890; do
   echo "--- λ²=1000, N=${N}, HP-${PREC} ---"
   "$BIN" check-evenness \
-    --lambda 31.622776601683793 \
+    --lambda-sq 1000 \
     --n-modes "$N" \
     --precision-digits "$PREC" \
     --display-digits "$DISPLAY_DIGITS"

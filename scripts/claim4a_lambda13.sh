@@ -20,7 +20,7 @@ echo "=== Claim 4a: λ²=13, N=120 at HP-${PREC} (essentially-even reference) ==
 echo
 
 "$BIN" check-evenness \
-  --lambda 3.6055512754639896 \
+  --lambda-sq 13 \
   --n-modes 120 \
   --precision-digits "$PREC" \
   --display-digits "$DISPLAY_DIGITS"

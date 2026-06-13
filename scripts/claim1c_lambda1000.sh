@@ -23,7 +23,7 @@ echo "=== Claim 1c: λ²=1000, N=800 at HP-${PREC} (999-digit extension) ==="
 echo
 
 "$BIN" run \
-  --lambda 31.622776601683793 \
+  --lambda-sq 1000 \
   --n-modes 800 \
   --precision-digits "$PREC" \
   --display-digits "$DISPLAY_DIGITS" \

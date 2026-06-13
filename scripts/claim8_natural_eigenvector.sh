@@ -31,17 +31,17 @@ PREC=${PREC:-1000}
 DISPLAY_DIGITS=${DISPLAY_DIGITS:-50}
 TOP=${TOP:-25}
 
-# (lambda, lambda^2, N, label)
+# (lambda_sq, N, label)
 CONFIGS=(
-  "3.6055512754639896  13   120  8a"
-  "10                  100  500  8b"
+  "13   120  8a"
+  "100  500  8b"
 )
 
 echo "=== Claim 8: natural vs forced-even eigenvector (flag is the only variable) ==="
 echo
 
 for cfg in "${CONFIGS[@]}"; do
-  read -r LAMBDA LAMBDA_SQ N LABEL <<< "$cfg"
+  read -r LAMBDA_SQ N LABEL <<< "$cfg"
 
   echo "################################################################"
   echo "#  Claim ${LABEL}: λ²=${LAMBDA_SQ}, N=${N}, HP-${PREC}"
@@ -49,7 +49,7 @@ for cfg in "${CONFIGS[@]}"; do
 
   echo "---- [${LABEL}] FORCED-EVEN (default CCM path) ----"
   "$BIN" run \
-    --lambda "$LAMBDA" \
+    --lambda-sq "$LAMBDA_SQ" \
     --n-modes "$N" \
     --precision-digits "$PREC" \
     --display-digits "$DISPLAY_DIGITS" \
@@ -58,7 +58,7 @@ for cfg in "${CONFIGS[@]}"; do
 
   echo "---- [${LABEL}] NATURAL (--no-force-even, projection disabled) ----"
   "$BIN" run \
-    --lambda "$LAMBDA" \
+    --lambda-sq "$LAMBDA_SQ" \
     --n-modes "$N" \
     --precision-digits "$PREC" \
     --display-digits "$DISPLAY_DIGITS" \

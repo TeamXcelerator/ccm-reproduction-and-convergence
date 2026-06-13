@@ -33,7 +33,7 @@ echo "=== Claim 4d: λ²=1200, N=970 at HP-${PREC} (keystone: even past the onse
 echo
 
 "$BIN" check-evenness \
-  --lambda 34.64101615137754 \
+  --lambda-sq 1200 \
   --n-modes 970 \
   --precision-digits "$PREC" \
   --display-digits "$DISPLAY_DIGITS"

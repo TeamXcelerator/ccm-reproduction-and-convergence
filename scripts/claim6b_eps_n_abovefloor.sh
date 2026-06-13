@@ -32,21 +32,21 @@ fi
 echo "=== Claim 6b: above-floor ε_N series (N/√λ²≈28) ==="
 echo
 
-# (lambda, lambda^2, N, precision_digits, primes)
+# (lambda_sq, N, precision_digits, primes)
 CONFIGS=(
-  "22.360679774997898  500   630   1500  95-primes"
-  "24.49489742783178   600   690   1500  109-primes"
-  "26.457513110645905  700   740   1500  125-primes"
-  "28.284271247461902  800   790   1500  139-primes"
-  "31.622776601683793  1000  890   2000  168-primes"
-  "34.64101615137754   1200  970   2000  196-primes"
+  "500   630   1500  95-primes"
+  "600   690   1500  109-primes"
+  "700   740   1500  125-primes"
+  "800   790   1500  139-primes"
+  "1000  890   2000  168-primes"
+  "1200  970   2000  196-primes"
 )
 
 for cfg in "${CONFIGS[@]}"; do
-  read -r LAMBDA LAMBDA_SQ N PREC DESC <<< "$cfg"
+  read -r LAMBDA_SQ N PREC DESC <<< "$cfg"
   echo "--- λ²=${LAMBDA_SQ}, N=${N}, HP-${PREC} (${DESC}) ---"
   "$BIN" run \
-    --lambda "$LAMBDA" \
+    --lambda-sq "$LAMBDA_SQ" \
     --n-modes "$N" \
     --precision-digits "$PREC" \
     --display-digits "$DISPLAY_DIGITS" \

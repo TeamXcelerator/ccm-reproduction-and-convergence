@@ -21,7 +21,7 @@ echo "=== Claim 1a: λ²=13, N=120 at HP-${PREC} (CCM headline reproduction) ===
 echo
 
 "$BIN" run \
-  --lambda 3.6055512754639896 \
+  --lambda-sq 13 \
   --n-modes 120 \
   --precision-digits "$PREC" \
   --display-digits "$DISPLAY_DIGITS" \

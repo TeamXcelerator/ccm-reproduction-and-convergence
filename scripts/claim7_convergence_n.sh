@@ -10,7 +10,6 @@
 set -euo pipefail
 
 BIN=${BIN:-./target/release/ccm-reproduction}
-LAMBDA=${LAMBDA:-3.6055512754639896}
 DISPLAY_DIGITS=${DISPLAY_DIGITS:-50}
 TOP=${TOP:-5}
 
@@ -34,7 +33,7 @@ for PREC in 200 1000; do
   for N in "${N_VALUES[@]}"; do
     echo "--- N=$N, HP-${PREC} ---"
     "$BIN" run \
-      --lambda "$LAMBDA" \
+      --lambda-sq 13 \
       --n-modes "$N" \
       --precision-digits "$PREC" \
       --display-digits "$DISPLAY_DIGITS" \

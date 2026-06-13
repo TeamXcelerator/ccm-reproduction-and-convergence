@@ -19,17 +19,17 @@ echo "=== Claim 3: Critical N at HP-${PREC} ==="
 echo
 
 CONFIGS=(
-  "7.0710678118654755  50    200"
-  "7.0710678118654755  50    250"
-  "10                  100   300"
-  "10                  100   400"
+  "50    200"
+  "50    250"
+  "100   300"
+  "100   400"
 )
 
 for cfg in "${CONFIGS[@]}"; do
-  read -r LAMBDA LAMBDA_SQ N <<< "$cfg"
+  read -r LAMBDA_SQ N <<< "$cfg"
   echo "--- λ²=${LAMBDA_SQ}, N=${N} ---"
   "$BIN" run \
-    --lambda "$LAMBDA" \
+    --lambda-sq "$LAMBDA_SQ" \
     --n-modes "$N" \
     --precision-digits "$PREC" \
     --display-digits "$DISPLAY_DIGITS" \

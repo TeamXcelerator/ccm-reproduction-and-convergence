@@ -21,7 +21,7 @@ echo "=== Claim 1b: λ²=100, N=500 at HP-${PREC} (intermediate ceiling) ==="
 echo
 
 "$BIN" run \
-  --lambda 10 \
+  --lambda-sq 100 \
   --n-modes 500 \
   --precision-digits "$PREC" \
   --display-digits "$DISPLAY_DIGITS" \

@@ -23,20 +23,20 @@ fi
 echo "=== Claim 2a: λ-sweep at N=${N}, HP-${PREC} ==="
 echo
 
-# (lambda, lambda^2)
+# lambda^2 values
 CONFIGS=(
-  "3.6055512754639896  13"
-  "4.47213595499958    20"
-  "5.477225575051661   30"
-  "7.0710678118654755  50"
-  "10                  100"
+  "13"
+  "20"
+  "30"
+  "50"
+  "100"
 )
 
 for cfg in "${CONFIGS[@]}"; do
-  read -r LAMBDA LAMBDA_SQ <<< "$cfg"
+  read -r LAMBDA_SQ <<< "$cfg"
   echo "--- λ²=${LAMBDA_SQ}, N=${N}, HP-${PREC} ---"
   "$BIN" run \
-    --lambda "$LAMBDA" \
+    --lambda-sq "$LAMBDA_SQ" \
     --n-modes "$N" \
     --precision-digits "$PREC" \
     --display-digits "$DISPLAY_DIGITS" \

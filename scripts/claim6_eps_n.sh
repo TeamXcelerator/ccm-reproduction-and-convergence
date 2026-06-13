@@ -32,18 +32,18 @@ fi
 echo "=== Claim 6: ε_N decay (each config at floor-resolving precision) ==="
 echo
 
-# (lambda, lambda^2, N, precision_digits, description)
+# (lambda_sq, N, precision_digits, description)
 CONFIGS=(
-  "3.6055512754639896  13    120  1000  6-primes"
-  "10                  100   500  1000  25-primes"
-  "31.622776601683793  1000  800  2000  168-primes"
+  "13    120  1000  6-primes"
+  "100   500  1000  25-primes"
+  "1000  800  2000  168-primes"
 )
 
 for cfg in "${CONFIGS[@]}"; do
-  read -r LAMBDA LAMBDA_SQ N PREC DESC <<< "$cfg"
+  read -r LAMBDA_SQ N PREC DESC <<< "$cfg"
   echo "--- λ²=${LAMBDA_SQ}, N=${N}, HP-${PREC} (${DESC}) ---"
   "$BIN" run \
-    --lambda "$LAMBDA" \
+    --lambda-sq "$LAMBDA_SQ" \
     --n-modes "$N" \
     --precision-digits "$PREC" \
     --display-digits "$DISPLAY_DIGITS" \

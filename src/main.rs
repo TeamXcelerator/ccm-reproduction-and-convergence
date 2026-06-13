@@ -31,12 +31,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Run the CCM construction at given (lambda, N) and report eigenvalues
+    /// Run the CCM construction at given (λ², N) and report eigenvalues
     /// vs Riemann zeros.
     Run {
-        /// Value of lambda (primes p <= lambda^2 enter the Weil form).
-        #[arg(long, default_value_t = 3.605551275463989_f64)]
-        lambda: f64,
+        /// λ² value. Primes p ≤ λ² enter the Weil form (e.g. 13, 100, 1000).
+        #[arg(long, default_value_t = 13_u64)]
+        lambda_sq: u64,
         /// Mode cutoff N. Matrix size is 2N+1.
         #[arg(long, default_value_t = 120)]
         n_modes: usize,
@@ -68,9 +68,9 @@ enum Command {
     /// Measure the natural evenness of the smallest Weil eigenvector
     /// (Claim 4: symmetry breakdown at large λ).
     CheckEvenness {
-        /// Value of lambda.
-        #[arg(long, default_value_t = 3.605551275463989_f64)]
-        lambda: f64,
+        /// λ² value (e.g. 13, 100, 1000, 1200).
+        #[arg(long, default_value_t = 13_u64)]
+        lambda_sq: u64,
         /// Mode cutoff N.
         #[arg(long, default_value_t = 120)]
         n_modes: usize,
@@ -83,30 +83,23 @@ enum Command {
     },
 }
 
-/// User-facing validation. Mirrors clap parsing — clap can't easily
-/// enforce ranges on f64 args, so we check here.
-fn validate_lambda(lambda: f64) -> Result<()> {
-    if !(lambda > 1.0) {
-        anyhow::bail!("lambda must be > 1 (got {lambda})");
-    }
-    Ok(())
-}
-
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Run { lambda, n_modes, top, precision_digits, display_digits, f64_only, no_force_even } => {
-            validate_lambda(lambda)?;
-            let params = CcmParams::from_lambda(lambda, n_modes);
+        Command::Run { lambda_sq, n_modes, top, precision_digits, display_digits, f64_only, no_force_even } => {
+            if lambda_sq < 2 {
+                anyhow::bail!("lambda_sq must be >= 2 (got {lambda_sq})");
+            }
+            let params = CcmParams::from_lambda_sq_integer(lambda_sq, n_modes);
+            let primes = ccm::prime_powers_up_to(params.lambda_sq_int());
             println!(
-                "CCM operator: lambda={:.6} (lambda^2={:.6}), N={}, matrix_size={}",
-                params.lambda(), params.lambda_squared, params.n_modes, params.matrix_size()
+                "CCM operator: λ²={}, N={}, matrix_size={}",
+                lambda_sq, params.n_modes, params.matrix_size()
             );
-            let primes = ccm::prime_powers_up_to(params.lambda_sq_int);
             println!(
-                "  prime powers k <= {}: {} entries",
-                params.lambda_sq_int, primes.len()
+                "  prime powers k ≤ {}: {} entries",
+                lambda_sq, primes.len()
             );
 
             if f64_only {
@@ -123,9 +116,23 @@ fn main() -> Result<()> {
                         cfg.force_even = false;
                         println!("  forced-even projection: DISABLED (natural eigenvector)");
                     }
-                    if std::env::var("XC_CACHE_MODE").as_deref() == Ok("off") {
-                        cfg.cache_mode = xc_numerics::quadrature::CacheMode::Off;
-                        println!("  cache mode: OFF (fully cold compute)");
+                    match std::env::var("XC_CACHE_MODE").as_deref() {
+                        Ok("off") => {
+                            cfg.cache_mode = xc_numerics::quadrature::CacheMode::Off;
+                            println!("  cache mode: OFF (no read, no write — pure compute)");
+                        }
+                        Ok("local") => {
+                            cfg.cache_mode = xc_numerics::quadrature::CacheMode::JsonZip;
+                            println!("  cache mode: LOCAL (read/write local disk, no network)");
+                        }
+                        Ok("fetch") => {
+                            cfg.cache_mode = xc_numerics::quadrature::CacheMode::DynamicFetch;
+                            println!("  cache mode: FETCH (local disk + remote fetch, default)");
+                        }
+                        Ok(other) => {
+                            eprintln!("  WARNING: unknown XC_CACHE_MODE '{}'; using default (fetch)", other);
+                        }
+                        _ => {} // default = DynamicFetch
                     }
 
                     // Load reference zeros at HP precision for Newton seeding.
@@ -141,29 +148,21 @@ fn main() -> Result<()> {
                     let hp_result = ccm::hp::run(&params, &cfg, &zero_seeds)?;
 
                     // ε_N is displayed in HP — at λ² >= 100 it routinely
-                    // underflows f64 (10^-308). All downstream display also
-                    // stays in HP via xc_numerics::fmt helpers.
+                    // underflows f64 (10^-308). All downstream display stays
+                    // in HP via xc_numerics::fmt helpers.
                     println!(
                         "  built and solved in {:.3}s, smallest Weil eigenvalue ε_N = {}",
                         hp_result.elapsed_seconds,
                         xc_numerics::fmt::display_hp(&hp_result.weil_min_eigenvalue, 6)
                     );
 
-                    // HP-native eigenvalue table: every value is rendered via
-                    // display_hp; abs error and matching digits are computed
-                    // in HP. cmp_prec is doubled so subtraction inside
-                    // matching_digits has full headroom.
+                    // HP-native eigenvalue table.
                     let n_compare = top.min(hp_result.eigenvalues_pos.len());
                     let ref_strings = xc_zeta::zeros::first_n_strings(
                         Path::new(ZEROS_PATH), n_compare,
                     )?;
                     let cmp_prec = hp_result.precision_bits * 2;
-
-                    // Sig digits for the matching-digits and abs-error columns.
-                    // The matching-digits column reports a value up to
-                    // ~precision_digits, so we need enough sig digits to
-                    // resolve it (e.g. for 999.4 / 1000.3 at HP-1000 we need
-                    // at least 5).
+                    // Enough sig digits to resolve e.g. 999.4 at HP-1000.
                     let column_digits = ((precision_digits as f64).log10().ceil() as usize + 2).max(5);
 
                     println!(
@@ -172,35 +171,47 @@ fn main() -> Result<()> {
                         "abs error", "matching digits"
                     );
                     println!("{}", "-".repeat(82));
+
                     for (k, (eig, ref_str)) in hp_result.eigenvalues_pos.iter()
                         .zip(ref_strings.iter()).enumerate().take(n_compare)
                     {
                         let ref_val = rug::Float::with_val(cmp_prec,
                             rug::Float::parse(ref_str).unwrap());
-                        let eig_hp = rug::Float::with_val(cmp_prec, eig);
-                        let mut diff = eig_hp.clone();
-                        diff -= &ref_val;
-                        let abs_err = diff.abs();
-                        let abs_err_str = if abs_err.is_zero() {
-                            "0".to_string()
-                        } else {
-                            xc_numerics::fmt::display_hp(&abs_err, column_digits)
-                        };
-                        let matching = if abs_err.is_zero() {
-                            // Conservative bound: roughly cmp_prec/log2(10) digits.
-                            format!(">={}", cmp_prec / 3)
-                        } else {
-                            let m = xc_numerics::fmt::matching_digits(&eig_hp, &ref_val);
-                            xc_numerics::fmt::display_hp(&m, column_digits)
-                        };
-                        println!(
-                            "{:>4}  {:>22}  {:>22}  {:>14}  {:>14}",
-                            k + 1,
-                            xc_numerics::fmt::display_hp(&eig_hp, display_digits),
-                            xc_numerics::fmt::display_hp(&ref_val, display_digits),
-                            abs_err_str,
-                            matching
-                        );
+                        match eig {
+                            Some(eig) => {
+                                let eig_hp = rug::Float::with_val(cmp_prec, eig);
+                                let mut diff = eig_hp.clone();
+                                diff -= &ref_val;
+                                let abs_err = diff.abs();
+                                let abs_err_str = if abs_err.is_zero() {
+                                    "0".to_string()
+                                } else {
+                                    xc_numerics::fmt::display_hp(&abs_err, column_digits)
+                                };
+                                let matching = if abs_err.is_zero() {
+                                    format!(">={}", cmp_prec / 3)
+                                } else {
+                                    let m = xc_numerics::fmt::matching_digits(&eig_hp, &ref_val);
+                                    xc_numerics::fmt::display_hp(&m, column_digits)
+                                };
+                                println!(
+                                    "{:>4}  {:>22}  {:>22}  {:>14}  {:>14}",
+                                    k + 1,
+                                    xc_numerics::fmt::display_hp(&eig_hp, display_digits),
+                                    xc_numerics::fmt::display_hp(&ref_val, display_digits),
+                                    abs_err_str,
+                                    matching
+                                );
+                            }
+                            None => {
+                                println!(
+                                    "{:>4}  {:>22}  {:>22}  {:>14}  {:>14}",
+                                    k + 1, "solver failed",
+                                    xc_numerics::fmt::display_hp(&ref_val, display_digits),
+                                    "N/A", "N/A"
+                                );
+                            }
+                        }
                     }
                 }
                 #[cfg(not(feature = "hp"))]
@@ -214,24 +225,28 @@ fn main() -> Result<()> {
                 }
             }
         }
-        Command::CheckEvenness { lambda, n_modes, precision_digits, display_digits } => {
+
+        Command::CheckEvenness { lambda_sq, n_modes, precision_digits, display_digits } => {
             #[cfg(not(feature = "hp"))]
             {
-                let _ = (lambda, n_modes, precision_digits, display_digits);
+                let _ = (lambda_sq, n_modes, precision_digits, display_digits);
                 anyhow::bail!("check-evenness requires --features hp at build time");
             }
             #[cfg(feature = "hp")]
             {
-                validate_lambda(lambda)?;
-                let params = CcmParams::from_lambda(lambda, n_modes);
+                if lambda_sq < 2 {
+                    anyhow::bail!("lambda_sq must be >= 2 (got {lambda_sq})");
+                }
+                let params = CcmParams::from_lambda_sq_integer(lambda_sq, n_modes);
                 let cfg = ccm::hp::HighPrecConfig::for_decimal_digits(precision_digits);
-                println!("Measuring evenness: λ²={:.6}, N={}, precision={} digits",
-                    params.lambda_squared, n_modes, precision_digits);
+                println!(
+                    "Measuring evenness: λ²={}, N={}, precision={} digits",
+                    lambda_sq, n_modes, precision_digits
+                );
+
                 let result = ccm::hp::measure_evenness(&params, &cfg)?;
 
-                // Pure HP display — no f64 conversion. At λ²>=1000 the eigenvalues
-                // can be smaller than 10^-1000 (well below f64 underflow at 10^-308);
-                // going through f64 here would silently destroy the sign and magnitude.
+                // Pure HP display — no f64 conversion.
                 use xc_numerics::fmt::{display_hp, sign_of, relative_difference, Sign};
                 let prec = result.natural_eigenvalue.prec();
 
@@ -251,7 +266,6 @@ fn main() -> Result<()> {
                     println!("  => natural and forced-even smallest eigenvalues have OPPOSITE SIGNS");
                 }
 
-                // Evenness verdict — thresholds built as HP literals to avoid f64 round-trips.
                 let one_eminus_ten = rug::Float::with_val(prec,
                     rug::Float::parse("1e-10").unwrap());
                 let one_eminus_two = rug::Float::with_val(prec,
@@ -282,7 +296,6 @@ fn main() -> Result<()> {
 /// Print f64-tier results (used by --f64-only flag). Eigenvalues, abs error
 /// and rel error are all f64 — accurate to ~15 digits, sufficient for
 /// quick smoke-tests but not for publication-grade convergence claims.
-/// The HP path uses a separate HP-native printer inline at the call site.
 fn print_results_f64(result: &CcmResult, top: usize) -> Result<()> {
     println!(
         "  built and solved in {:.3}s, smallest Weil eigenvalue ε_N = {:.6e}",
