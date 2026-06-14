@@ -172,13 +172,16 @@ fn main() -> Result<()> {
                     );
                     println!("{}", "-".repeat(82));
 
-                    for (k, (eig, ref_str)) in hp_result.eigenvalues_pos.iter()
+                    for (k, (eig_full, ref_str)) in hp_result.eigenvalues_pos.iter()
                         .zip(ref_strings.iter()).enumerate().take(n_compare)
                     {
                         let ref_val = rug::Float::with_val(cmp_prec,
                             rug::Float::parse(ref_str).unwrap());
-                        match eig {
-                            Some(eig) => {
+                        use xc_spectral::ccm::hp::EigenvalueResult;
+                        match eig_full {
+                            EigenvalueResult::Converged(eig)
+                            | EigenvalueResult::Approximate(eig) => {
+                                let is_approx = matches!(eig_full, EigenvalueResult::Approximate(_));
                                 let eig_hp = rug::Float::with_val(cmp_prec, eig);
                                 let mut diff = eig_hp.clone();
                                 diff -= &ref_val;
@@ -194,16 +197,25 @@ fn main() -> Result<()> {
                                     let m = xc_numerics::fmt::matching_digits(&eig_hp, &ref_val);
                                     xc_numerics::fmt::display_hp(&m, column_digits)
                                 };
+                                // Prefix "~" on the computed eigenvalue when Approximate
+                                // (step limit hit — value may still be close, but not
+                                // certified to HP precision).
+                                let eig_display = xc_numerics::fmt::display_hp(&eig_hp, display_digits);
+                                let eig_str = if is_approx {
+                                    format!("~{}", eig_display)
+                                } else {
+                                    eig_display
+                                };
                                 println!(
                                     "{:>4}  {:>22}  {:>22}  {:>14}  {:>14}",
                                     k + 1,
-                                    xc_numerics::fmt::display_hp(&eig_hp, display_digits),
+                                    eig_str,
                                     xc_numerics::fmt::display_hp(&ref_val, display_digits),
                                     abs_err_str,
                                     matching
                                 );
                             }
-                            None => {
+                            EigenvalueResult::Failed => {
                                 println!(
                                     "{:>4}  {:>22}  {:>22}  {:>14}  {:>14}",
                                     k + 1, "solver failed",

@@ -89,16 +89,16 @@ cargo build --release --features hp
 
 ```bash
 ./target/release/ccm-reproduction run \
-  --lambda 31.622776601683793 --n-modes 800 \
-  --precision-digits 1000 --display-digits 50 --top 50
+  --lambda-sq 1000 --n-modes 800 \
+  --precision-digits 1000 --display-digits 50 --top 25
 ```
 
 ### Reproduce with natural eigenvector (no forced-even projection)
 
 ```bash
 ./target/release/ccm-reproduction run \
-  --lambda 31.622776601683793 --n-modes 800 \
-  --precision-digits 1000 --display-digits 50 --top 50 \
+  --lambda-sq 1000 --n-modes 800 \
+  --precision-digits 1000 --display-digits 50 --top 25 \
   --no-force-even
 ```
 

@@ -2,10 +2,11 @@
 # so they execute correctly on Linux (Vast) without "bad interpreter" errors.
 *.sh text eol=lf
 
-# Rust / TOML / Markdown — let git auto-handle.
+# Rust / TOML / Markdown / lock files — let git auto-handle.
 *.rs text
 *.toml text
 *.md text
+*.lock text
 
 # Reference data files — leave as-is, never normalize.
 data/zeta_zeros.json -text
