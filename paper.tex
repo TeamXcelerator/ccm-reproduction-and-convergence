@@ -16,9 +16,8 @@
 \title{Independent Reproduction and Convergence Analysis\\
 of the Connes--Consani--Moscovici Zeta Spectral Triple}
 
-\author{Ronnie Andrews, Jr.\,\orcidlink{0009-0003-9724-3104}\\
-\textit{Team Xcelerator Inc.\textsuperscript{\textregistered}}\\
-\texttt{randrewsmath@gmail.com}}
+\author{Ronnie Andrews, Jr.\,\orcidlink{0009-0003-9724-3104}%
+\thanks{Correspondence: \texttt{randrewsmath@gmail.com}}}
 
 \date{June 2026}
 
@@ -27,48 +26,27 @@ of the Connes--Consani--Moscovici Zeta Spectral Triple}
 
 \begin{abstract}
 We independently implement the Connes--Consani--Moscovici (CCM)
-operator construction from \cite{CCM2025} in Rust at arbitrary
-precision using the MPFR library, and extend the paper's headline
-result from 55 to \textbf{999 matching decimal digits} on the first
-Riemann zeta zero (limited only by working precision). We characterize the construction's convergence
-behavior empirically, finding: (1)~a two-regime convergence in the
-basis size~$N$, with matching digits growing approximately linearly
-in~$N$ before saturating at the Weil eigenvalue
-ceiling~$\varepsilon_N$ (the per-step rate $\Delta(\text{digits})/
-\Delta N$ depends on proximity to saturation and ranges from
-${\sim}1.4$ at small~$N$ down to ${\sim}0.15$ as the ceiling is
-approached);
-When $\varepsilon_N$ falls below the working-precision floor
-(i.e., $|\log_{10}\varepsilon_N|$ exceeds the number of
-reliable digits), the eigenvector and eigenvalue become
-numerically degenerate; results in this regime are artifacts
-of insufficient precision, not properties of the construction.
-(2)~super-exponential decay of
-$\varepsilon_N$ with the number of primes entering the
-construction --- faster than any polynomial in the prime count;
-above-floor data (HP-1500/HP-2000, $\lambda^2$ up to $1200$)
-place the decay at several hundred matching digits per doubling
-of prime count, the specific rate depending on how $N$ is scaled
-with $\lambda$;
-(3)~monotone growth of accuracy with~$\lambda$ at fixed~$N$,
-controlled directly by~$\varepsilon_N(\lambda)$ at every working
-precision sufficient to resolve it;
-(4)~a precision-dependent accuracy ceiling at finite~$N$,
-controlled by the working precision divided by an empirical
-per-step rate (sampled at ${\sim}1.1$~digits per unit~$N$ averaged
-over the rapid-convergence regime at $\lambda^2{=}13$, with the
-rate at any specific $(\lambda, N)$ depending on proximity to the
-$\varepsilon_N$ saturation ceiling); (5)~the smallest eigenvector's even-symmetry property
-(CCM's Step~1 hypothesis) holds at every configuration
-tested above the working-precision floor, up to
-$\lambda^2{=}1200$ at HP-2000 --- we conjecture it holds
-universally; apparent symmetry breakdown at
-large~$\lambda$ in floor-limited data is a precision
-artifact; and (6)~the remarkable
-fact that a $21\times 21$ matrix built from 6~primes already
-produces 21.585~matching digits of the first Riemann zero. All
-results are reproducible from the accompanying source-available
-implementation.
+operator construction~\cite{CCM2025} in Rust at arbitrary precision
+(MPFR/GMP) and extend the headline result from 55 to
+\textbf{999 matching decimal digits} on the first Riemann zeta zero,
+limited only by working precision.
+We characterize the construction's convergence empirically: accuracy
+exhibits two-regime behavior in basis size~$N$ (linear growth, then
+saturation at the Weil eigenvalue ceiling $\varepsilon_N$);
+$\varepsilon_N$ decays super-exponentially with prime count (hundreds
+of digits per doubling at fixed $N/\sqrt{\lambda^2} \approx 28$);
+and accuracy grows monotonically with~$\lambda$, controlled directly
+by~$\varepsilon_N$. The smallest eigenvector's even-symmetry
+(CCM's Step~1 hypothesis) holds at every above-floor configuration
+tested up to $\lambda^2{=}1200$, HP-2000; the forced-even projection
+is empirically unnecessary --- the natural eigenvector converges to
+the same even vector and produces bit-identical eigenvalues.
+Remarkably, a $21\times 21$ matrix from $6$ primes already yields
+$21.585$ matching digits.
+All results are reproducible from the accompanying source-available
+implementation. This work has been shared with Professor Henri Moscovici
+(a co-author of~\cite{CCM2025}), who forwarded it to lead author
+Professor Alain Connes for review.
 \end{abstract}
 
 \section{Introduction}
@@ -187,7 +165,7 @@ HP publication path uses the toolkit's own HP symmetric eigendecomposition
 in \texttt{xc-numerics::eigen}, verified at HP-1000 against a PARI/GP
 2000-digit reference);
 \item \textbf{rayon} (v1.10) for parallel matrix assembly, Householder
-reduction, LU factorization, and Newton-per-seed refinement.
+reduction, LU factorization, and eigenvalue-per-seed refinement.
 \end{itemize}
 
 Key algorithmic choices:
@@ -196,23 +174,30 @@ Key algorithmic choices:
 zero (we seek the smallest eigenvalue), we factor $\tau = PLU$
 once at $O(n^3)$ cost, then each iteration step is $O(n^2)$
 forward/back substitution. Convergence is detected via the
-Rayleigh quotient.
-\item \textbf{Forced-even symmetrization (optional):} By default,
-at each inverse iteration step we project onto the even subspace
-$\xi_j \mapsto (\xi_j + \xi_{-j})/2$. This guarantees convergence
-to the smallest \emph{even} eigenvalue, as required by CCM's
-Step~1. In practice the projection is empirically unnecessary:
-across 38 configurations tested (Section~\ref{sec:evenness}), the
-natural (unprojected) iteration converges to the same even
-eigenvector and produces bit-identical results. The projection is
-retained as a default for theoretical safety but can be disabled
-via \texttt{--no-force-even}.
+Rayleigh quotient. The iteration auto-detects whether the natural
+eigenvector is drifting odd at each step (via the symmetry
+deviation $\|\xi - \gamma\xi\|/\|\xi\|$, where $\gamma$ is index
+reflection) and applies the even projection $\xi_j \mapsto
+(\xi_j + \xi_{-j})/2$ only when needed. This is a no-op at every
+above-floor configuration tested (Section~\ref{sec:evenness}): the
+natural smallest eigenvector converges to an even vector without
+forcing, confirming CCM's Step~1 hypothesis empirically.
+\item \textbf{Halley's method for $R(z)$ zeros:} The rational
+function $R(z) = \xi_0 + 2z\sum_{j=1}^{N}\xi_j/(z-j^2)$ has
+analytically available first and second derivatives, enabling
+Halley's method (cubic convergence) as the default root-finder,
+seeded from Odlyzko's tabulated Riemann zeros at full working
+precision. The solver returns a three-state result:
+\texttt{Converged} (full HP precision reached), \texttt{Approximate}
+(stagnated at the construction's accuracy ceiling --- the value is
+correct to many digits but not certified to full precision), or
+\texttt{Failed} (degenerate denominator). In practice all
+above-floor configurations converge fully or stagnate at the
+$\varepsilon_N$ ceiling.
 \item \textbf{Gauss--Legendre quadrature with disk cache:}
 GL nodes/weights at a given $(n_{\text{pts}},
-\text{precision\_bits})$ are computed once via Newton iteration
-on Legendre polynomials and cached to disk for reuse across runs.
-\item \textbf{Newton refinement of $R(z)$ zeros:} Seeded from
-Odlyzko's tabulated zeros, with adaptive step control.
+\text{precision\_bits})$ are computed once and cached to disk
+for reuse across runs.
 \end{enumerate}
 
 \subsection{Reproducibility Infrastructure}
@@ -327,7 +312,7 @@ Two regimes are evident:
 matching digits grow approximately linearly in~$N$, with the
 per-step rate $\Delta(\text{digits})/\Delta N$ decaying smoothly
 from ${\sim}1.4$ at $N{=}10{\to}20$ down to ${\sim}0.15$ at
-$N{=}50{\to}60$. A single rate of ${\sim}1.1$ digits per unit~$N$
+$N{=}50{\to}60$. A single rate of ${\sim}0.96$ digits per unit~$N$
 is a useful average over $N \in [10, 40]$ but does not fit the
 entire pre-saturation regime; the rate at any specific $N$ depends
 on how close $N$ is to the saturation point.
@@ -368,8 +353,8 @@ different saturation ceiling.
     (10, 11.856) (20, 30.011) (30, 39.262) (40, 45.225) (50, 48.822) (60, 50.312) (80, 50.670) (100, 50.751) (120, 50.779)
 };
 \addlegendentry{Zero 3 ($t_3 = 25.01\ldots$)}
-\addplot[dashed, gray, domain=0:40] {1.1*x + 10};
-\addlegendentry{Avg.\ slope ${\approx}1.1$ digits/$N$ ($N \in [10, 40]$)}
+\addplot[dashed, gray, domain=0:40] {0.96*x + 10};
+\addlegendentry{Avg.\ slope ${\approx}0.96$ digits/$N$ ($N \in [10, 40]$)}
 \addplot[dotted, black, domain=0:130] {55.764};
 \addlegendentry{$\varepsilon_N$ ceiling}
 \end{axis}
@@ -389,8 +374,9 @@ and~\ref{sec:critical_N} for the general mechanism.
 
 \subsection{The 21-Digit Result from a $21\times 21$ Matrix}
 
-At $N = 10$ (matrix size $21 \times 21$), with only 6 prime
-powers entering the Weil form ($\{2, 3, 4, 5, 7, 8, 9, 11, 13\}$),
+At $N = 10$ (matrix size $21 \times 21$), with only 6 primes
+($\{2, 3, 5, 7, 11, 13\}$, corresponding to 9 prime powers entering
+the Weil form),
 the first Riemann zero is matched to \textbf{21.585 decimal digits}.
 This is, to our knowledge, the most efficient spectral
 approximation of a Riemann zero in the literature: 21 digits from
@@ -499,7 +485,7 @@ $\lambda^2$ & Primes $\le \lambda^2$ & $\varepsilon_N$ at HP-1000
 20   & 8  & $2.50471 \times 10^{-96}$   & $92.817$   & $92.817$ \\
 30   & 10 & $2.19404 \times 10^{-135}$  & $131.80$  & $131.80$ \\
 50   & 15 & $6.89051 \times 10^{-174}$  & $170.19$  & $170.19$ \\
-100  & 25 & $3.48656 \times 10^{-215}$  & $203.90$\textsuperscript{\dag} & $211.29$ \\
+100  & 25 & $3.48656 \times 10^{-215}$  & $203.87$\textsuperscript{\dag} & $211.29$ \\
 \bottomrule
 \multicolumn{5}{l}{\footnotesize\textsuperscript{\dag}HP-200 saturates at the working-precision floor.} \\
 \end{tabular}
@@ -562,15 +548,15 @@ $\lambda^2{=}100$, $N{=}400$ & $6.12702\times 10^{-423}$ & $419.28$ & $409.04$ \
 The accuracy ceiling at fixed working precision is roughly
 $\text{(working precision)} / r$, where $r$ is the average per-step
 rate $\Delta(\text{digits})/\Delta N$ in the rapid-convergence
-regime. At $\lambda^2 = 13$ we measured $r \approx 1.1$ averaged
+regime. At $\lambda^2 = 13$ we measured $r \approx 0.96$ averaged
 over $N \in [10, 40]$ (Section~\ref{sec:conv_N_label}); at other
 $(\lambda, N)$ regimes $r$ will differ, so the constant should be
 treated as a configuration-specific empirical value rather than a
 universal parameter of the construction. Once
 $r \cdot N$ exceeds the available digits, additional $N$ yields no
 measurable improvement and inverse iteration begins to exhibit
-numerical artifacts. At 200-digit precision and $r \approx 1.1$
-this gives a ceiling near $N \approx 180$; at 1000-digit precision
+numerical artifacts. At 200-digit precision and $r \approx 0.96$
+this gives a ceiling near $N \approx 210$; at 1000-digit precision
 the same configurations continue to gain digits well past
 $N = 400$ (the $\lambda^2{=}100, N{=}400$ row above resolves
 $419.28$ first-zero digits).
@@ -604,11 +590,11 @@ natural and forced-even eigenvalues are bit-identical.}
 \toprule
 $\lambda^2$ & $N$ & Precision & Evenness deviation & Eigenvalue rel.\ diff. & Verdict \\
 \midrule
-13    & 120  & HP-1000  & $1.0259 \times 10^{-951}$  & 0 (bit-identical) & essentially even \\
-100   & 500  & HP-1000  & $7.6625 \times 10^{-549}$  & 0 (bit-identical) & essentially even \\
-1000  & 800  & HP-2000  & $3.5437 \times 10^{-749}$  & 0 (bit-identical) & essentially even \\
-1000  & 890  & HP-2000  & $8.5373 \times 10^{-650}$  & 0 (bit-identical) & essentially even \\
-1200  & 970  & HP-2000  & $9.2591 \times 10^{-514}$  & 0 (bit-identical) & essentially even \\
+13    & 120  & HP-1000  & $1.993 \times 10^{-951}$  & 0 (bit-identical) & essentially even \\
+100   & 500  & HP-1000  & $5.102 \times 10^{-548}$  & 0 (bit-identical) & essentially even \\
+1000  & 800  & HP-2000  & $2.941 \times 10^{-748}$  & 0 (bit-identical) & essentially even \\
+1000  & 890  & HP-2000  & $6.279 \times 10^{-650}$  & 0 (bit-identical) & essentially even \\
+1200  & 970  & HP-2000  & $2.927 \times 10^{-514}$  & 0 (bit-identical) & essentially even \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -636,7 +622,7 @@ $\lambda^2 = 1000$ configuration ($|\log_{10}\varepsilon_N| \approx
 deviation $1.87$, eigenvalue split $24\%$. Increasing the working
 precision to HP-2000 (2008 digits, floor ratio $1.59$) at the
 \emph{identical} $(\lambda^2{=}1000, N{=}800)$ configuration collapses
-the apparent breakdown entirely: deviation $3.54 \times 10^{-749}$,
+the apparent breakdown entirely: deviation $2.94 \times 10^{-748}$,
 eigenvalues bit-identical. The only variable changed is precision.
 
 \paragraph{The forced-even projection is unnecessary.}
@@ -661,7 +647,7 @@ The CCM construction's accuracy is controlled by two parameters:
 \emph{ceiling} --- how many digits are achievable;
 \item $N$ (basis size): determines how quickly the ceiling is
 \emph{reached} --- the per-step rate
-$\Delta(\text{digits})/\Delta N$ averages to ${\sim}1.1$ over
+$\Delta(\text{digits})/\Delta N$ averages to ${\sim}0.96$ over
 $N \in [10, 40]$ at $\lambda^2 = 13$, but decays through the
 linear regime and depends on the specific $(\lambda, N)$
 configuration sampled.
@@ -781,30 +767,10 @@ spectral approach to the Riemann Hypothesis.
 
 \section*{Acknowledgments}
 
-All computations were performed on Vast.ai cloud infrastructure
-(128- to 384-core AMD EPYC nodes); the author personally funded all compute
-resources. The author identified the research questions, set the
-research direction, and made all decisions about what experiments
-to run and how to interpret the results. Specific contributions
-include: the convergence question that motivated extending the
-construction beyond the paper's headline configuration; the
-observation that each prime $p$ contributes weight
-$\log(p)/\sqrt{p}$ to the Weil form, which has its maximum at
-$p = e^2 \approx 7.3891$; the strategy of parallelizing
-high-precision computations to make HP-1000 sweeps feasible at
-scale; the recognition that Gauss--Legendre nodes and weights
-are uniquely determined by precision and node count and thus
-reusable across runs (yielding a substantial speedup that made
-$N=1500$ at HP-1000 working precision feasible); and the broader
-strategy of separating each cache type (GL nodes, $\tau$-matrices,
-Weil eigenvectors) into dedicated public repositories with a
-deterministic remote-fetch tier (DynamicFetch), so that fresh-clone
-reproductions of every published configuration skip minutes-to-hours
-of cold compute automatically --- no manual fixture download
-required. AI coding tools
-(Claude, Anthropic) were used for Rust implementation under the
-author's direction; all research decisions, interpretations, and
-intellectual contributions are the author's.
+The author thanks Professor Henri Moscovici (The Ohio State
+University) and Professor Nigel Higson (The Pennsylvania State
+University) for correspondence and encouragement. Professor
+Moscovici kindly forwarded this work to Professor Alain Connes.
 
 \section*{Data and Code Availability}
 

@@ -7,7 +7,7 @@
 > eigenvector is naturally even at every configuration tested —
 > including configurations far beyond the published range.
 
-**Author:** Ronnie Andrews, Jr. (Team Xcelerator Inc.®)  
+**Author:** Ronnie Andrews, Jr.  
 **ORCID:** [0009-0003-9724-3104](https://orcid.org/0009-0003-9724-3104)  
 **Contact:** randrewsmath@gmail.com  
 **Date:** June 2026
@@ -19,7 +19,7 @@
 | First Riemann zero accuracy (λ²=1000, N=800, HP-1000) | **999 matching digits** |
 | First Riemann zero accuracy (λ²=100, N=500, HP-1000)  | 460 matching digits |
 | Smallest useful matrix (λ²=13, N=10) | 21×21 → **21.585 digits** |
-| ε_N decay rate (above-floor, N/√λ²≈28) | **~440–613 digits per doubling of prime count** (increases with λ) |
+| ε_N decay rate (above-floor, N/√λ²≈28) | **~437–613 digits per doubling of prime count** (increases with λ) |
 | Accuracy ceiling | Controlled by ε_N (Weil eigenvalue), N (basis), and working precision jointly |
 | Even-symmetry conjecture | Smallest eigenvector naturally even at all 38 configs tested (HP-200 through HP-2000, λ²=13–1200) |
 | Forced-even projection | Empirically unnecessary — natural path produces bit-identical zeros |
