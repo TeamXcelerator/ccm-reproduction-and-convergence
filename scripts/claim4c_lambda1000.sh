@@ -24,7 +24,7 @@
 # parallelize.
 set -euo pipefail
 
-BIN=${BIN:-./target/release/ccm-reproduction}
+source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
 PREC=${PREC:-2000}
 DISPLAY_DIGITS=${DISPLAY_DIGITS:-12}
 

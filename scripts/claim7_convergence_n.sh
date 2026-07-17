@@ -9,7 +9,7 @@
 # precision-dependent saturation phenomenon in Section 4.3 of the paper.
 set -euo pipefail
 
-BIN=${BIN:-./target/release/ccm-reproduction}
+source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
 DISPLAY_DIGITS=${DISPLAY_DIGITS:-50}
 TOP=${TOP:-5}
 

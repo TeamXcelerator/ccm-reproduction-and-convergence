@@ -19,7 +19,7 @@
 # disk. PREC is set per row inline.
 set -euo pipefail
 
-BIN=${BIN:-./target/release/ccm-reproduction}
+source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
 DISPLAY_DIGITS=${DISPLAY_DIGITS:-12}
 
 # FORCE_EVEN=false disables the even projection (tests natural eigenvector).

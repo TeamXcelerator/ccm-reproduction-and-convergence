@@ -6,7 +6,7 @@
 # own server so all three Claim 1 configs can run in parallel.
 set -euo pipefail
 
-BIN=${BIN:-./target/release/ccm-reproduction}
+source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
 PREC=${PREC:-1000}
 DISPLAY_DIGITS=${DISPLAY_DIGITS:-50}
 

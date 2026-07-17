@@ -26,7 +26,7 @@
 # forced-even flag, so the natural ξ is computed, not the cached forced ξ).
 set -euo pipefail
 
-BIN=${BIN:-./target/release/ccm-reproduction}
+source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
 PREC=${PREC:-1000}
 DISPLAY_DIGITS=${DISPLAY_DIGITS:-50}
 TOP=${TOP:-25}

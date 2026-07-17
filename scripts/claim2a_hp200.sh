@@ -8,7 +8,7 @@
 # Designed to run independently on its own server alongside claim2b.
 set -euo pipefail
 
-BIN=${BIN:-./target/release/ccm-reproduction}
+source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
 N=${N:-120}
 PREC=${PREC:-200}
 DISPLAY_DIGITS=${DISPLAY_DIGITS:-50}
