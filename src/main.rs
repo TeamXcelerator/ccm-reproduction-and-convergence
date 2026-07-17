@@ -23,7 +23,7 @@ use xc_spectral::ccm::{self, CcmParams, CcmResult};
 const ZEROS_PATH: &str = "data/zeta_zeros.json";
 
 #[derive(Parser)]
-#[command(name = "ccm-reproduction", about = "CCM Zeta Spectral Triple — reproduction and convergence analysis")]
+#[command(name = "ccm-reproduction", about = "CCM Zeta Spectral Triple - reproduction and convergence analysis")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -31,10 +31,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Run the CCM construction at given (λ², N) and report eigenvalues
+    /// Run the CCM construction at given (lambda^2, N) and report eigenvalues
     /// vs Riemann zeros.
     Run {
-        /// λ² value. Primes p ≤ λ² enter the Weil form (e.g. 13, 100, 1000).
+        /// lambda^2 value. Primes p <= lambda^2 enter the Weil form (e.g. 13, 100, 1000).
         #[arg(long, default_value_t = 13_u64)]
         lambda_sq: u64,
         /// Mode cutoff N. Matrix size is 2N+1.
@@ -53,7 +53,7 @@ enum Command {
         #[arg(long, default_value_t = 16)]
         display_digits: usize,
         /// Use f64 tier (fast, ~13 digits max) instead of HP. Smoke-test
-        /// mode only — f64 cannot reach the precisions needed for the
+        /// mode only - f64 cannot reach the precisions needed for the
         /// paper's publication-grade convergence claims.
         #[arg(long, default_value_t = false)]
         f64_only: bool,
@@ -66,9 +66,9 @@ enum Command {
         no_force_even: bool,
     },
     /// Measure the natural evenness of the smallest Weil eigenvector
-    /// (Claim 4: symmetry breakdown at large λ).
+    /// (Claim 4: symmetry breakdown at large lambda).
     CheckEvenness {
-        /// λ² value (e.g. 13, 100, 1000, 1200).
+        /// lambda^2 value (e.g. 13, 100, 1000, 1200).
         #[arg(long, default_value_t = 13_u64)]
         lambda_sq: u64,
         /// Mode cutoff N.
@@ -94,11 +94,11 @@ fn main() -> Result<()> {
             let params = CcmParams::from_lambda_sq_integer(lambda_sq, n_modes);
             let primes = ccm::prime_powers_up_to(params.lambda_sq_int());
             println!(
-                "CCM operator: λ²={}, N={}, matrix_size={}",
+                "CCM operator: lambda^2={}, N={}, matrix_size={}",
                 lambda_sq, params.n_modes, params.matrix_size()
             );
             println!(
-                "  prime powers k ≤ {}: {} entries",
+                "  prime powers k <= {}: {} entries",
                 lambda_sq, primes.len()
             );
 
@@ -119,7 +119,7 @@ fn main() -> Result<()> {
                     match std::env::var("XC_CACHE_MODE").as_deref() {
                         Ok("off") => {
                             cfg.cache_mode = xc_numerics::quadrature::CacheMode::Off;
-                            println!("  cache mode: OFF (no read, no write — pure compute)");
+                            println!("  cache mode: OFF (no read, no write - pure compute)");
                         }
                         Ok("local") => {
                             cfg.cache_mode = xc_numerics::quadrature::CacheMode::JsonZip;
@@ -151,7 +151,7 @@ fn main() -> Result<()> {
                     // underflows f64 (10^-308). All downstream display stays
                     // in HP via xc_numerics::fmt helpers.
                     println!(
-                        "  built and solved in {:.3}s, smallest Weil eigenvalue ε_N = {}",
+                        "  built and solved in {:.3}s, smallest Weil eigenvalue epsilon_N = {}",
                         hp_result.elapsed_seconds,
                         xc_numerics::fmt::display_hp(&hp_result.weil_min_eigenvalue, 6)
                     );
@@ -252,7 +252,7 @@ fn main() -> Result<()> {
                 let params = CcmParams::from_lambda_sq_integer(lambda_sq, n_modes);
                 let cfg = ccm::hp::HighPrecConfig::for_decimal_digits(precision_digits);
                 println!(
-                    "Measuring evenness: λ²={}, N={}, precision={} digits",
+                    "Measuring evenness: lambda^2={}, N={}, precision={} digits",
                     lambda_sq, n_modes, precision_digits
                 );
 
@@ -262,7 +262,7 @@ fn main() -> Result<()> {
                 use xc_numerics::fmt::{display_hp, sign_of, relative_difference, Sign};
                 let prec = result.natural_eigenvalue.prec();
 
-                println!("  ‖ξ - γξ‖ / ‖ξ‖              = {}",
+                println!("  ||xi - gamma(xi)|| / ||xi|| = {}",
                     display_hp(&result.evenness_deviation, display_digits));
                 println!("  natural smallest eigenvalue     = {}",
                     display_hp(&result.natural_eigenvalue, display_digits));
@@ -293,7 +293,7 @@ fn main() -> Result<()> {
                     if let Some(rel) = relative_difference(
                         &result.natural_eigenvalue, &result.forced_eigenvalue
                     ) {
-                        println!("  |natural − forced| / |forced| = {}",
+                        println!("  |natural - forced| / |forced| = {}",
                             display_hp(&rel, display_digits));
                     } else {
                         println!("  forced-even eigenvalue is exactly zero; relative difference undefined");
@@ -310,7 +310,7 @@ fn main() -> Result<()> {
 /// quick smoke-tests but not for publication-grade convergence claims.
 fn print_results_f64(result: &CcmResult, top: usize) -> Result<()> {
     println!(
-        "  built and solved in {:.3}s, smallest Weil eigenvalue ε_N = {:.6e}",
+        "  built and solved in {:.3}s, smallest Weil eigenvalue epsilon_N = {:.6e}",
         result.elapsed_seconds, result.weil_min_eigenvalue
     );
     let zeros = xc_zeta::zeros::first_n_f64(Path::new(ZEROS_PATH), top.max(50))?;

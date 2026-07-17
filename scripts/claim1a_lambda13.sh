@@ -17,7 +17,7 @@ if [[ "${FORCE_EVEN:-true}" == "false" ]]; then
   echo "  *** forced-even projection DISABLED (natural eigenvector) ***"
 fi
 
-echo "=== Claim 1a: λ²=13, N=120 at HP-${PREC} (CCM headline reproduction) ==="
+echo "=== Claim 1a: lambda^2=13, N=120 at HP-${PREC} (CCM headline reproduction) ==="
 echo
 
 "$BIN" run \
