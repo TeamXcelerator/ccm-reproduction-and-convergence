@@ -24,6 +24,7 @@ rug = { version = "1.30", optional = true, default-features = false, features = 
 xc-spectral = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", branch = "feature/v0.13.0" }
 xc-zeta     = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", branch = "feature/v0.13.0" }
 xc-numerics = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", branch = "feature/v0.13.0" }
+xc-cache    = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", branch = "feature/v0.13.0" }
 
 [profile.release]
 opt-level = 3

@@ -145,7 +145,63 @@ fn main() -> Result<()> {
                         .map(|s| rug::Float::with_val(prec, rug::Float::parse(s).unwrap()))
                         .collect();
 
-                    let hp_result = ccm::hp::run(&params, &cfg, &zero_seeds)?;
+                    let hp_result = if let Ok(cache_root) = std::env::var("XC_TYPED_CACHE_ROOT") {
+                        use xc_cache::{
+                            ArtifactCacheContext, ArtifactExecutionCacheMode, CacheLayer,
+                            CachePolicy, CacheQuality, CacheResolver, CacheVisibility,
+                            DirectoryArtifactProductionSink, FilesystemCacheStore, ToolkitVersion,
+                        };
+                        if cache_root.trim().is_empty() {
+                            anyhow::bail!("XC_TYPED_CACHE_ROOT must not be empty");
+                        }
+                        let resolver = CacheResolver::new(vec![CacheLayer {
+                            precedence: 0,
+                            store: Box::new(FilesystemCacheStore::new(
+                                "workstation",
+                                &cache_root,
+                                true,
+                                CacheVisibility::Local,
+                            )),
+                        }]);
+                        let policy = CachePolicy {
+                            current_toolkit_version: ToolkitVersion::parse("0.13.0")?,
+                            minimum_quality: CacheQuality::Validated,
+                            accepted_schema_versions: vec![1],
+                            allow_deprecated: false,
+                            allow_quarantined: false,
+                            allowed_visibilities: vec![CacheVisibility::Local],
+                        };
+                        let production_sink = std::env::var("XC_PUBLICATION_QUEUE")
+                            .ok()
+                            .map(DirectoryArtifactProductionSink::new)
+                            .transpose()?;
+                        let cache = ArtifactCacheContext {
+                            resolver: Some(&resolver),
+                            acceptance: Some(&policy),
+                            ordered_overlays: vec!["workstation".to_owned()],
+                            mode: ArtifactExecutionCacheMode::PreferReuse,
+                            write_on_miss: true,
+                            write_visibility: CacheVisibility::Local,
+                            production_sink: production_sink
+                                .as_ref()
+                                .map(|sink| sink as &dyn xc_cache::ArtifactProductionSink),
+                        };
+                        println!("  typed cache root: {}", cache_root);
+                        if let Some(sink) = &production_sink {
+                            println!(
+                                "  publication queue: {} (local staging only)",
+                                sink.root().display()
+                            );
+                        }
+                        ccm::hp::run_via_cache(&params, &cfg, &zero_seeds, &cache)?
+                    } else {
+                        if std::env::var_os("XC_PUBLICATION_QUEUE").is_some() {
+                            anyhow::bail!(
+                                "XC_PUBLICATION_QUEUE requires XC_TYPED_CACHE_ROOT"
+                            );
+                        }
+                        ccm::hp::run(&params, &cfg, &zero_seeds)?
+                    };
 
                     // ε_N is displayed in HP — at λ² >= 100 it routinely
                     // underflows f64 (10^-308). All downstream display stays
