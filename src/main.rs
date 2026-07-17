@@ -149,14 +149,15 @@ fn main() -> Result<()> {
                         use xc_cache::{
                             ArtifactCacheContext, ArtifactExecutionCacheMode, CacheLayer,
                             CachePolicy, CacheQuality, CacheResolver, CacheVisibility,
-                            DirectoryArtifactProductionSink, FilesystemCacheStore, ToolkitVersion,
+                            DirectoryArtifactProductionSink, ToolkitVersion,
+                            ZipJsonFilesystemCacheStore,
                         };
                         if cache_root.trim().is_empty() {
                             anyhow::bail!("XC_TYPED_CACHE_ROOT must not be empty");
                         }
                         let resolver = CacheResolver::new(vec![CacheLayer {
                             precedence: 0,
-                            store: Box::new(FilesystemCacheStore::new(
+                            store: Box::new(ZipJsonFilesystemCacheStore::new(
                                 "workstation",
                                 &cache_root,
                                 true,
