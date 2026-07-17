@@ -20,6 +20,10 @@ paper.blg
 .DS_Store
 Thumbs.db
 
+# Local v0.13.0 practice-run state and publication journals. Credentials are
+# held by Git Credential Manager and must never be written below this tree.
+.xcelerator-local/
+
 # Cached toolkit artifacts (auto-managed by xc-numerics / xc-spectral).
 # The toolkit writes regeneratable fixtures to data/*_cache/ — see README.
 # We keep the cache directories in the repo (via a tracked .gitkeep in
