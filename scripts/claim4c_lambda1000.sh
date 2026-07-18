@@ -17,8 +17,8 @@
 # a precision-floor artifact. The N=800/N=890 agreement confirms the
 # result is not a basis-size artifact.
 #
-# τ for these configs is in the public tau-cache (DynamicFetch pulls
-# it); the two inverse iterations (natural + forced-even) on the
+# Compatible artifacts are resolved from the managed public cache fabric;
+# the two inverse iterations (natural + forced-even) on the
 # 1601² / 1781² matrices still dominate wall-clock — budget several
 # hours per N on a many-core box. Run the two N on separate servers to
 # parallelize.

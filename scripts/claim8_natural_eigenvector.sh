@@ -20,8 +20,9 @@
 #   8a  λ²=13,  N=120, HP-1000  — ε_N ~10⁻⁵⁹  (~17× above the 1005-digit floor)
 #   8b  λ²=100, N=500, HP-1000  — ε_N ~10⁻⁴⁶⁴ (~2.2× above the floor)
 #
-# Both τ and GL fixtures are in the public caches (DynamicFetch pulls
-# them); each run is dominated by inverse iteration on the cached matrix.
+# Compatible tau and quadrature artifacts are resolved through the managed
+# public cache fabric; each run is dominated by inverse iteration on the
+# cached matrix.
 # The natural run does a FRESH inverse iteration (the cache keys on the
 # forced-even flag, so the natural ξ is computed, not the cached forced ξ).
 set -euo pipefail

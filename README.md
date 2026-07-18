@@ -133,21 +133,17 @@ Claims are split into independent sub-scripts for multi-server runs.
 Claim 4c/4d run at HP-2000 and take several hours — run on dedicated
 servers.
 
-## Cache Infrastructure
+## Cache infrastructure
 
-Caches (GL nodes, τ-matrices, Weil eigenvectors) are hosted in
-dedicated public repositories and fetched automatically on demand
-via DynamicFetch — no manual download required:
+Xcelerator Toolkit v0.13.0 manages reusable quadrature, CCM component,
+matrix, eigenpair, and evidence artifacts in a per-user cache. Compatible
+public artifacts are resolved and validated automatically by default; a miss
+is computed and stored locally. Normal reproduction requires no credentials
+or cache configuration.
 
-- [xcelerator-gl-cache](https://github.com/TeamXcelerator/xcelerator-gl-cache)
-- [xcelerator-tau-cache](https://github.com/TeamXcelerator/xcelerator-tau-cache)
-- [xcelerator-weil-eigvec-cache](https://github.com/TeamXcelerator/xcelerator-weil-eigvec-cache)
-
-All configurations reported in the paper (up to λ²=1200, N=970,
-HP-2000: τ ~7 GB) have their cache fixtures in these repositories.
-No configuration requires a fresh τ-build to reproduce. Natural
-(unprojected) Weil eigenvector fixtures are also cached for all 38
-tested configurations.
+Set `XC_CACHE_REMOTE=none` to prohibit remote reads. `XC_CACHE_ROOT` may point
+to an isolated cache directory for a cold run. Publication remains disabled
+unless an author explicitly selects an author profile and publication policy.
 
 ## Architecture
 

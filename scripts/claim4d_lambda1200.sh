@@ -14,8 +14,9 @@
 # results are precision artifacts.
 #
 # N=970 sized at N/√λ²≈28. Matrix 1941²; τ ~7 GB JSON — the heaviest
-# config in the affordable set (needs ≥30 GB disk; τ in the public
-# tau-cache via DynamicFetch). Wall-clock ~15 hr on a 384-core box.
+# config in the affordable set (needs ≥30 GB disk); compatible artifacts
+# may be resolved from the managed public cache fabric. Wall-clock ~15 hr
+# on a 384-core box.
 # Run on a dedicated server.
 #
 # (The earlier λ²=10000, N=1500 config is intentionally retired: at

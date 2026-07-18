@@ -130,28 +130,6 @@ fn main() -> Result<()> {
                         cfg.force_even = false;
                         println!("  forced-even projection: DISABLED (natural eigenvector)");
                     }
-                    match std::env::var("XC_CACHE_MODE").as_deref() {
-                        Ok("off") => {
-                            cfg.cache_mode = xc_numerics::quadrature::CacheMode::Off;
-                            println!("  cache mode: OFF (no read, no write - pure compute)");
-                        }
-                        Ok("local") => {
-                            cfg.cache_mode = xc_numerics::quadrature::CacheMode::JsonZip;
-                            println!("  cache mode: LOCAL (read/write local disk, no network)");
-                        }
-                        Ok("fetch") => {
-                            cfg.cache_mode = xc_numerics::quadrature::CacheMode::DynamicFetch;
-                            println!("  cache mode: FETCH (local disk + remote fetch, default)");
-                        }
-                        Ok(other) => {
-                            eprintln!(
-                                "  WARNING: unknown XC_CACHE_MODE '{}'; using default (fetch)",
-                                other
-                            );
-                        }
-                        _ => {} // default = DynamicFetch
-                    }
-
                     // Load reference zeros at HP precision for Newton seeding.
                     let zero_strings = xc_zeta::zeros::first_n_strings(
                         Path::new(ZEROS_PATH),

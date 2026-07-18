@@ -13,7 +13,7 @@
 #   λ²=1200, N=970  @ HP-2000   (ε_N ~6.8×10⁻¹⁴⁹⁹, 196 primes)
 #
 # These are heavy HP runs (matrices 1261²–1941², τ multi-GB). All τ
-# fixtures are in the public tau-cache (DynamicFetch pulls them), but
+# compatible fixtures may be resolved from the managed public cache fabric, but
 # the per-config inverse iteration still dominates — budget hours per
 # config. Run each on its own server; the λ²=1200 row needs ≥30 GB
 # disk. PREC is set per row inline.
