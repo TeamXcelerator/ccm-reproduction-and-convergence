@@ -3,6 +3,9 @@ target/
 *.exe
 *.pdb
 
+# Local claim-run output
+*.log
+
 # LaTeX build artifacts
 paper.aux
 paper.log
@@ -24,20 +27,5 @@ Thumbs.db
 # held by Git Credential Manager and must never be written below this tree.
 .xcelerator-local/
 
-# Cached toolkit artifacts (auto-managed by xc-numerics / xc-spectral).
-# The toolkit writes regeneratable fixtures to data/*_cache/ — see README.
-# We keep the cache directories in the repo (via a tracked .gitkeep in
-# each) so the layout is self-documenting, but ignore the generated
-# fixtures themselves (.json / .json.zip / byte-split .partXX). Fresh
-# clones repopulate them transparently from the remote caches on first read.
-data/gl_cache/**
-data/tau_cache/**
-data/prolate_eigvals_cache/**
-data/weil_eigvec_cache/**
-# ...except the .gitkeep placeholders that preserve the directories.
-!data/gl_cache/.gitkeep
-!data/tau_cache/.gitkeep
-!data/prolate_eigvals_cache/.gitkeep
-!data/weil_eigvec_cache/.gitkeep
-# NB: data/zeta_zeros.json lives at the data/ root (not in a *_cache/
-# subdir) and stays tracked — it is reference data, not a cache.
+# `data/zeta_zeros.json` is tracked reference data. Runtime cache artifacts
+# belong under the toolkit-managed cache root, not under `data/`.

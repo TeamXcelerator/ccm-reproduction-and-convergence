@@ -23,7 +23,10 @@ use xc_spectral::ccm::{self, CcmParams, CcmResult};
 const ZEROS_PATH: &str = "data/zeta_zeros.json";
 
 #[derive(Parser)]
-#[command(name = "ccm-reproduction", about = "CCM Zeta Spectral Triple - reproduction and convergence analysis")]
+#[command(
+    name = "ccm-reproduction",
+    about = "CCM Zeta Spectral Triple - reproduction and convergence analysis"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -87,7 +90,15 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Run { lambda_sq, n_modes, top, precision_digits, display_digits, f64_only, no_force_even } => {
+        Command::Run {
+            lambda_sq,
+            n_modes,
+            top,
+            precision_digits,
+            display_digits,
+            f64_only,
+            no_force_even,
+        } => {
             if lambda_sq < 2 {
                 anyhow::bail!("lambda_sq must be >= 2 (got {lambda_sq})");
             }
@@ -95,11 +106,14 @@ fn main() -> Result<()> {
             let primes = ccm::prime_powers_up_to(params.lambda_sq_int());
             println!(
                 "CCM operator: lambda^2={}, N={}, matrix_size={}",
-                lambda_sq, params.n_modes, params.matrix_size()
+                lambda_sq,
+                params.n_modes,
+                params.matrix_size()
             );
             println!(
                 "  prime powers k <= {}: {} entries",
-                lambda_sq, primes.len()
+                lambda_sq,
+                primes.len()
             );
 
             if f64_only {
@@ -130,7 +144,10 @@ fn main() -> Result<()> {
                             println!("  cache mode: FETCH (local disk + remote fetch, default)");
                         }
                         Ok(other) => {
-                            eprintln!("  WARNING: unknown XC_CACHE_MODE '{}'; using default (fetch)", other);
+                            eprintln!(
+                                "  WARNING: unknown XC_CACHE_MODE '{}'; using default (fetch)",
+                                other
+                            );
                         }
                         _ => {} // default = DynamicFetch
                     }
@@ -141,7 +158,8 @@ fn main() -> Result<()> {
                         cfg.n_eigenvalues.max(top),
                     )?;
                     let prec = cfg.precision_bits;
-                    let zero_seeds: Vec<rug::Float> = zero_strings.iter()
+                    let zero_seeds: Vec<rug::Float> = zero_strings
+                        .iter()
                         .map(|s| rug::Float::with_val(prec, rug::Float::parse(s).unwrap()))
                         .collect();
 
@@ -158,30 +176,38 @@ fn main() -> Result<()> {
 
                     // HP-native eigenvalue table.
                     let n_compare = top.min(hp_result.eigenvalues_pos.len());
-                    let ref_strings = xc_zeta::zeros::first_n_strings(
-                        Path::new(ZEROS_PATH), n_compare,
-                    )?;
+                    let ref_strings =
+                        xc_zeta::zeros::first_n_strings(Path::new(ZEROS_PATH), n_compare)?;
                     let cmp_prec = hp_result.precision_bits * 2;
                     // Enough sig digits to resolve e.g. 999.4 at HP-1000.
-                    let column_digits = ((precision_digits as f64).log10().ceil() as usize + 2).max(5);
+                    let column_digits =
+                        ((precision_digits as f64).log10().ceil() as usize + 2).max(5);
 
                     println!(
                         "\n{:>4}  {:>22}  {:>22}  {:>14}  {:>14}",
-                        "k", "computed eigenvalue", "Riemann zero t_k",
-                        "abs error", "matching digits"
+                        "k",
+                        "computed eigenvalue",
+                        "Riemann zero t_k",
+                        "abs error",
+                        "matching digits"
                     );
                     println!("{}", "-".repeat(82));
 
-                    for (k, (eig_full, ref_str)) in hp_result.eigenvalues_pos.iter()
-                        .zip(ref_strings.iter()).enumerate().take(n_compare)
+                    for (k, (eig_full, ref_str)) in hp_result
+                        .eigenvalues_pos
+                        .iter()
+                        .zip(ref_strings.iter())
+                        .enumerate()
+                        .take(n_compare)
                     {
-                        let ref_val = rug::Float::with_val(cmp_prec,
-                            rug::Float::parse(ref_str).unwrap());
+                        let ref_val =
+                            rug::Float::with_val(cmp_prec, rug::Float::parse(ref_str).unwrap());
                         use xc_spectral::ccm::hp::EigenvalueResult;
                         match eig_full {
                             EigenvalueResult::Converged(eig)
                             | EigenvalueResult::Approximate(eig) => {
-                                let is_approx = matches!(eig_full, EigenvalueResult::Approximate(_));
+                                let is_approx =
+                                    matches!(eig_full, EigenvalueResult::Approximate(_));
                                 let eig_hp = rug::Float::with_val(cmp_prec, eig);
                                 let mut diff = eig_hp.clone();
                                 diff -= &ref_val;
@@ -200,7 +226,8 @@ fn main() -> Result<()> {
                                 // Prefix "~" on the computed eigenvalue when Approximate
                                 // (step limit hit — value may still be close, but not
                                 // certified to HP precision).
-                                let eig_display = xc_numerics::fmt::display_hp(&eig_hp, display_digits);
+                                let eig_display =
+                                    xc_numerics::fmt::display_hp(&eig_hp, display_digits);
                                 let eig_str = if is_approx {
                                     format!("~{}", eig_display)
                                 } else {
@@ -218,9 +245,11 @@ fn main() -> Result<()> {
                             EigenvalueResult::Failed => {
                                 println!(
                                     "{:>4}  {:>22}  {:>22}  {:>14}  {:>14}",
-                                    k + 1, "solver failed",
+                                    k + 1,
+                                    "solver failed",
                                     xc_numerics::fmt::display_hp(&ref_val, display_digits),
-                                    "N/A", "N/A"
+                                    "N/A",
+                                    "N/A"
                                 );
                             }
                         }
@@ -238,7 +267,12 @@ fn main() -> Result<()> {
             }
         }
 
-        Command::CheckEvenness { lambda_sq, n_modes, precision_digits, display_digits } => {
+        Command::CheckEvenness {
+            lambda_sq,
+            n_modes,
+            precision_digits,
+            display_digits,
+        } => {
             #[cfg(not(feature = "hp"))]
             {
                 let _ = (lambda_sq, n_modes, precision_digits, display_digits);
@@ -259,29 +293,39 @@ fn main() -> Result<()> {
                 let result = ccm::hp::measure_evenness(&params, &cfg)?;
 
                 // Pure HP display — no f64 conversion.
-                use xc_numerics::fmt::{display_hp, sign_of, relative_difference, Sign};
+                use xc_numerics::fmt::{display_hp, relative_difference, sign_of, Sign};
                 let prec = result.natural_eigenvalue.prec();
 
-                println!("  ||xi - gamma(xi)|| / ||xi|| = {}",
-                    display_hp(&result.evenness_deviation, display_digits));
-                println!("  natural smallest eigenvalue     = {}",
-                    display_hp(&result.natural_eigenvalue, display_digits));
-                println!("  forced-even smallest eigenvalue = {}",
-                    display_hp(&result.forced_eigenvalue, display_digits));
+                println!(
+                    "  ||xi - gamma(xi)|| / ||xi|| = {}",
+                    display_hp(&result.evenness_deviation, display_digits)
+                );
+                println!(
+                    "  natural smallest eigenvalue     = {}",
+                    display_hp(&result.natural_eigenvalue, display_digits)
+                );
+                println!(
+                    "  forced-even smallest eigenvalue = {}",
+                    display_hp(&result.forced_eigenvalue, display_digits)
+                );
 
                 let nat_sign = sign_of(&result.natural_eigenvalue);
                 let forced_sign = sign_of(&result.forced_eigenvalue);
-                println!("  natural sign = {}, forced-even sign = {}",
-                    nat_sign.as_str(), forced_sign.as_str());
+                println!(
+                    "  natural sign = {}, forced-even sign = {}",
+                    nat_sign.as_str(),
+                    forced_sign.as_str()
+                );
 
                 if nat_sign != forced_sign && nat_sign != Sign::Zero && forced_sign != Sign::Zero {
-                    println!("  => natural and forced-even smallest eigenvalues have OPPOSITE SIGNS");
+                    println!(
+                        "  => natural and forced-even smallest eigenvalues have OPPOSITE SIGNS"
+                    );
                 }
 
-                let one_eminus_ten = rug::Float::with_val(prec,
-                    rug::Float::parse("1e-10").unwrap());
-                let one_eminus_two = rug::Float::with_val(prec,
-                    rug::Float::parse("1e-2").unwrap());
+                let one_eminus_ten =
+                    rug::Float::with_val(prec, rug::Float::parse("1e-10").unwrap());
+                let one_eminus_two = rug::Float::with_val(prec, rug::Float::parse("1e-2").unwrap());
                 let dev = &result.evenness_deviation;
 
                 if *dev < one_eminus_ten {
@@ -290,11 +334,13 @@ fn main() -> Result<()> {
                     println!("  => Eigenvector is approximately even (small deviation)");
                 } else {
                     println!("  => Eigenvector is NOT even (significant deviation)");
-                    if let Some(rel) = relative_difference(
-                        &result.natural_eigenvalue, &result.forced_eigenvalue
-                    ) {
-                        println!("  |natural - forced| / |forced| = {}",
-                            display_hp(&rel, display_digits));
+                    if let Some(rel) =
+                        relative_difference(&result.natural_eigenvalue, &result.forced_eigenvalue)
+                    {
+                        println!(
+                            "  |natural - forced| / |forced| = {}",
+                            display_hp(&rel, display_digits)
+                        );
                     } else {
                         println!("  forced-even eigenvalue is exactly zero; relative difference undefined");
                     }
@@ -320,14 +366,22 @@ fn print_results_f64(result: &CcmResult, top: usize) -> Result<()> {
     );
     println!("{}", "-".repeat(78));
     let n_show = top.min(result.eigenvalues_pos.len()).min(zeros.len());
-    for k in 0..n_show {
-        let computed = result.eigenvalues_pos[k];
-        let truth = zeros[k];
+    for (k, (&computed, &truth)) in result
+        .eigenvalues_pos
+        .iter()
+        .zip(&zeros)
+        .take(n_show)
+        .enumerate()
+    {
         let abs_err = (computed - truth).abs();
         let rel_err = abs_err / truth.abs();
         println!(
             "{:>4}  {:>20.10}  {:>20.10}  {:>14.4e}  {:>10.4e}",
-            k + 1, computed, truth, abs_err, rel_err
+            k + 1,
+            computed,
+            truth,
+            abs_err,
+            rel_err
         );
     }
     Ok(())

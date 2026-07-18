@@ -6,7 +6,7 @@
 //! These tests verify that the toolkit dependency is correctly wired
 //! and the binary produces expected results for known configurations.
 
-use xc_spectral::ccm::{CcmParams, prime_powers_up_to};
+use xc_spectral::ccm::{prime_powers_up_to, CcmParams};
 
 /// CcmParams should produce correct values for the headline config.
 #[test]

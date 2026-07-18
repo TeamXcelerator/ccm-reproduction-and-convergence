@@ -154,13 +154,10 @@ tested configurations.
 This repository contains the paper-specific CLI harness and
 reproduction scripts. The core mathematical library is the
 [Xcelerator Toolkit](https://github.com/TeamXcelerator/xcelerator-toolkit),
-pulled automatically by Cargo. The `main` branch remains pinned to toolkit
-tag `v0.12.1`, which is the immutable paper baseline. The
-`feature/0.13.0` branch is pinned by `Cargo.lock` to the toolkit's
-`feature/v0.13.0` migration candidate and preserves the same CLI, claim
-scripts, configurations, and output interpretation. See
-[`MIGRATION_V0.13.0.md`](MIGRATION_V0.13.0.md) for the controlled comparison
-plan. No manual cloning of the toolkit is required.
+pulled automatically from its `main` branch by Cargo. `Cargo.lock` pins the
+exact resolved Xcelerator Toolkit v0.13.0 revision so the claim scripts,
+configurations, and output interpretation remain reproducible. No manual
+cloning or toolkit configuration is required.
 
 ## Citation
 
