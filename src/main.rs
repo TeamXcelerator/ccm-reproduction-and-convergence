@@ -347,6 +347,7 @@ fn main() -> Result<()> {
                             false,
                             true,
                             Some(sector_eigenpairs.min(n_modes)),
+                            research_capture == ResearchCapture::Maximum,
                             display_digits,
                         )?;
                     }
@@ -466,6 +467,7 @@ fn main() -> Result<()> {
                         research_capture
                             .sector_eigenpairs(research_sector_eigenpairs)
                             .map(|count| count.min(n_modes)),
+                        research_capture == ResearchCapture::Maximum,
                         display_digits,
                     )?;
                 }
@@ -625,6 +627,7 @@ fn capture_supplemental_research_artifacts(
     capture_roots: bool,
     capture_evenness: bool,
     sector_eigenpairs: Option<usize>,
+    complete_sector_spectrum: bool,
     display_digits: usize,
 ) -> Result<()> {
     let supplemental_started = std::time::Instant::now();
@@ -680,10 +683,17 @@ fn capture_supplemental_research_artifacts(
         let mut sector_cfg = cfg.clone();
         sector_cfg.n_eigenvalues = 0;
         sector_cfg.force_even = true;
-        let sectors = ccm::hp::analyze_sector_gap(params, &sector_cfg, sector_eigenpairs)?;
+        let sector_options = if complete_sector_spectrum {
+            ccm::hp::CcmSectorAnalysisOptions::maximum(sector_eigenpairs)
+        } else {
+            ccm::hp::CcmSectorAnalysisOptions::selected(sector_eigenpairs)
+        };
+        let sectors =
+            ccm::hp::analyze_sector_gap_with_options(params, &sector_cfg, sector_options)?;
         println!(
-            "  even/odd sector spectra and GapLog captured: {} eigenpairs per sector, GapLog={}, elapsed={:.3}s",
+            "  even/odd sector spectra and GapLog captured: {} eigenpairs per sector, complete spectra={}, GapLog={}, elapsed={:.3}s",
             sector_eigenpairs,
+            if complete_sector_spectrum { "yes" } else { "no" },
             xc_numerics::fmt::display_hp(&sectors.gap_log, display_digits),
             sector_started.elapsed().as_secs_f64()
         );
