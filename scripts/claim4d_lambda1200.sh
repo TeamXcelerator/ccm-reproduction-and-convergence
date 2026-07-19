@@ -15,8 +15,8 @@
 #
 # N=970 sized at N/√λ²≈28. Matrix 1941²; τ ~7 GB JSON — the heaviest
 # config in the affordable set (needs ≥30 GB disk); compatible artifacts
-# may be resolved from the managed public cache fabric. Wall-clock ~15 hr
-# on a 384-core box.
+# may be resolved from the managed public cache fabric. Supplemental root
+# and parity-sector capture adds workload beyond the historical core timing.
 # Run on a dedicated server.
 #
 # (The earlier λ²=10000, N=1500 config is intentionally retired: at
@@ -33,7 +33,7 @@ DISPLAY_DIGITS=${DISPLAY_DIGITS:-12}
 echo "=== Claim 4d: λ²=1200, N=970 at HP-${PREC} (keystone: even past the onset) ==="
 echo
 
-"$BIN" check-evenness \
+run_research_claim check-evenness \
   --lambda-sq 1200 \
   --n-modes 970 \
   --precision-digits "$PREC" \

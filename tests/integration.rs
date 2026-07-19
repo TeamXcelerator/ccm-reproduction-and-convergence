@@ -23,12 +23,14 @@ fn prime_powers_lambda_sq_13() {
     assert_eq!(pp.len(), 9, "λ²=13 should have 9 prime powers");
 }
 
-/// Reference zeros file should exist and be loadable.
+/// The toolkit-owned canonical reference zeros should be loadable.
 #[test]
-fn reference_zeros_loadable() {
-    let path = std::path::Path::new("data/zeta_zeros.json");
-    assert!(path.exists(), "data/zeta_zeros.json must exist");
-    let zeros = xc_zeta::zeros::first_n_f64(path, 10).unwrap();
+fn bundled_reference_zeros_loadable() {
+    let strings = xc_zeta::zeros::bundled_first_n_strings(10).unwrap();
+    let zeros: Vec<f64> = strings
+        .iter()
+        .map(|zero| zero.parse::<f64>().unwrap())
+        .collect();
     assert_eq!(zeros.len(), 10);
     // First zero should be ~14.13
     assert!((zeros[0] - 14.134725).abs() < 0.001);
@@ -41,4 +43,33 @@ fn f64_tier_runs() {
     let result = xc_spectral::ccm::run_f64(&params).unwrap();
     assert!(!result.eigenvalues_pos.is_empty());
     assert!(result.elapsed_seconds > 0.0);
+}
+
+/// The paper harness binds the finalized reference-free and sector APIs
+/// without executing an expensive HP calculation during ordinary tests.
+#[cfg(feature = "hp")]
+#[test]
+fn finalized_hp_research_apis_are_available() {
+    use xc_spectral::ccm::hp::{CcmSectorGapHp, HighPrecConfig, HighPrecResult};
+    use xc_spectral::ccm::window::ZeroTarget;
+
+    let target = ZeroTarget::IndexRange {
+        first: 10,
+        last: 12,
+    };
+    assert_eq!(
+        target,
+        ZeroTarget::IndexRange {
+            first: 10,
+            last: 12
+        }
+    );
+
+    let config = HighPrecConfig::for_decimal_digits(200);
+    assert_eq!(config.n_eigenvalues, 50);
+
+    let _: fn(&CcmParams, &HighPrecConfig, &ZeroTarget) -> anyhow::Result<HighPrecResult> =
+        xc_spectral::ccm::hp::run_independent;
+    let _: fn(&CcmParams, &HighPrecConfig, usize) -> anyhow::Result<CcmSectorGapHp> =
+        xc_spectral::ccm::hp::analyze_sector_gap;
 }

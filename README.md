@@ -82,7 +82,7 @@ spurious saturation.
 ### Build
 
 ```bash
-cargo build --release --features hp
+cargo build --release --features hp --locked
 ```
 
 ### Reproduce headline (999 digits)
@@ -92,6 +92,88 @@ cargo build --release --features hp
   --lambda-sq 1000 --n-modes 800 \
   --precision-digits 1000 --display-digits 50 --top 25
 ```
+
+The ordinary run performs independent CCM root discovery. Known Riemann
+zeros are loaded only after the computation for the comparison table; they
+are never supplied to the CCM solver as seeds.
+
+### Target a later root window
+
+```bash
+./target/release/ccm-reproduction run \
+  --lambda-sq 1000 --n-modes 800 \
+  --precision-digits 1000 --display-digits 50 \
+  --first-root-index 101 --top 25
+```
+
+This independently discovers and refines CCM roots 101 through 125. The
+toolkit-owned canonical zero table is still used only for the
+post-computation report. These 2,500-digit values were computed with rigorous
+Arb interval arithmetic; their leading 1,000 digits were independently
+cross-checked against Odlyzko's tabulation.
+
+### Analyze even and odd sectors
+
+```bash
+./target/release/ccm-reproduction sector-gap \
+  --lambda-sq 13 --n-modes 120 \
+  --precision-digits 200 --eigenpairs 2 --display-digits 30
+```
+
+Sector analysis computes or reuses the even and odd parity matrices, their
+guarded low spectra, and the replayable GapLog artifact. It is an explicit
+operation so normal root reproduction does not pay for unused odd-sector
+work.
+
+### Research artifact capture levels
+
+Claim scripts default to the balanced `research` level. Pass
+`--research-capture` to a script for each run; this changes only which additional
+analyses execute, never the arithmetic precision or convergence rules:
+
+- `claim` captures the requested roots and artifacts naturally produced while
+  computing them. This is the fastest level.
+- `research` captures the complete independently discovered finite positive
+  root window and all native computation artifacts, without a separate parity
+  sector solve. This is the claim-script default.
+- `gap` adds natural-evenness evidence, both parity matrices, GapLog, and the
+  two lowest eigenpairs from each sector.
+- `maximum` adds the same sector analysis with eight low eigenpairs per sector
+  by default. Override that bound with `RESEARCH_SECTOR_EIGENPAIRS`.
+
+For example:
+
+```bash
+# Balanced research run (the default)
+bash scripts/claim1a_lambda13.sh
+
+# Fast claim-only run
+bash scripts/claim1a_lambda13.sh --research-capture claim
+
+# Flagship maximum-capture run
+bash scripts/claim1a_lambda13.sh \
+  --research-capture maximum \
+  --research-sector-eigenpairs 8
+```
+
+For unattended machines, the equivalent environment variables are
+`RESEARCH_CAPTURE_LEVEL` and `RESEARCH_SECTOR_EIGENPAIRS`; explicit script
+arguments take precedence.
+
+At maximum capture, the retained set includes:
+
+- the complete independently discovered positive root window supported by the
+  finite CCM source;
+- the natural and forced-even Weil states and evenness evidence;
+- the even and odd parity matrices;
+- up to eight guarded low eigenpairs from each parity sector and GapLog; and
+- the underlying quadrature inputs, archimedean and prime components, Tau
+  matrix, factorization, secular source, root-window, and convergence evidence.
+
+These artifacts are managed by the toolkit and are directly reusable by
+downstream research projects. The full root window is stored as one artifact,
+not one object per root. Retaining a bounded sector spectrum avoids duplicating
+the complete stored parity matrices as full eigenvector bases.
 
 ### Reproduce with natural eigenvector (no forced-even projection)
 
@@ -109,7 +191,8 @@ bash scripts/retest_all_claims.sh
 ```
 
 Or run individual claims (any claim script supports `FORCE_EVEN=false`
-to test the natural eigenvector path):
+to test the natural eigenvector path). Balanced research capture is automatic
+for these scripts and can be changed with `--research-capture`:
 
 ```bash
 bash scripts/claim1_reproduction.sh          # 999-digit headline (§4.1–4.2)
@@ -150,8 +233,8 @@ unless an author explicitly selects an author profile and publication policy.
 This repository contains the paper-specific CLI harness and
 reproduction scripts. The core mathematical library is the
 [Xcelerator Toolkit](https://github.com/TeamXcelerator/xcelerator-toolkit),
-pulled automatically from its `main` branch by Cargo. `Cargo.lock` pins the
-exact resolved Xcelerator Toolkit v0.13.0 revision so the claim scripts,
+pulled automatically from the immutable `v0.13.0` release tag by Cargo.
+`Cargo.lock` also pins the exact resolved toolkit commit so the claim scripts,
 configurations, and output interpretation remain reproducible. No manual
 cloning or toolkit configuration is required.
 

@@ -14,15 +14,15 @@
 # the natural (unprojected) ground state is even and the projection is
 # not required.
 #
-# Configs are chosen to be CHEAP (cache-hit, minutes) and CLEARLY ABOVE
+# Configs are chosen to be reusable and CLEARLY ABOVE
 # the precision floor (so the natural eigenvector is trustworthy, not a
 # floor-degenerate representative):
 #   8a  λ²=13,  N=120, HP-1000  — ε_N ~10⁻⁵⁹  (~17× above the 1005-digit floor)
 #   8b  λ²=100, N=500, HP-1000  — ε_N ~10⁻⁴⁶⁴ (~2.2× above the floor)
 #
 # Compatible tau and quadrature artifacts are resolved through the managed
-# public cache fabric; each run is dominated by inverse iteration on the
-# cached matrix.
+# public cache fabric. Default claim execution also captures the wider root
+# prefix, evenness evidence, and both parity-sector spectra.
 # The natural run does a FRESH inverse iteration (the cache keys on the
 # forced-even flag, so the natural ξ is computed, not the cached forced ξ).
 set -euo pipefail
@@ -49,7 +49,7 @@ for cfg in "${CONFIGS[@]}"; do
   echo "################################################################"
 
   echo "---- [${LABEL}] FORCED-EVEN (default CCM path) ----"
-  "$BIN" run \
+  run_research_claim run \
     --lambda-sq "$LAMBDA_SQ" \
     --n-modes "$N" \
     --precision-digits "$PREC" \
@@ -58,7 +58,7 @@ for cfg in "${CONFIGS[@]}"; do
   echo
 
   echo "---- [${LABEL}] NATURAL (--no-force-even, projection disabled) ----"
-  "$BIN" run \
+  run_research_claim run \
     --lambda-sq "$LAMBDA_SQ" \
     --n-modes "$N" \
     --precision-digits "$PREC" \

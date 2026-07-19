@@ -14,13 +14,9 @@
 //! Author: Ronnie Andrews, Jr. (Team Xcelerator Inc.(R))
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
-use std::path::Path;
+use clap::{Parser, Subcommand, ValueEnum};
 
 use xc_spectral::ccm::{self, CcmParams, CcmResult};
-
-/// Path to the canonical reference zeros file (1000 zeros at 1000 digits).
-const ZEROS_PATH: &str = "data/zeta_zeros.json";
 
 #[derive(Parser)]
 #[command(
@@ -30,6 +26,32 @@ const ZEROS_PATH: &str = "data/zeta_zeros.json";
 struct Cli {
     #[command(subcommand)]
     command: Command,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum ResearchCapture {
+    /// Only the roots requested for the claim and artifacts naturally produced while finding them.
+    Claim,
+    /// The complete finite positive root window, without separate sector analysis.
+    Research,
+    /// Research capture plus natural-evenness evidence and the two lowest eigenpairs per sector.
+    Gap,
+    /// Maximum capture, including a configurable low spectrum from both parity sectors.
+    Maximum,
+}
+
+impl ResearchCapture {
+    fn captures_complete_roots(self) -> bool {
+        self != Self::Claim
+    }
+
+    fn sector_eigenpairs(self, maximum_count: usize) -> Option<usize> {
+        match self {
+            Self::Claim | Self::Research => None,
+            Self::Gap => Some(2),
+            Self::Maximum => Some(maximum_count),
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -46,6 +68,11 @@ enum Command {
         /// How many positive eigenvalues to print.
         #[arg(long, default_value_t = 20)]
         top: usize,
+        /// One-based index of the first positive CCM root to discover.
+        /// The default reproduces the ordinary first-K prefix; values above
+        /// one target a later finite window without using reference zeros.
+        #[arg(long, default_value_t = 1)]
+        first_root_index: usize,
         /// Working precision in decimal digits (requires --features hp).
         #[arg(long, default_value_t = 200)]
         precision_digits: u32,
@@ -67,6 +94,12 @@ enum Command {
         /// forced-even path.
         #[arg(long, default_value_t = false)]
         no_force_even: bool,
+        /// Controls additional research capture without changing arithmetic or convergence rules.
+        #[arg(long, value_enum, default_value_t = ResearchCapture::Claim)]
+        research_capture: ResearchCapture,
+        /// Number of low eigenpairs retained in each parity sector in maximum mode.
+        #[arg(long, default_value_t = 8)]
+        research_sector_eigenpairs: usize,
     },
     /// Measure the natural evenness of the smallest Weil eigenvector
     /// (Claim 4: symmetry breakdown at large lambda).
@@ -83,6 +116,32 @@ enum Command {
         /// Significant digits to show per HP value (default 12).
         #[arg(long, default_value_t = 12)]
         display_digits: usize,
+        /// Controls additional root and sector capture without changing the evenness computation.
+        #[arg(long, value_enum, default_value_t = ResearchCapture::Claim)]
+        research_capture: ResearchCapture,
+        /// Number of low eigenpairs retained in each parity sector in maximum mode.
+        #[arg(long, default_value_t = 8)]
+        research_sector_eigenpairs: usize,
+    },
+    /// Analyze the low even and odd CCM parity sectors and report GapLog.
+    /// This is separate from ordinary root reproduction because it computes
+    /// and caches additional sector matrices, spectra, and gap evidence.
+    SectorGap {
+        /// lambda^2 value.
+        #[arg(long, default_value_t = 13_u64)]
+        lambda_sq: u64,
+        /// Mode cutoff N. The odd sector has dimension N.
+        #[arg(long, default_value_t = 120)]
+        n_modes: usize,
+        /// Working precision in decimal digits.
+        #[arg(long, default_value_t = 200)]
+        precision_digits: u32,
+        /// Number of low eigenpairs retained in each parity sector.
+        #[arg(long, default_value_t = 2)]
+        eigenpairs: usize,
+        /// Significant digits shown for HP values.
+        #[arg(long, default_value_t = 16)]
+        display_digits: usize,
     },
 }
 
@@ -94,14 +153,27 @@ fn main() -> Result<()> {
             lambda_sq,
             n_modes,
             top,
+            first_root_index,
             precision_digits,
             display_digits,
             f64_only,
             no_force_even,
+            research_capture,
+            research_sector_eigenpairs,
         } => {
             if lambda_sq < 2 {
                 anyhow::bail!("lambda_sq must be >= 2 (got {lambda_sq})");
             }
+            if top == 0 {
+                anyhow::bail!("top must be positive");
+            }
+            if first_root_index == 0 {
+                anyhow::bail!("first_root_index is one-based and must be positive");
+            }
+            if research_capture != ResearchCapture::Claim && f64_only {
+                anyhow::bail!("research and sector artifact capture requires the HP tier");
+            }
+            validate_research_capture(n_modes, research_capture, research_sector_eigenpairs)?;
             let params = CcmParams::from_lambda_sq_integer(lambda_sq, n_modes);
             let primes = ccm::prime_powers_up_to(params.lambda_sq_int());
             println!(
@@ -117,6 +189,9 @@ fn main() -> Result<()> {
             );
 
             if f64_only {
+                if first_root_index != 1 {
+                    anyhow::bail!("indexed root windows require the HP independent-discovery tier");
+                }
                 let _ = display_digits;
                 let _ = no_force_even;
                 let result = ccm::run_f64(&params)?;
@@ -124,24 +199,58 @@ fn main() -> Result<()> {
             } else {
                 #[cfg(feature = "hp")]
                 {
+                    if top > n_modes {
+                        anyhow::bail!("requested root count cannot exceed N");
+                    }
+                    let requested_last_root_index =
+                        first_root_index.checked_add(top - 1).ok_or_else(|| {
+                            anyhow::anyhow!("requested root index range overflows usize")
+                        })?;
+                    if !research_capture.captures_complete_roots()
+                        && requested_last_root_index > n_modes
+                    {
+                        anyhow::bail!("requested root window exceeds the finite CCM reach N");
+                    }
                     println!("  precision: {} decimal digits", precision_digits);
                     let mut cfg = ccm::hp::HighPrecConfig::for_decimal_digits(precision_digits);
+                    cfg.n_eigenvalues = top;
+                    // The toolkit independently discovers pole-aware MPFR
+                    // starting points and uses its production default,
+                    // Halley's method, for full-precision refinement.
                     if no_force_even {
                         cfg.force_even = false;
                         println!("  forced-even projection: DISABLED (natural eigenvector)");
                     }
-                    // Load reference zeros at HP precision for Newton seeding.
-                    let zero_strings = xc_zeta::zeros::first_n_strings(
-                        Path::new(ZEROS_PATH),
-                        cfg.n_eigenvalues.max(top),
-                    )?;
-                    let prec = cfg.precision_bits;
-                    let zero_seeds: Vec<rug::Float> = zero_strings
-                        .iter()
-                        .map(|s| rug::Float::with_val(prec, rug::Float::parse(s).unwrap()))
-                        .collect();
 
-                    let hp_result = ccm::hp::run(&params, &cfg, &zero_seeds)?;
+                    // Discover the requested finite CCM roots independently.
+                    // Reference zeros are loaded only after this result is
+                    // complete and are used solely for the report below.
+                    let target = if research_capture.captures_complete_roots() {
+                        full_finite_positive_window(&params, cfg.precision_bits)?
+                    } else if first_root_index == 1 {
+                        ccm::window::ZeroTarget::FirstK { count: top }
+                    } else {
+                        ccm::window::ZeroTarget::IndexRange {
+                            first: first_root_index,
+                            last: requested_last_root_index,
+                        }
+                    };
+                    if research_capture.captures_complete_roots() {
+                        println!(
+                            "  root acquisition: complete independent positive finite-source window"
+                        );
+                    } else {
+                        println!(
+                            "  root acquisition: independent CCM discovery (indices {}..={})",
+                            first_root_index, requested_last_root_index
+                        );
+                    }
+                    let run_started = std::time::Instant::now();
+                    println!(
+                        "  research capture: {}",
+                        research_capture_label(research_capture, research_sector_eigenpairs)
+                    );
+                    let hp_result = ccm::hp::run_independent(&params, &cfg, &target)?;
 
                     // ε_N is displayed in HP — at λ² >= 100 it routinely
                     // underflows f64 (10^-308). All downstream display stays
@@ -154,22 +263,32 @@ fn main() -> Result<()> {
 
                     // HP-native eigenvalue table.
                     let n_compare = top.min(hp_result.eigenvalues_pos.len());
-                    let ref_strings =
-                        xc_zeta::zeros::first_n_strings(Path::new(ZEROS_PATH), n_compare)?;
+                    if n_compare == 0 {
+                        anyhow::bail!("independent CCM discovery returned no roots");
+                    }
+                    let result_first = hp_result.first_positive_root_index;
+                    let result_last = result_first
+                        .checked_add(n_compare.saturating_sub(1))
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("returned root index range overflows usize")
+                        })?;
+                    let all_ref_strings = xc_zeta::zeros::bundled_first_n_strings(result_last)?;
+                    let ref_strings = &all_ref_strings[result_first - 1..result_last];
                     let cmp_prec = hp_result.precision_bits * 2;
                     // Enough sig digits to resolve e.g. 999.4 at HP-1000.
                     let column_digits =
                         ((precision_digits as f64).log10().ceil() as usize + 2).max(5);
 
                     println!(
-                        "\n{:>4}  {:>22}  {:>22}  {:>14}  {:>14}",
+                        "\n{:>4}  {:>22}  {:>22}  {:>14}  {:>14}  {:>11}",
                         "k",
                         "computed eigenvalue",
                         "Riemann zero t_k",
                         "abs error",
-                        "matching digits"
+                        "matching digits",
+                        "status"
                     );
-                    println!("{}", "-".repeat(82));
+                    println!("{}", "-".repeat(95));
 
                     for (k, (eig_full, ref_str)) in hp_result
                         .eigenvalues_pos
@@ -181,62 +300,66 @@ fn main() -> Result<()> {
                         let ref_val =
                             rug::Float::with_val(cmp_prec, rug::Float::parse(ref_str).unwrap());
                         use xc_spectral::ccm::hp::EigenvalueResult;
-                        match eig_full {
-                            EigenvalueResult::Converged(eig)
-                            | EigenvalueResult::Approximate(eig) => {
-                                let is_approx =
-                                    matches!(eig_full, EigenvalueResult::Approximate(_));
-                                let eig_hp = rug::Float::with_val(cmp_prec, eig);
-                                let mut diff = eig_hp.clone();
-                                diff -= &ref_val;
-                                let abs_err = diff.abs();
-                                let abs_err_str = if abs_err.is_zero() {
-                                    "0".to_string()
-                                } else {
-                                    xc_numerics::fmt::display_hp(&abs_err, column_digits)
-                                };
-                                let matching = if abs_err.is_zero() {
-                                    format!(">={}", cmp_prec / 3)
-                                } else {
-                                    let m = xc_numerics::fmt::matching_digits(&eig_hp, &ref_val);
-                                    xc_numerics::fmt::display_hp(&m, column_digits)
-                                };
-                                // Prefix "~" on the computed eigenvalue when Approximate
-                                // (step limit hit — value may still be close, but not
-                                // certified to HP precision).
-                                let eig_display =
-                                    xc_numerics::fmt::display_hp(&eig_hp, display_digits);
-                                let eig_str = if is_approx {
-                                    format!("~{}", eig_display)
-                                } else {
-                                    eig_display
-                                };
-                                println!(
-                                    "{:>4}  {:>22}  {:>22}  {:>14}  {:>14}",
-                                    k + 1,
-                                    eig_str,
-                                    xc_numerics::fmt::display_hp(&ref_val, display_digits),
-                                    abs_err_str,
-                                    matching
-                                );
-                            }
-                            EigenvalueResult::Failed => {
-                                println!(
-                                    "{:>4}  {:>22}  {:>22}  {:>14}  {:>14}",
-                                    k + 1,
-                                    "solver failed",
-                                    xc_numerics::fmt::display_hp(&ref_val, display_digits),
-                                    "N/A",
-                                    "N/A"
-                                );
-                            }
-                        }
+                        let (result, status) = match eig_full {
+                            EigenvalueResult::Converged(result) => (result, "converged"),
+                            EigenvalueResult::Stagnated(result) => (result, "stagnated"),
+                            EigenvalueResult::Approximate(result) => (result, "approximate"),
+                            EigenvalueResult::Failed { iterations, reason } => anyhow::bail!(
+                                "root {} failed after {} iterations: {}",
+                                result_first + k,
+                                iterations,
+                                reason
+                            ),
+                        };
+                        let eig_hp = rug::Float::with_val(cmp_prec, &result.value);
+                        let mut diff = eig_hp.clone();
+                        diff -= &ref_val;
+                        let abs_err = diff.abs();
+                        let abs_err_str = if abs_err.is_zero() {
+                            "0".to_string()
+                        } else {
+                            xc_numerics::fmt::display_hp(&abs_err, column_digits)
+                        };
+                        let matching = if abs_err.is_zero() {
+                            format!(">={}", cmp_prec / 3)
+                        } else {
+                            let m = xc_numerics::fmt::matching_digits(&eig_hp, &ref_val);
+                            xc_numerics::fmt::display_hp(&m, column_digits)
+                        };
+                        let eig_str = xc_numerics::fmt::display_hp(&eig_hp, display_digits);
+                        println!(
+                            "{:>4}  {:>22}  {:>22}  {:>14}  {:>14}  {:>11}",
+                            result_first + k,
+                            eig_str,
+                            xc_numerics::fmt::display_hp(&ref_val, display_digits),
+                            abs_err_str,
+                            matching,
+                            status
+                        );
                     }
+
+                    if let Some(sector_eigenpairs) =
+                        research_capture.sector_eigenpairs(research_sector_eigenpairs)
+                    {
+                        capture_supplemental_research_artifacts(
+                            &params,
+                            &cfg,
+                            false,
+                            true,
+                            Some(sector_eigenpairs.min(n_modes)),
+                            display_digits,
+                        )?;
+                    }
+                    println!(
+                        "\n  total claim and research capture time: {:.3}s",
+                        run_started.elapsed().as_secs_f64()
+                    );
                 }
                 #[cfg(not(feature = "hp"))]
                 {
                     let _ = precision_digits;
                     let _ = no_force_even;
+                    let _ = (research_capture, research_sector_eigenpairs);
                     anyhow::bail!(
                         "High-precision tier requires --features hp at build time.\n\
                          Build with: cargo build --release --features hp"
@@ -250,10 +373,19 @@ fn main() -> Result<()> {
             n_modes,
             precision_digits,
             display_digits,
+            research_capture,
+            research_sector_eigenpairs,
         } => {
             #[cfg(not(feature = "hp"))]
             {
-                let _ = (lambda_sq, n_modes, precision_digits, display_digits);
+                let _ = (
+                    lambda_sq,
+                    n_modes,
+                    precision_digits,
+                    display_digits,
+                    research_capture,
+                    research_sector_eigenpairs,
+                );
                 anyhow::bail!("check-evenness requires --features hp at build time");
             }
             #[cfg(feature = "hp")]
@@ -261,6 +393,7 @@ fn main() -> Result<()> {
                 if lambda_sq < 2 {
                     anyhow::bail!("lambda_sq must be >= 2 (got {lambda_sq})");
                 }
+                validate_research_capture(n_modes, research_capture, research_sector_eigenpairs)?;
                 let params = CcmParams::from_lambda_sq_integer(lambda_sq, n_modes);
                 let cfg = ccm::hp::HighPrecConfig::for_decimal_digits(precision_digits);
                 println!(
@@ -323,9 +456,242 @@ fn main() -> Result<()> {
                         println!("  forced-even eigenvalue is exactly zero; relative difference undefined");
                     }
                 }
+
+                if research_capture != ResearchCapture::Claim {
+                    capture_supplemental_research_artifacts(
+                        &params,
+                        &cfg,
+                        true,
+                        false,
+                        research_capture
+                            .sector_eigenpairs(research_sector_eigenpairs)
+                            .map(|count| count.min(n_modes)),
+                        display_digits,
+                    )?;
+                }
+            }
+        }
+
+        Command::SectorGap {
+            lambda_sq,
+            n_modes,
+            precision_digits,
+            eigenpairs,
+            display_digits,
+        } => {
+            #[cfg(not(feature = "hp"))]
+            {
+                let _ = (
+                    lambda_sq,
+                    n_modes,
+                    precision_digits,
+                    eigenpairs,
+                    display_digits,
+                );
+                anyhow::bail!("sector-gap requires --features hp at build time");
+            }
+            #[cfg(feature = "hp")]
+            {
+                if lambda_sq < 2 {
+                    anyhow::bail!("lambda_sq must be >= 2 (got {lambda_sq})");
+                }
+                if eigenpairs < 2 || eigenpairs > n_modes {
+                    anyhow::bail!("eigenpairs must be between 2 and N");
+                }
+                let params = CcmParams::from_lambda_sq_integer(lambda_sq, n_modes);
+                let mut cfg = ccm::hp::HighPrecConfig::for_decimal_digits(precision_digits);
+                cfg.n_eigenvalues = 0;
+                println!(
+                    "CCM sector analysis: lambda^2={}, N={}, precision={} digits, retained={} per sector",
+                    lambda_sq, n_modes, precision_digits, eigenpairs
+                );
+                let result = ccm::hp::analyze_sector_gap(&params, &cfg, eigenpairs)?;
+                let show = |value: &rug::Float| xc_numerics::fmt::display_hp(value, display_digits);
+                println!("  lambda_even             = {}", show(&result.lambda_even));
+                println!("  lambda_odd              = {}", show(&result.lambda_odd));
+                println!("  D_even                  = {}", show(&result.d_even));
+                println!("  D_odd                   = {}", show(&result.d_odd));
+                println!("  GapLog (D_even-D_odd)   = {}", show(&result.gap_log));
+                println!(
+                    "  lambda_odd-lambda_even  = {}",
+                    show(&result.lambda_difference)
+                );
+                println!(
+                    "  difference depth        = {}",
+                    show(&result.difference_depth)
+                );
+                println!("  ordering                = {}", result.ordering);
+                println!("  even ground state simple = {}", result.even_simple);
+                println!(
+                    "  even simplicity margin  = {}",
+                    show(&result.even_simplicity_margin)
+                );
+                for sector in [&result.even, &result.odd] {
+                    println!(
+                        "\n  {} sector (dimension {}):",
+                        sector.parity.as_str(),
+                        sector.dimension
+                    );
+                    for pair in &sector.eigenpairs {
+                        println!(
+                            "    algebraic index {:>3}: eigenvalue={}, residual={}",
+                            pair.algebraic_index,
+                            show(&pair.eigenvalue),
+                            show(&pair.residual_norm)
+                        );
+                    }
+                }
             }
         }
     }
+    Ok(())
+}
+
+fn validate_research_capture(
+    n_modes: usize,
+    capture: ResearchCapture,
+    sector_eigenpairs: usize,
+) -> Result<()> {
+    let Some(sector_eigenpairs) = capture.sector_eigenpairs(sector_eigenpairs) else {
+        return Ok(());
+    };
+    if n_modes < 2 {
+        anyhow::bail!("research artifact capture requires N >= 2");
+    }
+    if sector_eigenpairs < 2 {
+        anyhow::bail!("research_sector_eigenpairs must be at least 2");
+    }
+    Ok(())
+}
+
+fn research_capture_label(capture: ResearchCapture, maximum_count: usize) -> String {
+    match capture {
+        ResearchCapture::Claim => "claim (requested roots and native artifacts)".to_string(),
+        ResearchCapture::Research => {
+            "research (complete finite root window; no sector solve)".to_string()
+        }
+        ResearchCapture::Gap => {
+            "gap (complete roots, evenness, GapLog, 2 eigenpairs per sector)".to_string()
+        }
+        ResearchCapture::Maximum => format!(
+            "maximum (complete roots, evenness, GapLog, {maximum_count} eigenpairs per sector)"
+        ),
+    }
+}
+
+#[cfg(any(feature = "hp", test))]
+fn full_finite_positive_window(
+    params: &CcmParams,
+    precision_bits: u32,
+) -> Result<ccm::window::ZeroTarget> {
+    use rug::{ops::Pow, Float};
+
+    let lambda_squared = if params.lambda_sq.is_integer {
+        Float::with_val(precision_bits, params.lambda_sq.value_u64)
+    } else {
+        Float::with_val(
+            precision_bits,
+            Float::parse(format!("{:.17}", params.lambda_sq.value_f64))?,
+        )
+    };
+    let log_lambda_squared = lambda_squared.ln();
+    if !log_lambda_squared.is_finite() || log_lambda_squared <= 0 {
+        anyhow::bail!("lambda_squared does not define a finite positive CCM window");
+    }
+    // Stay strictly inside the terminal secular pole. The toolkit performs
+    // the authoritative independent scan and determines the actual root count.
+    let mut upper = Float::with_val(precision_bits, rug::float::Constant::Pi);
+    upper *= 2u32;
+    upper *= params.n_modes;
+    upper /= log_lambda_squared;
+    let mut interior_scale = Float::with_val(precision_bits, 1);
+    interior_scale -= Float::with_val(precision_bits, 2).pow(-64i32);
+    upper *= interior_scale;
+    let lower = Float::with_val(precision_bits, 2).pow(-(precision_bits as i32));
+    Ok(ccm::window::ZeroTarget::HeightWindow {
+        lower: lower.to_string(),
+        upper: upper.to_string(),
+    })
+}
+
+/// Fill the artifact families not already produced by the command that called
+/// this helper. Each toolkit API owns its ordinary managed-cache lifecycle, so
+/// author publication settings still apply without publication logic in this
+/// consumer repository.
+#[cfg(feature = "hp")]
+fn capture_supplemental_research_artifacts(
+    params: &CcmParams,
+    cfg: &ccm::hp::HighPrecConfig,
+    capture_roots: bool,
+    capture_evenness: bool,
+    sector_eigenpairs: Option<usize>,
+    display_digits: usize,
+) -> Result<()> {
+    let supplemental_started = std::time::Instant::now();
+    println!("\n=== Supplemental research artifact capture ===");
+
+    if capture_roots {
+        let roots_started = std::time::Instant::now();
+        let mut root_cfg = cfg.clone();
+        root_cfg.n_eigenvalues = 0;
+        let roots = ccm::hp::run_independent(
+            params,
+            &root_cfg,
+            &full_finite_positive_window(params, root_cfg.precision_bits)?,
+        )?;
+        let counts = roots.eigenvalues_pos.iter().fold(
+            (0usize, 0usize, 0usize, 0usize),
+            |mut counts, root| {
+                match root {
+                    ccm::hp::EigenvalueResult::Converged(_) => counts.0 += 1,
+                    ccm::hp::EigenvalueResult::Stagnated(_) => counts.1 += 1,
+                    ccm::hp::EigenvalueResult::Approximate(_) => counts.2 += 1,
+                    ccm::hp::EigenvalueResult::Failed { .. } => counts.3 += 1,
+                }
+                counts
+            },
+        );
+        println!(
+            "  complete positive finite-source root window captured: {} converged, {} stagnated, {} approximate, {} failed; elapsed={:.3}s",
+            counts.0,
+            counts.1,
+            counts.2,
+            counts.3,
+            roots_started.elapsed().as_secs_f64()
+        );
+    } else {
+        println!("  complete positive finite-source root window captured by the primary run");
+    }
+
+    if capture_evenness {
+        let evenness_started = std::time::Instant::now();
+        let evenness = ccm::hp::measure_evenness(params, cfg)?;
+        println!(
+            "  natural-evenness evidence captured: deviation={}, elapsed={:.3}s",
+            xc_numerics::fmt::display_hp(&evenness.evenness_deviation, display_digits),
+            evenness_started.elapsed().as_secs_f64()
+        );
+    } else {
+        println!("  natural-evenness evidence captured by the primary run");
+    }
+
+    if let Some(sector_eigenpairs) = sector_eigenpairs {
+        let sector_started = std::time::Instant::now();
+        let mut sector_cfg = cfg.clone();
+        sector_cfg.n_eigenvalues = 0;
+        sector_cfg.force_even = true;
+        let sectors = ccm::hp::analyze_sector_gap(params, &sector_cfg, sector_eigenpairs)?;
+        println!(
+            "  even/odd sector spectra and GapLog captured: {} eigenpairs per sector, GapLog={}, elapsed={:.3}s",
+            sector_eigenpairs,
+            xc_numerics::fmt::display_hp(&sectors.gap_log, display_digits),
+            sector_started.elapsed().as_secs_f64()
+        );
+    }
+    println!(
+        "  supplemental artifact capture complete: elapsed={:.3}s",
+        supplemental_started.elapsed().as_secs_f64()
+    );
     Ok(())
 }
 
@@ -337,7 +703,15 @@ fn print_results_f64(result: &CcmResult, top: usize) -> Result<()> {
         "  built and solved in {:.3}s, smallest Weil eigenvalue epsilon_N = {:.6e}",
         result.elapsed_seconds, result.weil_min_eigenvalue
     );
-    let zeros = xc_zeta::zeros::first_n_f64(Path::new(ZEROS_PATH), top.max(50))?;
+    let zero_strings = xc_zeta::zeros::bundled_first_n_strings(top.max(50))?;
+    let zeros = zero_strings
+        .iter()
+        .map(|zero| {
+            zero.parse::<f64>().map_err(|error| {
+                anyhow::anyhow!("failed to parse bundled reference zero {zero:?}: {error}")
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
     println!(
         "\n{:>4}  {:>20}  {:>20}  {:>14}  {:>10}",
         "k", "computed eigenvalue", "Riemann zero t_k", "abs error", "rel error"
@@ -363,4 +737,57 @@ fn print_results_f64(result: &CcmResult, top: usize) -> Result<()> {
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::*;
+
+    #[test]
+    fn research_capture_flags_parse_for_primary_commands() {
+        assert!(Cli::try_parse_from([
+            "ccm-reproduction",
+            "run",
+            "--research-capture",
+            "maximum",
+            "--research-sector-eigenpairs",
+            "10",
+        ])
+        .is_ok());
+        assert!(Cli::try_parse_from([
+            "ccm-reproduction",
+            "check-evenness",
+            "--research-capture",
+            "gap",
+            "--research-sector-eigenpairs",
+            "10",
+        ])
+        .is_ok());
+    }
+
+    #[test]
+    fn research_capture_bounds_are_guarded() {
+        assert!(validate_research_capture(120, ResearchCapture::Maximum, 8).is_ok());
+        assert!(validate_research_capture(120, ResearchCapture::Maximum, 1).is_err());
+        assert!(validate_research_capture(5, ResearchCapture::Gap, 8).is_ok());
+        assert!(validate_research_capture(1, ResearchCapture::Gap, 2).is_err());
+        assert!(validate_research_capture(5, ResearchCapture::Research, 1).is_ok());
+    }
+
+    #[test]
+    fn finite_window_stays_inside_terminal_pole() {
+        let params = CcmParams::from_lambda_sq_integer(13, 10);
+        let target = full_finite_positive_window(&params, 256).unwrap();
+        let ccm::window::ZeroTarget::HeightWindow { lower, upper } = target else {
+            panic!("research capture must use a finite height window");
+        };
+        let precision_bits = 256;
+        let lower = rug::Float::with_val(precision_bits, rug::Float::parse(lower).unwrap());
+        let upper = rug::Float::with_val(precision_bits, rug::Float::parse(upper).unwrap());
+        let mut terminal_pole = rug::Float::with_val(precision_bits, rug::float::Constant::Pi);
+        terminal_pole *= 20u32;
+        terminal_pole /= rug::Float::with_val(precision_bits, 13).ln();
+        assert!(lower > 0);
+        assert!(upper < terminal_pole);
+    }
 }

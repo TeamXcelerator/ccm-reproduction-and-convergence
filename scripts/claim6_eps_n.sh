@@ -42,7 +42,7 @@ CONFIGS=(
 for cfg in "${CONFIGS[@]}"; do
   read -r LAMBDA_SQ N PREC DESC <<< "$cfg"
   echo "--- λ²=${LAMBDA_SQ}, N=${N}, HP-${PREC} (${DESC}) ---"
-  "$BIN" run \
+  run_research_claim run \
     --lambda-sq "$LAMBDA_SQ" \
     --n-modes "$N" \
     --precision-digits "$PREC" \

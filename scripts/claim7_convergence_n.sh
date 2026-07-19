@@ -32,7 +32,7 @@ for PREC in 200 1000; do
   echo "================================================================"
   for N in "${N_VALUES[@]}"; do
     echo "--- N=$N, HP-${PREC} ---"
-    "$BIN" run \
+    run_research_claim run \
       --lambda-sq 13 \
       --n-modes "$N" \
       --precision-digits "$PREC" \

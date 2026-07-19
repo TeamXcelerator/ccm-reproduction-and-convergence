@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Claim 1b: λ²=100, N=500 at HP-1000 (intermediate ceiling).
 #
-# Second of the three Claim 1 configs; ~30 min - 1 hr wall-clock at
-# HP-1000 (1001×1001 matrix). Designed to run independently on its
+# Second of the three Claim 1 configs (1001×1001 matrix). Designed to run independently on its
 # own server so all three Claim 1 configs can run in parallel.
 set -euo pipefail
 
@@ -20,7 +19,7 @@ fi
 echo "=== Claim 1b: λ²=100, N=500 at HP-${PREC} (intermediate ceiling) ==="
 echo
 
-"$BIN" run \
+run_research_claim run \
   --lambda-sq 100 \
   --n-modes 500 \
   --precision-digits "$PREC" \

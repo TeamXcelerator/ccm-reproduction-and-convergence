@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Claim 1c: λ²=1000, N=800 at HP-1000 (999-digit extension).
 #
-# Largest of the three Claim 1 configs; ~3-4+ hr wall-clock at HP-1000
-# (1601×1601 matrix). Designed to run independently on its own server
+# Largest of the three Claim 1 configs (1601×1601 matrix). Run independently on its own server
 # so all three Claim 1 configs can run in parallel.
 #
 # This config produces the headline "999 matching digits" result.
@@ -22,7 +21,7 @@ fi
 echo "=== Claim 1c: λ²=1000, N=800 at HP-${PREC} (999-digit extension) ==="
 echo
 
-"$BIN" run \
+run_research_claim run \
   --lambda-sq 1000 \
   --n-modes 800 \
   --precision-digits "$PREC" \

@@ -5,8 +5,8 @@
 # eigenvalue (ε_N ~10⁻⁵⁹) is far above the HP-1000 floor, so the
 # natural smallest eigenvector is unambiguously even (deviation
 # ~10⁻⁹⁵¹, natural and forced-even bit-identical) — the small-λ
-# reference point for the evenness study. τ-cache hit; just runs
-# inverse iteration on the cached matrix. Wall-clock: ~5 min.
+# reference point for the evenness study. The default run also captures
+# the complete finite root window and both parity-sector spectra.
 #
 # Designed to run independently on its own server so all four Claim 4
 # configs can run in parallel.
@@ -19,7 +19,7 @@ DISPLAY_DIGITS=${DISPLAY_DIGITS:-12}
 echo "=== Claim 4a: λ²=13, N=120 at HP-${PREC} (essentially-even reference) ==="
 echo
 
-"$BIN" check-evenness \
+run_research_claim check-evenness \
   --lambda-sq 13 \
   --n-modes 120 \
   --precision-digits "$PREC" \
