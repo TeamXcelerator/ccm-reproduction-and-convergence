@@ -21,7 +21,8 @@ use xc_spectral::ccm::{self, CcmParams, CcmResult};
 #[derive(Parser)]
 #[command(
     name = "ccm-reproduction",
-    about = "CCM Zeta Spectral Triple - reproduction and convergence analysis"
+    about = "CCM Zeta Spectral Triple - reproduction and convergence analysis",
+    version
 )]
 struct Cli {
     #[command(subcommand)]
@@ -787,6 +788,16 @@ fn print_results_f64(result: &CcmResult, top: usize) -> Result<()> {
 #[cfg(test)]
 mod cli_tests {
     use super::*;
+
+    #[test]
+    fn version_flag_reports_the_package_version() {
+        let error = match Cli::try_parse_from(["ccm-reproduction", "--version"]) {
+            Ok(_) => panic!("--version must terminate with a display-version result"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), clap::error::ErrorKind::DisplayVersion);
+        assert!(error.to_string().contains(env!("CARGO_PKG_VERSION")));
+    }
 
     #[test]
     fn research_capture_flags_parse_for_primary_commands() {
