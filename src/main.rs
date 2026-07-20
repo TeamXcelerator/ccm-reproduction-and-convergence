@@ -250,7 +250,33 @@ fn main() -> Result<()> {
                         "  research capture: {}",
                         research_capture_label(research_capture, research_sector_eigenpairs)
                     );
-                    let hp_result = ccm::hp::run_independent(&params, &cfg, &target)?;
+                    let sector_eigenpairs = research_capture
+                        .sector_eigenpairs(research_sector_eigenpairs)
+                        .map(|count| count.min(n_modes));
+                    let (hp_result, captured_evenness, captured_sectors) =
+                        if let Some(sector_eigenpairs) = sector_eigenpairs {
+                            let sector_analysis = if research_capture == ResearchCapture::Maximum {
+                                ccm::hp::CcmSectorAnalysisOptions::maximum(sector_eigenpairs)
+                            } else {
+                                ccm::hp::CcmSectorAnalysisOptions::selected(sector_eigenpairs)
+                            };
+                            let captured = ccm::hp::run_independent_with_research_capture(
+                                &params,
+                                &cfg,
+                                &target,
+                                ccm::hp::CcmResearchCaptureOptions {
+                                    capture_evenness: true,
+                                    sector_analysis: Some(sector_analysis),
+                                },
+                            )?;
+                            (captured.primary, captured.evenness, captured.sector_gap)
+                        } else {
+                            (
+                                ccm::hp::run_independent(&params, &cfg, &target)?,
+                                None,
+                                None,
+                            )
+                        };
 
                     // ε_N is displayed in HP — at λ² >= 100 it routinely
                     // underflows f64 (10^-308). All downstream display stays
@@ -338,18 +364,27 @@ fn main() -> Result<()> {
                         );
                     }
 
-                    if let Some(sector_eigenpairs) =
-                        research_capture.sector_eigenpairs(research_sector_eigenpairs)
+                    if let (Some(evenness), Some(sectors), Some(sector_eigenpairs)) =
+                        (captured_evenness, captured_sectors, sector_eigenpairs)
                     {
-                        capture_supplemental_research_artifacts(
-                            &params,
-                            &cfg,
-                            false,
-                            true,
-                            Some(sector_eigenpairs.min(n_modes)),
-                            research_capture == ResearchCapture::Maximum,
-                            display_digits,
-                        )?;
+                        println!("\n=== Supplemental research artifact capture ===");
+                        println!(
+                            "  natural-evenness evidence captured from validated parity sectors: deviation={}",
+                            xc_numerics::fmt::display_hp(
+                                &evenness.evenness_deviation,
+                                display_digits
+                            )
+                        );
+                        println!(
+                            "  even/odd sector spectra and GapLog captured: {} eigenpairs per sector, complete spectra={}, GapLog={}",
+                            sector_eigenpairs,
+                            if research_capture == ResearchCapture::Maximum {
+                                "yes"
+                            } else {
+                                "no"
+                            },
+                            xc_numerics::fmt::display_hp(&sectors.gap_log, display_digits)
+                        );
                     }
                     println!(
                         "\n  total claim and research capture time: {:.3}s",
