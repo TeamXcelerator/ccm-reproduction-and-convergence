@@ -307,59 +307,86 @@ fn main() -> Result<()> {
                     );
 
                     // HP-native eigenvalue table.
-                    let n_compare = top.min(hp_result.eigenvalues_pos.len());
-                    if n_compare == 0 {
+                    let n_compare = top;
+                    if hp_result.eigenvalues_pos.is_empty() {
                         anyhow::bail!("independent CCM discovery returned no roots");
                     }
-                    let result_first = hp_result.first_positive_root_index;
-                    let result_last = result_first
+                    let reference_first = first_root_index;
+                    let reference_last = reference_first
                         .checked_add(n_compare.saturating_sub(1))
                         .ok_or_else(|| {
-                            anyhow::anyhow!("returned root index range overflows usize")
-                        })?;
-                    let all_ref_strings = xc_zeta::zeros::bundled_first_n_strings(result_last)?;
-                    let ref_strings = &all_ref_strings[result_first - 1..result_last];
+                        anyhow::anyhow!("requested reference-zero range overflows usize")
+                    })?;
+                    let all_ref_strings = xc_zeta::zeros::bundled_first_n_strings(reference_last)?;
+                    let ref_strings = &all_ref_strings[reference_first - 1..reference_last];
                     let cmp_prec = hp_result.precision_bits * 2;
                     // Enough sig digits to resolve e.g. 999.4 at HP-1000.
                     let column_digits =
                         ((precision_digits as f64).log10().ceil() as usize + 2).max(5);
 
                     println!(
-                        "\n{:>4}  {:>22}  {:>22}  {:>14}  {:>14}  {:>11}",
-                        "k",
+                        "\n{:>7}  {:>8}  {:>22}  {:>22}  {:>14}  {:>14}  {:>11}",
+                        "zero k",
+                        "CCM root",
                         "computed eigenvalue",
                         "Riemann zero t_k",
                         "abs error",
                         "matching digits",
                         "status"
                     );
-                    println!("{}", "-".repeat(95));
+                    println!("{}", "-".repeat(114));
 
-                    for (k, (eig_full, ref_str)) in hp_result
-                        .eigenvalues_pos
-                        .iter()
-                        .zip(ref_strings.iter())
-                        .enumerate()
-                        .take(n_compare)
-                    {
+                    // Independent discovery may contain additional finite-source
+                    // roots between Riemann-zero matches. Reference values enter
+                    // only here, after computation and artifact production, and
+                    // are matched one-to-one in increasing algebraic-root order.
+                    let mut next_root_offset = 0usize;
+                    for (reference_offset, ref_str) in ref_strings.iter().enumerate() {
                         let ref_val =
                             rug::Float::with_val(cmp_prec, rug::Float::parse(ref_str).unwrap());
                         use xc_spectral::ccm::hp::EigenvalueResult;
+                        let mut best: Option<(usize, &EigenvalueResult, rug::Float)> = None;
+                        for (root_offset, candidate) in hp_result
+                            .eigenvalues_pos
+                            .iter()
+                            .enumerate()
+                            .skip(next_root_offset)
+                        {
+                            let value = match candidate {
+                                EigenvalueResult::Converged(result)
+                                | EigenvalueResult::Stagnated(result)
+                                | EigenvalueResult::Approximate(result) => &result.value,
+                                EigenvalueResult::Failed { .. } => continue,
+                            };
+                            let mut difference = rug::Float::with_val(cmp_prec, value);
+                            difference -= &ref_val;
+                            let distance = difference.abs();
+                            if best
+                                .as_ref()
+                                .is_none_or(|(_, _, current)| distance < *current)
+                            {
+                                best = Some((root_offset, candidate, distance));
+                            }
+                        }
+                        let (root_offset, eig_full, abs_err) = best.ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "no independently discovered CCM root remains for reference zero {}",
+                                reference_first + reference_offset
+                            )
+                        })?;
+                        next_root_offset = root_offset + 1;
                         let (result, status) = match eig_full {
                             EigenvalueResult::Converged(result) => (result, "converged"),
                             EigenvalueResult::Stagnated(result) => (result, "stagnated"),
                             EigenvalueResult::Approximate(result) => (result, "approximate"),
                             EigenvalueResult::Failed { iterations, reason } => anyhow::bail!(
-                                "root {} failed after {} iterations: {}",
-                                result_first + k,
+                                "CCM root {} failed after {} iterations: {}",
+                                hp_result.first_positive_root_index + root_offset,
                                 iterations,
                                 reason
                             ),
                         };
                         let eig_hp = rug::Float::with_val(cmp_prec, &result.value);
-                        let mut diff = eig_hp.clone();
-                        diff -= &ref_val;
-                        let abs_err = diff.abs();
                         let abs_err_str = if abs_err.is_zero() {
                             "0".to_string()
                         } else {
@@ -373,8 +400,9 @@ fn main() -> Result<()> {
                         };
                         let eig_str = xc_numerics::fmt::display_hp(&eig_hp, display_digits);
                         println!(
-                            "{:>4}  {:>22}  {:>22}  {:>14}  {:>14}  {:>11}",
-                            result_first + k,
+                            "{:>7}  {:>8}  {:>22}  {:>22}  {:>14}  {:>14}  {:>11}",
+                            reference_first + reference_offset,
+                            hp_result.first_positive_root_index + root_offset,
                             eig_str,
                             xc_numerics::fmt::display_hp(&ref_val, display_digits),
                             abs_err_str,
