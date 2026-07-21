@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Claim 1b: λ²=100, N=500 at HP-1000 (intermediate ceiling).
+# Claim 1b: lambda^2=100, N=500 at HP-1000 (intermediate ceiling).
 #
-# Second of the three Claim 1 configs (1001×1001 matrix). Designed to run independently on its
+# Second of the three Claim 1 configs (1001x1001 matrix). Designed to run independently on its
 # own server so all three Claim 1 configs can run in parallel.
 set -euo pipefail
 
@@ -16,7 +16,7 @@ if [[ "${FORCE_EVEN:-true}" == "false" ]]; then
   echo "  *** forced-even projection DISABLED (natural eigenvector) ***"
 fi
 
-echo "=== Claim 1b: λ²=100, N=500 at HP-${PREC} (intermediate ceiling) ==="
+echo "=== Claim 1b: lambda^2=100, N=500 at HP-${PREC} (intermediate ceiling) ==="
 echo
 
 run_research_claim run \

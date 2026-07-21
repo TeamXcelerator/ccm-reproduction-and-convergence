@@ -146,6 +146,23 @@ enum Command {
     },
 }
 
+fn print_runtime_parallelism() {
+    let rayon_workers = rayon::current_num_threads();
+    let available_cpus = std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1);
+    let configured = std::env::var("RAYON_NUM_THREADS").unwrap_or_else(|_| "<unset>".to_owned());
+    println!(
+        "  runtime parallelism: Rayon workers={}, available CPUs={}, RAYON_NUM_THREADS={}",
+        rayon_workers, available_cpus, configured
+    );
+    if rayon_workers == 1 {
+        eprintln!(
+            "  WARNING: Rayon has one worker; expensive CCM computation and publication will run effectively serially"
+        );
+    }
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -162,6 +179,7 @@ fn main() -> Result<()> {
             research_capture,
             research_sector_eigenpairs,
         } => {
+            print_runtime_parallelism();
             if lambda_sq < 2 {
                 anyhow::bail!("lambda_sq must be >= 2 (got {lambda_sq})");
             }

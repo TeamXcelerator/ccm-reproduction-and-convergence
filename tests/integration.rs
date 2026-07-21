@@ -16,11 +16,11 @@ fn headline_config_params() {
     assert_eq!(params.matrix_size(), 241);
 }
 
-/// Prime powers up to λ²=13 should give 9 entries (the CCM headline).
+/// Prime powers up to lambda^2=13 should give 9 entries (the CCM headline).
 #[test]
 fn prime_powers_lambda_sq_13() {
     let pp = prime_powers_up_to(13);
-    assert_eq!(pp.len(), 9, "λ²=13 should have 9 prime powers");
+    assert_eq!(pp.len(), 9, "lambda^2=13 should have 9 prime powers");
 }
 
 /// The toolkit-owned canonical reference zeros should be loadable.

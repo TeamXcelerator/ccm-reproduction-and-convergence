@@ -16,6 +16,7 @@ hp = ["xc-spectral/hp", "xc-zeta/hp", "xc-numerics/hp", "dep:rug"]
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
+rayon = "1.10"
 rug = { version = "1.30", optional = true, default-features = false, features = ["float", "integer"] }
 
 # Xcelerator Toolkit v0.13.0. The immutable release tag and Cargo.lock bind
