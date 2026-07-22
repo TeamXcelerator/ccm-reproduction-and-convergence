@@ -7,5 +7,5 @@
 # claim2b_hp1000.sh independently.
 set -euo pipefail
 
-bash scripts/claim2a_hp200.sh
-bash scripts/claim2b_hp1000.sh
+bash scripts/claim2a_hp200.sh "$@"
+bash scripts/claim2b_hp1000.sh "$@"

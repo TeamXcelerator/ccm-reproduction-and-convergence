@@ -8,6 +8,7 @@ cd "$CLAIM_REPO_ROOT"
 # available for unattended server jobs, but command-line flags take precedence.
 RESEARCH_CAPTURE_LEVEL=${RESEARCH_CAPTURE_LEVEL:-research}
 RESEARCH_SECTOR_EIGENPAIRS=${RESEARCH_SECTOR_EIGENPAIRS:-8}
+ROOT_ACQUISITION_MODE=${ROOT_ACQUISITION_MODE:-seeded}
 ROOT_VALIDATION_LEVEL=${ROOT_VALIDATION_LEVEL:-off}
 ROOT_ENCLOSURE_DIGITS=${ROOT_ENCLOSURE_DIGITS:-}
 while (($# > 0)); do
@@ -28,6 +29,14 @@ while (($# > 0)); do
       ROOT_VALIDATION_LEVEL=$2
       shift 2
       ;;
+    --root-acquisition)
+      if (($# < 2)); then
+        echo "--root-acquisition requires seeded or independent" >&2
+        exit 2
+      fi
+      ROOT_ACQUISITION_MODE=$2
+      shift 2
+      ;;
     --root-enclosure-digits)
       if (($# < 2)); then
         echo "--root-enclosure-digits requires a positive integer" >&2
@@ -45,8 +54,9 @@ while (($# > 0)); do
       shift 2
       ;;
     --help|-h)
-      echo "Usage: bash ${BASH_SOURCE[1]} [--research-capture LEVEL] [--research-sector-eigenpairs COUNT] [--root-validation LEVEL] [--root-enclosure-digits DIGITS]"
+      echo "Usage: bash ${BASH_SOURCE[1]} [--research-capture LEVEL] [--research-sector-eigenpairs COUNT] [--root-acquisition MODE] [--root-validation LEVEL] [--root-enclosure-digits DIGITS]"
       echo "  LEVEL: claim, research (default), gap, or maximum"
+      echo "  ROOT ACQUISITION: seeded (default for every claim script) or independent"
       echo "  ROOT VALIDATION: off (default) or certified"
       echo "  ROOT ENCLOSURE: defaults to the claim's display digits; override only when needed"
       exit 0
@@ -77,10 +87,11 @@ elif [[ ! -x "$BIN" ]]; then
 fi
 
 # Capture cost is explicit. The balanced "research" default retains the
-# complete finite root window and all artifacts naturally produced by that
-# calculation, but does not launch the much more expensive parity-sector
-# eigenvector analysis. Arithmetic and convergence criteria are identical in
-# every mode.
+# claim's explicit ordinal root window and all artifacts naturally produced by
+# that calculation, but does not launch the much more expensive parity-sector
+# eigenvector analysis. Every paper claim defaults to seeded acquisition, and
+# capture level cannot change the selected policy. Arithmetic and convergence
+# criteria are identical in every mode.
 case "$RESEARCH_CAPTURE_LEVEL" in
   claim|research|gap)
     RESEARCH_CAPTURE_ARGS=(--research-capture "$RESEARCH_CAPTURE_LEVEL")
@@ -112,9 +123,21 @@ case "$ROOT_VALIDATION_LEVEL" in
     ;;
 esac
 
+case "$ROOT_ACQUISITION_MODE" in
+  seeded|independent)
+    ROOT_ACQUISITION_ARGS=(--root-acquisition "$ROOT_ACQUISITION_MODE")
+    ;;
+  *)
+    echo "ROOT_ACQUISITION_MODE must be seeded or independent" >&2
+    exit 1
+    ;;
+esac
+
 run_research_claim() {
   if [[ "${1:-}" == "run" ]]; then
-    "$BIN" "$@" "${RESEARCH_CAPTURE_ARGS[@]}" "${ROOT_VALIDATION_ARGS[@]}"
+    "$BIN" "$@" "${RESEARCH_CAPTURE_ARGS[@]}" "${ROOT_ACQUISITION_ARGS[@]}" "${ROOT_VALIDATION_ARGS[@]}"
+  elif [[ "${1:-}" == "check-evenness" ]]; then
+    "$BIN" "$@" "${RESEARCH_CAPTURE_ARGS[@]}" "${ROOT_ACQUISITION_ARGS[@]}"
   else
     "$BIN" "$@" "${RESEARCH_CAPTURE_ARGS[@]}"
   fi

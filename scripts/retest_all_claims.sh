@@ -19,6 +19,8 @@
 # separate servers. Author: Ronnie Andrews, Jr. (Team Xcelerator Inc.®)
 set -euo pipefail
 
+CLAIM_ARGS=("$@")
+
 echo "=== Paper A full retest cycle ==="
 echo "Toolkit: $(grep '^xc-spectral' Cargo.toml)"
 echo "Started: $(date)"
@@ -31,7 +33,7 @@ run_claim() {
   echo "  $name"
   echo "================================================================"
   echo "Started: $(date)"
-  bash "$script"
+  bash "$script" "${CLAIM_ARGS[@]}"
   echo "Finished: $(date)"
   echo
 }

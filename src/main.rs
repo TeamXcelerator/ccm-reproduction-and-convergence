@@ -33,7 +33,7 @@ struct Cli {
 enum ResearchCapture {
     /// Only the roots requested for the claim and artifacts naturally produced while finding them.
     Claim,
-    /// The complete finite positive root window, without separate sector analysis.
+    /// Requested roots plus their detailed research artifacts, without sector analysis.
     Research,
     /// Research capture plus natural-evenness evidence and the two lowest eigenpairs per sector.
     Gap,
@@ -49,11 +49,15 @@ enum RootValidation {
     Certified,
 }
 
-impl ResearchCapture {
-    fn captures_complete_roots(self) -> bool {
-        self != Self::Claim
-    }
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum RootAcquisitionMode {
+    /// Refine roots from the toolkit-owned, content-bound reference-zero table.
+    Seeded,
+    /// Discover starting points from the finite CCM secular source itself.
+    Independent,
+}
 
+impl ResearchCapture {
     fn sector_eigenpairs(self, maximum_count: usize) -> Option<usize> {
         match self {
             Self::Claim | Self::Research => None,
@@ -77,9 +81,9 @@ enum Command {
         /// How many positive eigenvalues to print.
         #[arg(long, default_value_t = 20)]
         top: usize,
-        /// One-based index of the first positive CCM root to discover.
+        /// One-based index of the first positive CCM root to acquire.
         /// The default reproduces the ordinary first-K prefix; values above
-        /// one target a later finite window without using reference zeros.
+        /// one target a later ordinal window under the selected acquisition policy.
         #[arg(long, default_value_t = 1)]
         first_root_index: usize,
         /// Working precision in decimal digits (requires --features hp).
@@ -109,6 +113,9 @@ enum Command {
         /// Number of low eigenpairs retained in each parity sector in maximum mode.
         #[arg(long, default_value_t = 8)]
         research_sector_eigenpairs: usize,
+        /// Root acquisition policy. Paper claims default to reference-seeded refinement.
+        #[arg(long, value_enum, default_value_t = RootAcquisitionMode::Seeded)]
+        root_acquisition: RootAcquisitionMode,
         /// Optional root-only certification. This does not interval-certify Tau or the eigenstate.
         #[arg(long, value_enum, default_value_t = RootValidation::Off)]
         root_validation: RootValidation,
@@ -138,6 +145,9 @@ enum Command {
         /// Number of low eigenpairs retained in each parity sector in maximum mode.
         #[arg(long, default_value_t = 8)]
         research_sector_eigenpairs: usize,
+        /// Root acquisition policy for supplemental research capture.
+        #[arg(long, value_enum, default_value_t = RootAcquisitionMode::Seeded)]
+        root_acquisition: RootAcquisitionMode,
     },
     /// Analyze the low even and odd CCM parity sectors and report GapLog.
     /// This is separate from ordinary root reproduction because it computes
@@ -193,6 +203,7 @@ fn main() -> Result<()> {
             no_force_even,
             research_capture,
             research_sector_eigenpairs,
+            root_acquisition,
             root_validation,
             root_enclosure_digits,
         } => {
@@ -211,6 +222,11 @@ fn main() -> Result<()> {
             }
             if root_validation != RootValidation::Off && f64_only {
                 anyhow::bail!("root certification requires the HP tier");
+            }
+            if root_acquisition == RootAcquisitionMode::Seeded && f64_only {
+                anyhow::bail!(
+                    "reference-seeded root acquisition requires the HP tier; use --root-acquisition independent with --f64-only"
+                );
             }
             if root_validation == RootValidation::Off && root_enclosure_digits.is_some() {
                 anyhow::bail!("--root-enclosure-digits requires --root-validation certified");
@@ -252,49 +268,51 @@ fn main() -> Result<()> {
                     if top > n_modes {
                         anyhow::bail!("requested root count cannot exceed N");
                     }
-                    let requested_last_root_index =
-                        first_root_index.checked_add(top - 1).ok_or_else(|| {
-                            anyhow::anyhow!("requested root index range overflows usize")
-                        })?;
-                    if !research_capture.captures_complete_roots()
-                        && requested_last_root_index > n_modes
-                    {
-                        anyhow::bail!("requested root window exceeds the finite CCM reach N");
-                    }
+                    let (target, requested_last_root_index) =
+                        explicit_ordinal_root_target(first_root_index, top, n_modes)?;
                     println!("  precision: {} decimal digits", precision_digits);
                     let mut cfg = ccm::hp::HighPrecConfig::for_decimal_digits(precision_digits);
                     cfg.n_eigenvalues = top;
-                    // The toolkit independently discovers pole-aware MPFR
-                    // starting points and uses its production default,
-                    // Halley's method, for full-precision refinement.
+                    // Both acquisition modes use the same production HP
+                    // Halley refinement and convergence policy.
                     if no_force_even {
                         cfg.force_even = false;
                         println!("  forced-even projection: DISABLED (natural eigenvector)");
                     }
 
-                    // Discover the requested finite CCM roots independently.
-                    // Reference zeros are loaded only after this result is
-                    // complete and are used solely for the report below.
-                    let target = if research_capture.captures_complete_roots() {
-                        full_finite_positive_window(&params, cfg.precision_bits)?
-                    } else if first_root_index == 1 {
-                        ccm::window::ZeroTarget::FirstK { count: top }
-                    } else {
-                        ccm::window::ZeroTarget::IndexRange {
-                            first: first_root_index,
-                            last: requested_last_root_index,
-                        }
-                    };
-                    if research_capture.captures_complete_roots() {
+                    // Capture level never changes root acquisition semantics or
+                    // expands an ordinal claim into a height window. A run is
+                    // wholly seeded or wholly independent for this exact range.
+                    let seeded_input = if root_acquisition == RootAcquisitionMode::Seeded {
+                        let (dataset, seed_first_index, seed_strings) =
+                            bundled_reference_seed_window(&target)?;
+                        let seeds = seed_strings
+                            .iter()
+                            .map(|seed| {
+                                rug::Float::parse(seed)
+                                    .map(|parsed| rug::Float::with_val(cfg.precision_bits, parsed))
+                                    .map_err(|error| {
+                                        anyhow::anyhow!(
+                                            "failed to parse bundled reference seed {seed:?}: {error}"
+                                        )
+                                    })
+                            })
+                            .collect::<Result<Vec<_>>>()?;
                         println!(
-                            "  root acquisition: complete independent positive finite-source window"
+                            "  root acquisition: reference-seeded refinement (indices {}..={}, dataset={}, sha256={})",
+                            seed_first_index,
+                            seed_first_index + seeds.len() - 1,
+                            dataset.resource_id,
+                            &dataset.content_sha256[..12]
                         );
+                        Some((dataset, seed_first_index, seeds))
                     } else {
                         println!(
                             "  root acquisition: independent CCM discovery (indices {}..={})",
                             first_root_index, requested_last_root_index
                         );
-                    }
+                        None
+                    };
                     let run_started = std::time::Instant::now();
                     println!(
                         "  research capture: {}",
@@ -342,31 +360,71 @@ fn main() -> Result<()> {
                             }
                         }
                     };
+                    let capture_requested =
+                        sector_analysis.is_some() || root_certification.is_some();
+                    let capture_options = ccm::hp::CcmResearchCaptureOptions {
+                        capture_evenness: sector_analysis.is_some(),
+                        sector_analysis,
+                        root_certification,
+                    };
                     let (hp_result, captured_evenness, captured_sectors, root_certificate) =
-                        if sector_analysis.is_some() || root_certification.is_some() {
-                            let captured = ccm::hp::run_independent_with_research_capture(
-                                &params,
-                                &cfg,
-                                &target,
-                                ccm::hp::CcmResearchCaptureOptions {
-                                    capture_evenness: sector_analysis.is_some(),
-                                    sector_analysis,
-                                    root_certification,
-                                },
-                            )?;
-                            (
-                                captured.primary,
-                                captured.evenness,
-                                captured.sector_gap,
-                                captured.root_certificate,
-                            )
-                        } else {
-                            (
+                        match root_acquisition {
+                            RootAcquisitionMode::Independent if capture_requested => {
+                                let captured = ccm::hp::run_independent_with_research_capture(
+                                    &params,
+                                    &cfg,
+                                    &target,
+                                    capture_options,
+                                )?;
+                                (
+                                    captured.primary,
+                                    captured.evenness,
+                                    captured.sector_gap,
+                                    captured.root_certificate,
+                                )
+                            }
+                            RootAcquisitionMode::Independent => (
                                 ccm::hp::run_independent(&params, &cfg, &target)?,
                                 None,
                                 None,
                                 None,
-                            )
+                            ),
+                            RootAcquisitionMode::Seeded if capture_requested => {
+                                let (dataset, seed_first_index, seeds) = seeded_input
+                                    .as_ref()
+                                    .expect("seeded acquisition prepared reference inputs");
+                                let captured = ccm::hp::run_indexed_seeded_with_research_capture(
+                                    &params,
+                                    &cfg,
+                                    *seed_first_index,
+                                    seeds,
+                                    dataset,
+                                    capture_options,
+                                )?;
+                                (
+                                    captured.primary,
+                                    captured.evenness,
+                                    captured.sector_gap,
+                                    captured.root_certificate,
+                                )
+                            }
+                            RootAcquisitionMode::Seeded => {
+                                let (dataset, seed_first_index, seeds) = seeded_input
+                                    .as_ref()
+                                    .expect("seeded acquisition prepared reference inputs");
+                                (
+                                    ccm::hp::run_indexed_seeded(
+                                        &params,
+                                        &cfg,
+                                        *seed_first_index,
+                                        seeds,
+                                        dataset,
+                                    )?,
+                                    None,
+                                    None,
+                                    None,
+                                )
+                            }
                         };
 
                     if let Some(certificate) = &root_certificate {
@@ -390,7 +448,7 @@ fn main() -> Result<()> {
                     // HP-native eigenvalue table.
                     let n_compare = top;
                     if hp_result.eigenvalues_pos.is_empty() {
-                        anyhow::bail!("independent CCM discovery returned no roots");
+                        anyhow::bail!("CCM root acquisition returned no roots");
                     }
                     let reference_first = first_root_index;
                     let reference_last = reference_first
@@ -417,45 +475,72 @@ fn main() -> Result<()> {
                     );
                     println!("{}", "-".repeat(114));
 
-                    // Independent discovery may contain additional finite-source
-                    // roots between Riemann-zero matches. Reference values enter
-                    // only here, after computation and artifact production, and
-                    // are matched one-to-one in increasing algebraic-root order.
+                    // Seeded refinement preserves its explicitly assigned
+                    // ordinals. Independent discovery may contain additional
+                    // finite-source roots and therefore uses monotone nearest
+                    // matching only for this post-computation comparison table.
                     let mut next_root_offset = 0usize;
                     for (reference_offset, ref_str) in ref_strings.iter().enumerate() {
                         let ref_val =
                             rug::Float::with_val(cmp_prec, rug::Float::parse(ref_str).unwrap());
                         use xc_spectral::ccm::hp::EigenvalueResult;
-                        let mut best: Option<(usize, &EigenvalueResult, rug::Float)> = None;
-                        for (root_offset, candidate) in hp_result
-                            .eigenvalues_pos
-                            .iter()
-                            .enumerate()
-                            .skip(next_root_offset)
-                        {
-                            let value = match candidate {
-                                EigenvalueResult::Converged(result)
-                                | EigenvalueResult::Stagnated(result)
-                                | EigenvalueResult::Approximate(result) => &result.value,
-                                EigenvalueResult::Failed { .. } => continue,
-                            };
-                            let mut difference = rug::Float::with_val(cmp_prec, value);
-                            difference -= &ref_val;
-                            let distance = difference.abs();
-                            if best
-                                .as_ref()
-                                .is_none_or(|(_, _, current)| distance < *current)
-                            {
-                                best = Some((root_offset, candidate, distance));
+                        let reference_index = reference_first + reference_offset;
+                        let (root_offset, eig_full, abs_err) = match root_acquisition {
+                            RootAcquisitionMode::Seeded => {
+                                let root_offset = reference_index
+                                    .checked_sub(hp_result.first_positive_root_index)
+                                    .ok_or_else(|| {
+                                        anyhow::anyhow!(
+                                            "seeded CCM root window begins after reference ordinal {reference_index}"
+                                        )
+                                    })?;
+                                let candidate = hp_result
+                                    .eigenvalues_pos
+                                    .get(root_offset)
+                                    .ok_or_else(|| {
+                                        anyhow::anyhow!(
+                                            "seeded CCM root window does not contain reference ordinal {reference_index}"
+                                        )
+                                    })?;
+                                let value = candidate.value().ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "seeded CCM root ordinal {reference_index} failed before comparison"
+                                    )
+                                })?;
+                                let mut difference = rug::Float::with_val(cmp_prec, value);
+                                difference -= &ref_val;
+                                (root_offset, candidate, difference.abs())
                             }
-                        }
-                        let (root_offset, eig_full, abs_err) = best.ok_or_else(|| {
-                            anyhow::anyhow!(
-                                "no independently discovered CCM root remains for reference zero {}",
-                                reference_first + reference_offset
-                            )
-                        })?;
-                        next_root_offset = root_offset + 1;
+                            RootAcquisitionMode::Independent => {
+                                let mut best: Option<(usize, &EigenvalueResult, rug::Float)> = None;
+                                for (root_offset, candidate) in hp_result
+                                    .eigenvalues_pos
+                                    .iter()
+                                    .enumerate()
+                                    .skip(next_root_offset)
+                                {
+                                    let Some(value) = candidate.value() else {
+                                        continue;
+                                    };
+                                    let mut difference = rug::Float::with_val(cmp_prec, value);
+                                    difference -= &ref_val;
+                                    let distance = difference.abs();
+                                    if best
+                                        .as_ref()
+                                        .is_none_or(|(_, _, current)| distance < *current)
+                                    {
+                                        best = Some((root_offset, candidate, distance));
+                                    }
+                                }
+                                let best = best.ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "no independently discovered CCM root remains for reference zero {reference_index}"
+                                    )
+                                })?;
+                                next_root_offset = best.0 + 1;
+                                best
+                            }
+                        };
                         let (result, status) = match eig_full {
                             EigenvalueResult::Converged(result) => (result, "converged"),
                             EigenvalueResult::Stagnated(result) => (result, "stagnated"),
@@ -523,7 +608,13 @@ fn main() -> Result<()> {
                 {
                     let _ = precision_digits;
                     let _ = no_force_even;
-                    let _ = (research_capture, research_sector_eigenpairs);
+                    let _ = (
+                        research_capture,
+                        research_sector_eigenpairs,
+                        root_acquisition,
+                        root_validation,
+                        root_enclosure_digits,
+                    );
                     anyhow::bail!(
                         "High-precision tier requires --features hp at build time.\n\
                          Build with: cargo build --release --features hp"
@@ -539,6 +630,7 @@ fn main() -> Result<()> {
             display_digits,
             research_capture,
             research_sector_eigenpairs,
+            root_acquisition,
         } => {
             #[cfg(not(feature = "hp"))]
             {
@@ -549,6 +641,7 @@ fn main() -> Result<()> {
                     display_digits,
                     research_capture,
                     research_sector_eigenpairs,
+                    root_acquisition,
                 );
                 anyhow::bail!("check-evenness requires --features hp at build time");
             }
@@ -625,13 +718,16 @@ fn main() -> Result<()> {
                     capture_supplemental_research_artifacts(
                         &params,
                         &cfg,
-                        true,
-                        false,
-                        research_capture
-                            .sector_eigenpairs(research_sector_eigenpairs)
-                            .map(|count| count.min(n_modes)),
-                        research_capture == ResearchCapture::Maximum,
-                        display_digits,
+                        SupplementalResearchCaptureOptions {
+                            capture_roots: true,
+                            capture_evenness: false,
+                            sector_eigenpairs: research_capture
+                                .sector_eigenpairs(research_sector_eigenpairs)
+                                .map(|count| count.min(n_modes)),
+                            complete_sector_spectrum: research_capture == ResearchCapture::Maximum,
+                            display_digits,
+                            root_acquisition,
+                        },
                     )?;
                 }
             }
@@ -729,54 +825,80 @@ fn validate_research_capture(
     Ok(())
 }
 
+#[cfg(any(feature = "hp", test))]
+fn explicit_ordinal_root_target(
+    first_root_index: usize,
+    root_count: usize,
+    n_modes: usize,
+) -> Result<(ccm::window::ZeroTarget, usize)> {
+    if first_root_index == 0 || root_count == 0 {
+        anyhow::bail!("CCM ordinal root targets require positive indices and counts");
+    }
+    let last = first_root_index
+        .checked_add(root_count - 1)
+        .ok_or_else(|| anyhow::anyhow!("requested root index range overflows usize"))?;
+    if last > n_modes {
+        anyhow::bail!("requested root window exceeds the finite CCM reach N");
+    }
+    let target = if first_root_index == 1 {
+        ccm::window::ZeroTarget::FirstK { count: root_count }
+    } else {
+        ccm::window::ZeroTarget::IndexRange {
+            first: first_root_index,
+            last,
+        }
+    };
+    Ok((target, last))
+}
+
 fn research_capture_label(capture: ResearchCapture, maximum_count: usize) -> String {
     match capture {
         ResearchCapture::Claim => "claim (requested roots and native artifacts)".to_string(),
         ResearchCapture::Research => {
-            "research (complete finite root window; no sector solve)".to_string()
+            "research (requested roots and detailed artifacts; no sector solve)".to_string()
         }
         ResearchCapture::Gap => {
-            "gap (complete roots, evenness, GapLog, 2 eigenpairs per sector)".to_string()
+            "gap (requested roots, evenness, GapLog, 2 eigenpairs per sector)".to_string()
         }
         ResearchCapture::Maximum => format!(
-            "maximum (complete roots, evenness, GapLog, {maximum_count} eigenpairs per sector)"
+            "maximum (requested roots, evenness, GapLog, {maximum_count} eigenpairs per sector)"
         ),
     }
 }
 
 #[cfg(any(feature = "hp", test))]
-fn full_finite_positive_window(
-    params: &CcmParams,
-    precision_bits: u32,
-) -> Result<ccm::window::ZeroTarget> {
-    use rug::{ops::Pow, Float};
-
-    let lambda_squared = if params.lambda_sq.is_integer {
-        Float::with_val(precision_bits, params.lambda_sq.value_u64)
-    } else {
-        Float::with_val(
-            precision_bits,
-            Float::parse(format!("{:.17}", params.lambda_sq.value_f64))?,
-        )
+fn bundled_reference_seed_window(
+    target: &ccm::window::ZeroTarget,
+) -> Result<(
+    xc_zeta::zeros::ReferenceZeroDatasetIdentity,
+    usize,
+    Vec<String>,
+)> {
+    let dataset = xc_zeta::zeros::bundled_dataset_identity()?;
+    let all = xc_zeta::zeros::bundled_first_n_strings(dataset.record_count)?;
+    let indexed_slice = |first: usize, last: usize| -> Result<(usize, Vec<String>)> {
+        if first == 0 || first > last || last > all.len() {
+            anyhow::bail!(
+                "reference-zero dataset {} does not cover requested indices {}..={}",
+                dataset.resource_id,
+                first,
+                last
+            );
+        }
+        Ok((first, all[first - 1..last].to_vec()))
     };
-    let log_lambda_squared = lambda_squared.ln();
-    if !log_lambda_squared.is_finite() || log_lambda_squared <= 0 {
-        anyhow::bail!("lambda_squared does not define a finite positive CCM window");
+    let (first, seeds) = match target {
+        ccm::window::ZeroTarget::FirstK { count } => indexed_slice(1, *count)?,
+        ccm::window::ZeroTarget::IndexRange { first, last } => indexed_slice(*first, *last)?,
+        ccm::window::ZeroTarget::HeightWindow { .. }
+        | ccm::window::ZeroTarget::SymmetricHeightWindow { .. } => anyhow::bail!(
+            "reference-seeded CCM refinement requires an explicit ordinal target; capture level cannot convert a height window into reference seeds"
+        ),
+    };
+    if seeds.is_empty() {
+        anyhow::bail!("seeded CCM acquisition requires a nonempty reference window");
     }
-    // Stay strictly inside the terminal secular pole. The toolkit performs
-    // the authoritative independent scan and determines the actual root count.
-    let mut upper = Float::with_val(precision_bits, rug::float::Constant::Pi);
-    upper *= 2u32;
-    upper *= params.n_modes;
-    upper /= log_lambda_squared;
-    let mut interior_scale = Float::with_val(precision_bits, 1);
-    interior_scale -= Float::with_val(precision_bits, 2).pow(-64i32);
-    upper *= interior_scale;
-    let lower = Float::with_val(precision_bits, 2).pow(-(precision_bits as i32));
-    Ok(ccm::window::ZeroTarget::HeightWindow {
-        lower: lower.to_string(),
-        upper: upper.to_string(),
-    })
+    Ok((dataset, first, seeds))
 }
 
 /// Fill the artifact families not already produced by the command that called
@@ -784,27 +906,61 @@ fn full_finite_positive_window(
 /// author publication settings still apply without publication logic in this
 /// consumer repository.
 #[cfg(feature = "hp")]
-fn capture_supplemental_research_artifacts(
-    params: &CcmParams,
-    cfg: &ccm::hp::HighPrecConfig,
+struct SupplementalResearchCaptureOptions {
     capture_roots: bool,
     capture_evenness: bool,
     sector_eigenpairs: Option<usize>,
     complete_sector_spectrum: bool,
     display_digits: usize,
+    root_acquisition: RootAcquisitionMode,
+}
+
+#[cfg(feature = "hp")]
+fn capture_supplemental_research_artifacts(
+    params: &CcmParams,
+    cfg: &ccm::hp::HighPrecConfig,
+    options: SupplementalResearchCaptureOptions,
 ) -> Result<()> {
+    let SupplementalResearchCaptureOptions {
+        capture_roots,
+        capture_evenness,
+        sector_eigenpairs,
+        complete_sector_spectrum,
+        display_digits,
+        root_acquisition,
+    } = options;
     let supplemental_started = std::time::Instant::now();
     println!("\n=== Supplemental research artifact capture ===");
 
     if capture_roots {
         let roots_started = std::time::Instant::now();
         let mut root_cfg = cfg.clone();
-        root_cfg.n_eigenvalues = 0;
-        let roots = ccm::hp::run_independent(
-            params,
-            &root_cfg,
-            &full_finite_positive_window(params, root_cfg.precision_bits)?,
-        )?;
+        let supplemental_root_count = root_cfg.n_eigenvalues.min(params.n_modes).max(1);
+        root_cfg.n_eigenvalues = supplemental_root_count;
+        let target = ccm::window::ZeroTarget::FirstK {
+            count: supplemental_root_count,
+        };
+        let roots = match root_acquisition {
+            RootAcquisitionMode::Independent => {
+                ccm::hp::run_independent(params, &root_cfg, &target)?
+            }
+            RootAcquisitionMode::Seeded => {
+                let (dataset, first, seed_strings) = bundled_reference_seed_window(&target)?;
+                let seeds = seed_strings
+                    .iter()
+                    .map(|seed| {
+                        rug::Float::parse(seed)
+                            .map(|parsed| rug::Float::with_val(root_cfg.precision_bits, parsed))
+                            .map_err(|error| {
+                                anyhow::anyhow!(
+                                    "failed to parse bundled reference seed {seed:?}: {error}"
+                                )
+                            })
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                ccm::hp::run_indexed_seeded(params, &root_cfg, first, &seeds, &dataset)?
+            }
+        };
         let counts = roots.eigenvalues_pos.iter().fold(
             (0usize, 0usize, 0usize, 0usize),
             |mut counts, root| {
@@ -818,7 +974,9 @@ fn capture_supplemental_research_artifacts(
             },
         );
         println!(
-            "  complete positive finite-source root window captured: {} converged, {} stagnated, {} approximate, {} failed; elapsed={:.3}s",
+            "  bounded first-{} root window captured via {:?}: {} converged, {} stagnated, {} approximate, {} failed; elapsed={:.3}s",
+            supplemental_root_count,
+            root_acquisition,
             counts.0,
             counts.1,
             counts.2,
@@ -826,7 +984,7 @@ fn capture_supplemental_research_artifacts(
             roots_started.elapsed().as_secs_f64()
         );
     } else {
-        println!("  complete positive finite-source root window captured by the primary run");
+        println!("  requested root window captured by the primary run");
     }
 
     if capture_evenness {
@@ -935,6 +1093,8 @@ mod cli_tests {
             "maximum",
             "--research-sector-eigenpairs",
             "10",
+            "--root-acquisition",
+            "independent",
             "--root-validation",
             "certified",
             "--root-enclosure-digits",
@@ -948,8 +1108,37 @@ mod cli_tests {
             "gap",
             "--research-sector-eigenpairs",
             "10",
+            "--root-acquisition",
+            "seeded",
         ])
         .is_ok());
+    }
+
+    #[test]
+    fn paper_root_acquisition_defaults_to_seeded() {
+        let cli = Cli::try_parse_from(["ccm-reproduction", "run"]).unwrap();
+        let Command::Run {
+            root_acquisition, ..
+        } = cli.command
+        else {
+            panic!("run command was not parsed");
+        };
+        assert_eq!(root_acquisition, RootAcquisitionMode::Seeded);
+
+        let cli = Cli::try_parse_from([
+            "ccm-reproduction",
+            "run",
+            "--root-acquisition",
+            "independent",
+        ])
+        .unwrap();
+        let Command::Run {
+            root_acquisition, ..
+        } = cli.command
+        else {
+            panic!("run command was not parsed");
+        };
+        assert_eq!(root_acquisition, RootAcquisitionMode::Independent);
     }
 
     #[test]
@@ -962,19 +1151,43 @@ mod cli_tests {
     }
 
     #[test]
-    fn finite_window_stays_inside_terminal_pole() {
-        let params = CcmParams::from_lambda_sq_integer(13, 10);
-        let target = full_finite_positive_window(&params, 256).unwrap();
-        let ccm::window::ZeroTarget::HeightWindow { lower, upper } = target else {
-            panic!("research capture must use a finite height window");
-        };
-        let precision_bits = 256;
-        let lower = rug::Float::with_val(precision_bits, rug::Float::parse(lower).unwrap());
-        let upper = rug::Float::with_val(precision_bits, rug::Float::parse(upper).unwrap());
-        let mut terminal_pole = rug::Float::with_val(precision_bits, rug::float::Constant::Pi);
-        terminal_pole *= 20u32;
-        terminal_pole /= rug::Float::with_val(precision_bits, 13).ln();
-        assert!(lower > 0);
-        assert!(upper < terminal_pole);
+    fn claim_root_targets_are_bounded_explicit_ordinals() {
+        let (prefix, last) = explicit_ordinal_root_target(1, 25, 120).unwrap();
+        assert!(matches!(
+            prefix,
+            ccm::window::ZeroTarget::FirstK { count: 25 }
+        ));
+        assert_eq!(last, 25);
+
+        let (later, last) = explicit_ordinal_root_target(51, 25, 120).unwrap();
+        assert!(matches!(
+            later,
+            ccm::window::ZeroTarget::IndexRange {
+                first: 51,
+                last: 75
+            }
+        ));
+        assert_eq!(last, 75);
+        assert!(explicit_ordinal_root_target(101, 25, 120).is_err());
+    }
+
+    #[test]
+    fn seeded_windows_require_explicit_ordinals() {
+        let (dataset, first, seeds) =
+            bundled_reference_seed_window(&ccm::window::ZeroTarget::IndexRange {
+                first: 1,
+                last: 25,
+            })
+            .unwrap();
+        assert!(dataset.validate());
+        assert_eq!(first, 1);
+        assert_eq!(seeds.len(), 25);
+        assert!(
+            bundled_reference_seed_window(&ccm::window::ZeroTarget::HeightWindow {
+                lower: "0".to_owned(),
+                upper: "300".to_owned(),
+            })
+            .is_err()
+        );
     }
 }

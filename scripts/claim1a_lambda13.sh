@@ -2,7 +2,7 @@
 # Claim 1a: λ²=13, N=120 at HP-1000 (CCM headline reproduction).
 #
 # Smallest of the three Claim 1 configs. The default research capture retains
-# its complete finite root window without launching parity-sector solves.
+# its explicit seeded claim window without launching parity-sector solves.
 # Designed to run independently on its own server so all three Claim 1
 # configs can run in parallel.
 set -euo pipefail

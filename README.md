@@ -93,9 +93,11 @@ cargo build --release --features hp --locked
   --precision-digits 1000 --display-digits 50 --top 25
 ```
 
-The ordinary run performs independent CCM root discovery. Known Riemann
-zeros are loaded only after the computation for the comparison table; they
-are never supplied to the CCM solver as seeds.
+Every paper claim script defaults to reference-seeded refinement from the
+toolkit-owned, content-bound zero table. The exact dataset digest and seed
+window participate in artifact identity. Override a particular invocation with
+`--root-acquisition independent` when the research question requires
+source-only discovery with no known-zero seeds.
 
 ### Certify a selected finite-source root range
 
@@ -110,8 +112,8 @@ bash scripts/claim1c_lambda1000.sh \
   --root-validation certified
 ```
 
-This certifies the displayed ordinal range (25 roots for Claim 1c) from the
-exact retained finite CCM point source. It does not use reference zeros and
+This independently certifies the displayed ordinal range (25 roots for Claim
+1c) from the exact retained finite CCM point source. It does not use reference zeros and
 does not interval-certify the preceding Tau construction or eigenstate solve.
 By default the certificate enclosure-width target follows the claim's display
 digits. This is independent of the HP working precision. Use
@@ -129,10 +131,10 @@ overwrite the ordinary computed artifacts for the same configuration.
   --first-root-index 101 --top 25
 ```
 
-This independently discovers and refines CCM roots 101 through 125. The
-toolkit-owned canonical zero table is still used only for the
-post-computation report. These 2,500-digit values were computed with rigorous
-Arb interval arithmetic; their leading 1,000 digits were independently
+This refines CCM roots 101 through 125 from the matching reference ordinates.
+Add `--root-acquisition independent` to discover that window from the finite
+CCM source instead. The toolkit-owned 2,500-digit values were computed with
+rigorous Arb interval arithmetic; their leading 1,000 digits were independently
 cross-checked against Odlyzko's tabulation.
 
 ### Analyze even and odd sectors
@@ -156,9 +158,10 @@ analyses execute, never the arithmetic precision or convergence rules:
 
 - `claim` captures the requested roots and artifacts naturally produced while
   computing them. This is the fastest level.
-- `research` captures the complete independently discovered finite positive
-  root window and all native computation artifacts, without a separate parity
-  sector solve. This is the claim-script default.
+- `research` retains the claim's explicit ordinal root window and all native
+  computation artifacts, without a separate parity-sector solve. It never
+  expands a seeded claim into a height-based or independently discovered
+  window. This is the claim-script default.
 - `gap` adds natural-evenness evidence, both parity matrices, GapLog, and the
   two lowest eigenpairs from each sector.
 - `maximum` adds the same sector analysis with eight low eigenpairs per sector
@@ -170,6 +173,9 @@ For example:
 # Balanced research run (the default)
 bash scripts/claim1a_lambda13.sh
 
+# Optional independent source-only run
+bash scripts/claim1a_lambda13.sh --root-acquisition independent
+
 # Fast claim-only run
 bash scripts/claim1a_lambda13.sh --research-capture claim
 
@@ -180,13 +186,14 @@ bash scripts/claim1a_lambda13.sh \
 ```
 
 For unattended machines, the equivalent environment variables are
-`RESEARCH_CAPTURE_LEVEL` and `RESEARCH_SECTOR_EIGENPAIRS`; explicit script
-arguments take precedence.
+`RESEARCH_CAPTURE_LEVEL`, `RESEARCH_SECTOR_EIGENPAIRS`, and
+`ROOT_ACQUISITION_MODE`; explicit script arguments take precedence. Every
+claim script uses `seeded` when no override is supplied.
 
 At maximum capture, the retained set includes:
 
-- the complete independently discovered positive root window supported by the
-  finite CCM source;
+- the explicit ordinal root window requested by the claim, acquired entirely
+  under the selected seeded or independent policy;
 - the natural and forced-even Weil states and evenness evidence;
 - the even and odd parity matrices;
 - up to eight guarded low eigenpairs from each parity sector and GapLog; and
@@ -194,9 +201,22 @@ At maximum capture, the retained set includes:
   matrix, factorization, secular source, root-window, and convergence evidence.
 
 These artifacts are managed by the toolkit and are directly reusable by
-downstream research projects. The full root window is stored as one artifact,
-not one object per root. Retaining a bounded sector spectrum avoids duplicating
-the complete stored parity matrices as full eigenvector bases.
+downstream research projects. The requested root window is stored as one
+artifact, not one object per root. Retaining a bounded sector spectrum avoids
+duplicating the complete stored parity matrices as full eigenvector bases.
+
+Capture level and root acquisition are orthogonal. Every claim script defaults
+to seeded, but an explicit independent override remains wholly independent for
+that invocation. Request a larger seeded research window through the direct
+CLI with `--top` and, when needed, `--first-root-index`; the program rejects
+ranges beyond the finite truncation before starting the expensive HP
+computation.
+
+Seeded refinements and independent discovery windows are separate artifact
+kinds with disjoint semantic keys. They share source-independent upstream
+artifacts such as Tau and the Weil eigenstate, but neither root artifact can
+satisfy a request for the other mode. Root certificates remain independently
+derived from the exact finite secular source and may reconcile either mode.
 
 ### Reproduce with natural eigenvector (no forced-even projection)
 
