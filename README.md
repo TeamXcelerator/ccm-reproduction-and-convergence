@@ -97,6 +97,29 @@ The ordinary run performs independent CCM root discovery. Known Riemann
 zeros are loaded only after the computation for the comparison table; they
 are never supplied to the CCM solver as seeds.
 
+### Certify a selected finite-source root range
+
+Build the optional FLINT/Arb route and request a root-only certificate:
+
+```bash
+cargo build --release --locked --features hp,root-certification \
+  --bin ccm-reproduction
+
+bash scripts/claim1c_lambda1000.sh \
+  --research-capture gap \
+  --root-validation certified
+```
+
+This certifies the displayed ordinal range (25 roots for Claim 1c) from the
+exact retained finite CCM point source. It does not use reference zeros and
+does not interval-certify the preceding Tau construction or eigenstate solve.
+By default the certificate enclosure-width target follows the claim's display
+digits. This is independent of the HP working precision. Use
+`--root-enclosure-digits DIGITS` only when a different interval width is
+needed.
+The certificate is stored as a separate source-bound artifact, so it cannot
+overwrite the ordinary computed artifacts for the same configuration.
+
 ### Target a later root window
 
 ```bash

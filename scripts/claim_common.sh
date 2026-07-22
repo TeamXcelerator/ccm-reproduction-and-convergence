@@ -8,6 +8,8 @@ cd "$CLAIM_REPO_ROOT"
 # available for unattended server jobs, but command-line flags take precedence.
 RESEARCH_CAPTURE_LEVEL=${RESEARCH_CAPTURE_LEVEL:-research}
 RESEARCH_SECTOR_EIGENPAIRS=${RESEARCH_SECTOR_EIGENPAIRS:-8}
+ROOT_VALIDATION_LEVEL=${ROOT_VALIDATION_LEVEL:-off}
+ROOT_ENCLOSURE_DIGITS=${ROOT_ENCLOSURE_DIGITS:-}
 while (($# > 0)); do
   case "$1" in
     --research-capture)
@@ -16,6 +18,22 @@ while (($# > 0)); do
         exit 2
       fi
       RESEARCH_CAPTURE_LEVEL=$2
+      shift 2
+      ;;
+    --root-validation)
+      if (($# < 2)); then
+        echo "--root-validation requires off or certified" >&2
+        exit 2
+      fi
+      ROOT_VALIDATION_LEVEL=$2
+      shift 2
+      ;;
+    --root-enclosure-digits)
+      if (($# < 2)); then
+        echo "--root-enclosure-digits requires a positive integer" >&2
+        exit 2
+      fi
+      ROOT_ENCLOSURE_DIGITS=$2
       shift 2
       ;;
     --research-sector-eigenpairs)
@@ -27,8 +45,10 @@ while (($# > 0)); do
       shift 2
       ;;
     --help|-h)
-      echo "Usage: bash ${BASH_SOURCE[1]} [--research-capture LEVEL] [--research-sector-eigenpairs COUNT]"
+      echo "Usage: bash ${BASH_SOURCE[1]} [--research-capture LEVEL] [--research-sector-eigenpairs COUNT] [--root-validation LEVEL] [--root-enclosure-digits DIGITS]"
       echo "  LEVEL: claim, research (default), gap, or maximum"
+      echo "  ROOT VALIDATION: off (default) or certified"
+      echo "  ROOT ENCLOSURE: defaults to the claim's display digits; override only when needed"
       exit 0
       ;;
     *)
@@ -45,7 +65,11 @@ if [[ -z "${BIN+x}" ]]; then
   # Cargo's incremental freshness check is quick and prevents an executable
   # built from an older toolkit lockfile, without HP, or in an externally
   # overridden CARGO_TARGET_DIR from being mistaken for the current binary.
-  cargo build --quiet --release --features hp --locked --bin ccm-reproduction \
+  CLAIM_FEATURES=hp
+  if [[ "$ROOT_VALIDATION_LEVEL" == "certified" ]]; then
+    CLAIM_FEATURES=hp,root-certification
+  fi
+  cargo build --quiet --release --features "$CLAIM_FEATURES" --locked --bin ccm-reproduction \
     --target-dir "$CLAIM_TARGET_DIR"
 elif [[ ! -x "$BIN" ]]; then
   echo "Configured reproduction binary is not executable: $BIN" >&2
@@ -73,6 +97,25 @@ case "$RESEARCH_CAPTURE_LEVEL" in
     ;;
 esac
 
+case "$ROOT_VALIDATION_LEVEL" in
+  off|certified)
+    ROOT_VALIDATION_ARGS=(
+      --root-validation "$ROOT_VALIDATION_LEVEL"
+    )
+    if [[ -n "$ROOT_ENCLOSURE_DIGITS" ]]; then
+      ROOT_VALIDATION_ARGS+=(--root-enclosure-digits "$ROOT_ENCLOSURE_DIGITS")
+    fi
+    ;;
+  *)
+    echo "ROOT_VALIDATION_LEVEL must be off or certified" >&2
+    exit 1
+    ;;
+esac
+
 run_research_claim() {
-  "$BIN" "$@" "${RESEARCH_CAPTURE_ARGS[@]}"
+  if [[ "${1:-}" == "run" ]]; then
+    "$BIN" "$@" "${RESEARCH_CAPTURE_ARGS[@]}" "${ROOT_VALIDATION_ARGS[@]}"
+  else
+    "$BIN" "$@" "${RESEARCH_CAPTURE_ARGS[@]}"
+  fi
 }

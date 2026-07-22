@@ -41,6 +41,14 @@ enum ResearchCapture {
     Maximum,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum RootValidation {
+    /// Do not construct a separate interval root certificate.
+    Off,
+    /// Certify the displayed ordinal range of the exact retained finite CCM point source.
+    Certified,
+}
+
 impl ResearchCapture {
     fn captures_complete_roots(self) -> bool {
         self != Self::Claim
@@ -101,6 +109,13 @@ enum Command {
         /// Number of low eigenpairs retained in each parity sector in maximum mode.
         #[arg(long, default_value_t = 8)]
         research_sector_eigenpairs: usize,
+        /// Optional root-only certification. This does not interval-certify Tau or the eigenstate.
+        #[arg(long, value_enum, default_value_t = RootValidation::Off)]
+        root_validation: RootValidation,
+        /// Optional decimal-width target for each certified root enclosure.
+        /// Defaults to display_digits and is independent of HP working precision.
+        #[arg(long)]
+        root_enclosure_digits: Option<u32>,
     },
     /// Measure the natural evenness of the smallest Weil eigenvector
     /// (Claim 4: symmetry breakdown at large lambda).
@@ -178,6 +193,8 @@ fn main() -> Result<()> {
             no_force_even,
             research_capture,
             research_sector_eigenpairs,
+            root_validation,
+            root_enclosure_digits,
         } => {
             print_runtime_parallelism();
             if lambda_sq < 2 {
@@ -191,6 +208,20 @@ fn main() -> Result<()> {
             }
             if research_capture != ResearchCapture::Claim && f64_only {
                 anyhow::bail!("research and sector artifact capture requires the HP tier");
+            }
+            if root_validation != RootValidation::Off && f64_only {
+                anyhow::bail!("root certification requires the HP tier");
+            }
+            if root_validation == RootValidation::Off && root_enclosure_digits.is_some() {
+                anyhow::bail!("--root-enclosure-digits requires --root-validation certified");
+            }
+            let root_enclosure_digits = root_enclosure_digits
+                .map_or_else(|| u32::try_from(display_digits), Ok)
+                .map_err(|_| anyhow::anyhow!("display_digits exceeds the supported u32 range"))?;
+            if root_validation == RootValidation::Certified
+                && (root_enclosure_digits == 0 || root_enclosure_digits > precision_digits)
+            {
+                anyhow::bail!("root enclosure digits must be between 1 and precision_digits");
             }
             validate_research_capture(n_modes, research_capture, research_sector_eigenpairs)?;
             let params = CcmParams::from_lambda_sq_integer(lambda_sq, n_modes);
@@ -272,30 +303,80 @@ fn main() -> Result<()> {
                     let sector_eigenpairs = research_capture
                         .sector_eigenpairs(research_sector_eigenpairs)
                         .map(|count| count.min(n_modes));
-                    let (hp_result, captured_evenness, captured_sectors) =
-                        if let Some(sector_eigenpairs) = sector_eigenpairs {
-                            let sector_analysis = if research_capture == ResearchCapture::Maximum {
-                                ccm::hp::CcmSectorAnalysisOptions::maximum(sector_eigenpairs)
-                            } else {
-                                ccm::hp::CcmSectorAnalysisOptions::selected(sector_eigenpairs)
-                            };
+                    let sector_analysis = sector_eigenpairs.map(|sector_eigenpairs| {
+                        if research_capture == ResearchCapture::Maximum {
+                            ccm::hp::CcmSectorAnalysisOptions::maximum(sector_eigenpairs)
+                        } else {
+                            ccm::hp::CcmSectorAnalysisOptions::selected(sector_eigenpairs)
+                        }
+                    });
+                    let root_certification = match root_validation {
+                        RootValidation::Off => None,
+                        RootValidation::Certified => {
+                            #[cfg(not(feature = "root-certification"))]
+                            anyhow::bail!(
+                                "--root-validation certified requires building with --features hp,root-certification"
+                            );
+                            #[cfg(feature = "root-certification")]
+                            {
+                                let certification_target = if first_root_index == 1 {
+                                    ccm::certified_roots::IndependentCcmRootTarget::Prefix {
+                                        count: top,
+                                    }
+                                } else {
+                                    ccm::certified_roots::IndependentCcmRootTarget::IndexRange {
+                                        first: first_root_index,
+                                        last: requested_last_root_index,
+                                    }
+                                };
+                                println!(
+                                    "  root validation: certified exact finite-source ordinals {}..={} at {} digits (separate certificate artifact)",
+                                    first_root_index,
+                                    requested_last_root_index,
+                                    root_enclosure_digits
+                                );
+                                Some(ccm::hp::CcmRootCertificationOptions::for_decimal_digits(
+                                    certification_target,
+                                    root_enclosure_digits,
+                                )?)
+                            }
+                        }
+                    };
+                    let (hp_result, captured_evenness, captured_sectors, root_certificate) =
+                        if sector_analysis.is_some() || root_certification.is_some() {
                             let captured = ccm::hp::run_independent_with_research_capture(
                                 &params,
                                 &cfg,
                                 &target,
                                 ccm::hp::CcmResearchCaptureOptions {
-                                    capture_evenness: true,
-                                    sector_analysis: Some(sector_analysis),
+                                    capture_evenness: sector_analysis.is_some(),
+                                    sector_analysis,
+                                    root_certification,
                                 },
                             )?;
-                            (captured.primary, captured.evenness, captured.sector_gap)
+                            (
+                                captured.primary,
+                                captured.evenness,
+                                captured.sector_gap,
+                                captured.root_certificate,
+                            )
                         } else {
                             (
                                 ccm::hp::run_independent(&params, &cfg, &target)?,
                                 None,
                                 None,
+                                None,
                             )
                         };
+
+                    if let Some(certificate) = &root_certificate {
+                        println!(
+                            "  certified root census: {} roots, indices {}..={}, scope=exact stored point source",
+                            certificate.selected_root_count,
+                            certificate.first_selected_positive_index.unwrap_or(0),
+                            certificate.last_selected_positive_index.unwrap_or(0)
+                        );
+                    }
 
                     // ε_N is displayed in HP — at λ² >= 100 it routinely
                     // underflows f64 (10^-308). All downstream display stays
@@ -854,6 +935,10 @@ mod cli_tests {
             "maximum",
             "--research-sector-eigenpairs",
             "10",
+            "--root-validation",
+            "certified",
+            "--root-enclosure-digits",
+            "75",
         ])
         .is_ok());
         assert!(Cli::try_parse_from([
