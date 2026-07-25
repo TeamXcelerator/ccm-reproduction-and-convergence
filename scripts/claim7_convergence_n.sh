@@ -20,10 +20,16 @@ if [[ "${FORCE_EVEN:-true}" == "false" ]]; then
   echo "  *** forced-even projection DISABLED (natural eigenvector) ***"
 fi
 
+# Ascending order is intentional: Toolkit Auto searches the configured cache
+# layers for the nearest compatible lower-N eigenstate before each solve.
 N_VALUES=(10 20 30 40 50 60 80 100 120)
+PUBLISH_AFTER_SWEEP=${XC_PUBLISH_EXECUTE:-false}
 
 echo "=== Claim 7: Convergence in N at λ²=13 ==="
 echo "N values: ${N_VALUES[*]}"
+if [[ "$PUBLISH_AFTER_SWEEP" == "true" || "$PUBLISH_AFTER_SWEEP" == "1" ]]; then
+  echo "Publication: staged throughout sweep; one cumulative execution after HP-1000/N=120"
+fi
 echo
 
 for PREC in 200 1000; do
@@ -31,6 +37,13 @@ for PREC in 200 1000; do
   echo "  HP-${PREC} sweep"
   echo "================================================================"
   for N in "${N_VALUES[@]}"; do
+    # Preserve every staged artifact but execute the cumulative publication
+    # exactly once, after the final point in the two-precision sweep.
+    if [[ "$PREC" == "1000" && "$N" == "120" ]]; then
+      export XC_PUBLISH_EXECUTE="$PUBLISH_AFTER_SWEEP"
+    else
+      export XC_PUBLISH_EXECUTE=false
+    fi
     echo "--- N=$N, HP-${PREC} ---"
     run_research_claim run \
       --lambda-sq 13 \

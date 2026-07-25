@@ -20,7 +20,11 @@
 # independently on separate servers (4d on a ≥30 GB-disk box).
 set -euo pipefail
 
-bash scripts/claim4a_lambda13.sh "$@"
-bash scripts/claim4b_lambda100.sh "$@"
-bash scripts/claim4c_lambda1000.sh "$@"
-bash scripts/claim4d_lambda1200.sh "$@"
+CLAIM_ARGS=("$@")
+source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh" "${CLAIM_ARGS[@]}"
+export BIN
+
+bash scripts/claim4a_lambda13.sh "${CLAIM_ARGS[@]}"
+bash scripts/claim4b_lambda100.sh "${CLAIM_ARGS[@]}"
+bash scripts/claim4c_lambda1000.sh "${CLAIM_ARGS[@]}"
+bash scripts/claim4d_lambda1200.sh "${CLAIM_ARGS[@]}"

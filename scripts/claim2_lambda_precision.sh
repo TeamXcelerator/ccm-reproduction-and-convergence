@@ -7,5 +7,9 @@
 # claim2b_hp1000.sh independently.
 set -euo pipefail
 
-bash scripts/claim2a_hp200.sh "$@"
-bash scripts/claim2b_hp1000.sh "$@"
+CLAIM_ARGS=("$@")
+source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh" "${CLAIM_ARGS[@]}"
+export BIN
+
+bash scripts/claim2a_hp200.sh "${CLAIM_ARGS[@]}"
+bash scripts/claim2b_hp1000.sh "${CLAIM_ARGS[@]}"

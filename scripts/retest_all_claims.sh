@@ -20,6 +20,8 @@
 set -euo pipefail
 
 CLAIM_ARGS=("$@")
+source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh" "${CLAIM_ARGS[@]}"
+export BIN
 
 echo "=== Paper A full retest cycle ==="
 echo "Toolkit: $(grep '^xc-spectral' Cargo.toml)"

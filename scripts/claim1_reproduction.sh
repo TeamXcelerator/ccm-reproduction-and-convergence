@@ -10,6 +10,10 @@
 # claim1{a,b,c}_*.sh sub-scripts independently.
 set -euo pipefail
 
-bash scripts/claim1a_lambda13.sh "$@"
-bash scripts/claim1b_lambda100.sh "$@"
-bash scripts/claim1c_lambda1000.sh "$@"
+CLAIM_ARGS=("$@")
+source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh" "${CLAIM_ARGS[@]}"
+export BIN
+
+bash scripts/claim1a_lambda13.sh "${CLAIM_ARGS[@]}"
+bash scripts/claim1b_lambda100.sh "${CLAIM_ARGS[@]}"
+bash scripts/claim1c_lambda1000.sh "${CLAIM_ARGS[@]}"

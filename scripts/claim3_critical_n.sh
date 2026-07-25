@@ -18,6 +18,8 @@ fi
 echo "=== Claim 3: Critical N at HP-${PREC} ==="
 echo
 
+# Keep each lambda block in increasing N order. Toolkit Auto can then reuse the
+# nearest compatible lower-N eigenstate as a continuation seed.
 CONFIGS=(
   "50    200"
   "50    250"

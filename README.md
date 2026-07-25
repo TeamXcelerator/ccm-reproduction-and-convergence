@@ -12,7 +12,7 @@
 **Contact:** randrewsmath@gmail.com  
 **Date:** June 2026
 
-**Release:** v2.2 (Xcelerator Toolkit v0.13.1)
+**Release:** v2.2 (Xcelerator Toolkit v0.13.2)
 
 ## Headline Results
 
@@ -263,7 +263,7 @@ servers.
 
 ## Cache infrastructure
 
-Xcelerator Toolkit v0.13.1 manages reusable quadrature, CCM component,
+Xcelerator Toolkit v0.13.2 manages reusable quadrature, CCM component,
 matrix, eigenpair, and evidence artifacts in a per-user cache. Compatible
 public artifacts are resolved and validated automatically by default; a miss
 is computed and stored locally. Normal reproduction requires no credentials
@@ -273,7 +273,7 @@ Set `XC_CACHE_REMOTE=none` to prohibit remote reads. `XC_CACHE_ROOT` may point
 to an isolated cache directory for a cold run. Publication remains disabled
 unless an author explicitly selects an author profile and publication policy.
 Private-shard author publication uses generation-fenced leases and atomic
-content-plus-coordination updates supplied by Toolkit v0.13.1, preventing
+content-plus-coordination updates supplied by Toolkit v0.13.2, preventing
 concurrent publishers from advancing the same shard from stale state.
 
 ## Architecture
@@ -281,7 +281,7 @@ concurrent publishers from advancing the same shard from stale state.
 This repository contains the paper-specific CLI harness and
 reproduction scripts. The core mathematical library is the
 [Xcelerator Toolkit](https://github.com/TeamXcelerator/xcelerator-toolkit),
-pulled automatically from the immutable `v0.13.1` release tag by Cargo.
+pulled automatically from the immutable `v0.13.2` release tag by Cargo.
 `Cargo.lock` also pins the exact resolved toolkit commit so the claim scripts,
 configurations, and output interpretation remain reproducible. No manual
 cloning or toolkit configuration is required.
