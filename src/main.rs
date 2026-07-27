@@ -57,6 +57,14 @@ enum RootAcquisitionMode {
     Independent,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum RootReport {
+    /// Compare the requested reference-zero ordinals with their CCM roots.
+    Reference,
+    /// Preserve independently discovered CCM root order and classify each root.
+    DiscoveryOrdering,
+}
+
 impl ResearchCapture {
     fn sector_eigenpairs(self, maximum_count: usize) -> Option<usize> {
         match self {
@@ -116,6 +124,18 @@ enum Command {
         /// Root acquisition policy. Paper claims default to reference-seeded refinement.
         #[arg(long, value_enum, default_value_t = RootAcquisitionMode::Seeded)]
         root_acquisition: RootAcquisitionMode,
+        /// Root-table layout. Discovery ordering preserves every independently
+        /// discovered root, including unmatched finite-source roots.
+        #[arg(long, value_enum, default_value_t = RootReport::Reference)]
+        root_report: RootReport,
+        /// Minimum decimal digits required to classify a discovered root as a
+        /// reference-zero match in a discovery-ordering report.
+        #[arg(long, default_value_t = 10)]
+        minimum_match_digits: u32,
+        /// Number of bundled reference zeros considered by discovery-ordering
+        /// sequence alignment.
+        #[arg(long, default_value_t = 400)]
+        reference_zero_limit: usize,
         /// Optional root-only certification. This does not interval-certify Tau or the eigenstate.
         #[arg(long, value_enum, default_value_t = RootValidation::Off)]
         root_validation: RootValidation,
@@ -204,6 +224,9 @@ fn main() -> Result<()> {
             research_capture,
             research_sector_eigenpairs,
             root_acquisition,
+            root_report,
+            minimum_match_digits,
+            reference_zero_limit,
             root_validation,
             root_enclosure_digits,
         } => {
@@ -227,6 +250,27 @@ fn main() -> Result<()> {
                 anyhow::bail!(
                     "reference-seeded root acquisition requires the HP tier; use --root-acquisition independent with --f64-only"
                 );
+            }
+            if root_report == RootReport::DiscoveryOrdering {
+                if root_acquisition != RootAcquisitionMode::Independent {
+                    anyhow::bail!(
+                        "discovery-ordering reports require --root-acquisition independent"
+                    );
+                }
+                if f64_only {
+                    anyhow::bail!("discovery-ordering reports require the HP tier");
+                }
+                if first_root_index != 1 {
+                    anyhow::bail!(
+                        "discovery-ordering reports currently require --first-root-index 1"
+                    );
+                }
+                if minimum_match_digits == 0 {
+                    anyhow::bail!("minimum_match_digits must be positive");
+                }
+                if reference_zero_limit == 0 {
+                    anyhow::bail!("reference_zero_limit must be positive");
+                }
             }
             if root_validation == RootValidation::Off && root_enclosure_digits.is_some() {
                 anyhow::bail!("--root-enclosure-digits requires --root-validation certified");
@@ -445,56 +489,67 @@ fn main() -> Result<()> {
                         xc_numerics::fmt::display_hp(&hp_result.weil_min_eigenvalue, 6)
                     );
 
-                    // HP-native eigenvalue table.
-                    let n_compare = top;
                     if hp_result.eigenvalues_pos.is_empty() {
                         anyhow::bail!("CCM root acquisition returned no roots");
                     }
-                    let reference_first = first_root_index;
-                    let reference_last = reference_first
-                        .checked_add(n_compare.saturating_sub(1))
-                        .ok_or_else(|| {
-                        anyhow::anyhow!("requested reference-zero range overflows usize")
-                    })?;
-                    let all_ref_strings = xc_zeta::zeros::bundled_first_n_strings(reference_last)?;
-                    let ref_strings = &all_ref_strings[reference_first - 1..reference_last];
-                    let cmp_prec = hp_result.precision_bits * 2;
-                    // Enough sig digits to resolve e.g. 999.4 at HP-1000.
-                    let column_digits =
-                        ((precision_digits as f64).log10().ceil() as usize + 2).max(5);
+                    if root_report == RootReport::DiscoveryOrdering {
+                        print_discovery_ordering_report(
+                            &hp_result,
+                            top,
+                            reference_zero_limit,
+                            minimum_match_digits,
+                            precision_digits,
+                            display_digits,
+                        )?;
+                    } else {
+                        // HP-native reference-ordinal eigenvalue table.
+                        let n_compare = top;
+                        let reference_first = first_root_index;
+                        let reference_last = reference_first
+                            .checked_add(n_compare.saturating_sub(1))
+                            .ok_or_else(|| {
+                                anyhow::anyhow!("requested reference-zero range overflows usize")
+                            })?;
+                        let all_ref_strings =
+                            xc_zeta::zeros::bundled_first_n_strings(reference_last)?;
+                        let ref_strings = &all_ref_strings[reference_first - 1..reference_last];
+                        let cmp_prec = hp_result.precision_bits * 2;
+                        // Enough sig digits to resolve e.g. 999.4 at HP-1000.
+                        let column_digits =
+                            ((precision_digits as f64).log10().ceil() as usize + 2).max(5);
 
-                    println!(
-                        "\n{:>7}  {:>8}  {:>22}  {:>22}  {:>14}  {:>14}  {:>11}",
-                        "zero k",
-                        "CCM root",
-                        "computed eigenvalue",
-                        "Riemann zero t_k",
-                        "abs error",
-                        "matching digits",
-                        "status"
-                    );
-                    println!("{}", "-".repeat(114));
+                        println!(
+                            "\n{:>7}  {:>8}  {:>22}  {:>22}  {:>14}  {:>14}  {:>11}",
+                            "zero k",
+                            "CCM root",
+                            "computed eigenvalue",
+                            "Riemann zero t_k",
+                            "abs error",
+                            "matching digits",
+                            "status"
+                        );
+                        println!("{}", "-".repeat(114));
 
-                    // Seeded refinement preserves its explicitly assigned
-                    // ordinals. Independent discovery may contain additional
-                    // finite-source roots and therefore uses monotone nearest
-                    // matching only for this post-computation comparison table.
-                    let mut next_root_offset = 0usize;
-                    for (reference_offset, ref_str) in ref_strings.iter().enumerate() {
-                        let ref_val =
-                            rug::Float::with_val(cmp_prec, rug::Float::parse(ref_str).unwrap());
-                        use xc_spectral::ccm::hp::EigenvalueResult;
-                        let reference_index = reference_first + reference_offset;
-                        let (root_offset, eig_full, abs_err) = match root_acquisition {
-                            RootAcquisitionMode::Seeded => {
-                                let root_offset = reference_index
+                        // Seeded refinement preserves its explicitly assigned
+                        // ordinals. Independent discovery may contain additional
+                        // finite-source roots and therefore uses monotone nearest
+                        // matching only for this post-computation comparison table.
+                        let mut next_root_offset = 0usize;
+                        for (reference_offset, ref_str) in ref_strings.iter().enumerate() {
+                            let ref_val =
+                                rug::Float::with_val(cmp_prec, rug::Float::parse(ref_str).unwrap());
+                            use xc_spectral::ccm::hp::EigenvalueResult;
+                            let reference_index = reference_first + reference_offset;
+                            let (root_offset, eig_full, abs_err) = match root_acquisition {
+                                RootAcquisitionMode::Seeded => {
+                                    let root_offset = reference_index
                                     .checked_sub(hp_result.first_positive_root_index)
                                     .ok_or_else(|| {
                                         anyhow::anyhow!(
                                             "seeded CCM root window begins after reference ordinal {reference_index}"
                                         )
                                     })?;
-                                let candidate = hp_result
+                                    let candidate = hp_result
                                     .eigenvalues_pos
                                     .get(root_offset)
                                     .ok_or_else(|| {
@@ -502,79 +557,81 @@ fn main() -> Result<()> {
                                             "seeded CCM root window does not contain reference ordinal {reference_index}"
                                         )
                                     })?;
-                                let value = candidate.value().ok_or_else(|| {
+                                    let value = candidate.value().ok_or_else(|| {
                                     anyhow::anyhow!(
                                         "seeded CCM root ordinal {reference_index} failed before comparison"
                                     )
                                 })?;
-                                let mut difference = rug::Float::with_val(cmp_prec, value);
-                                difference -= &ref_val;
-                                (root_offset, candidate, difference.abs())
-                            }
-                            RootAcquisitionMode::Independent => {
-                                let mut best: Option<(usize, &EigenvalueResult, rug::Float)> = None;
-                                for (root_offset, candidate) in hp_result
-                                    .eigenvalues_pos
-                                    .iter()
-                                    .enumerate()
-                                    .skip(next_root_offset)
-                                {
-                                    let Some(value) = candidate.value() else {
-                                        continue;
-                                    };
                                     let mut difference = rug::Float::with_val(cmp_prec, value);
                                     difference -= &ref_val;
-                                    let distance = difference.abs();
-                                    if best
-                                        .as_ref()
-                                        .is_none_or(|(_, _, current)| distance < *current)
-                                    {
-                                        best = Some((root_offset, candidate, distance));
-                                    }
+                                    (root_offset, candidate, difference.abs())
                                 }
-                                let best = best.ok_or_else(|| {
+                                RootAcquisitionMode::Independent => {
+                                    let mut best: Option<(usize, &EigenvalueResult, rug::Float)> =
+                                        None;
+                                    for (root_offset, candidate) in hp_result
+                                        .eigenvalues_pos
+                                        .iter()
+                                        .enumerate()
+                                        .skip(next_root_offset)
+                                    {
+                                        let Some(value) = candidate.value() else {
+                                            continue;
+                                        };
+                                        let mut difference = rug::Float::with_val(cmp_prec, value);
+                                        difference -= &ref_val;
+                                        let distance = difference.abs();
+                                        if best
+                                            .as_ref()
+                                            .is_none_or(|(_, _, current)| distance < *current)
+                                        {
+                                            best = Some((root_offset, candidate, distance));
+                                        }
+                                    }
+                                    let best = best.ok_or_else(|| {
                                     anyhow::anyhow!(
                                         "no independently discovered CCM root remains for reference zero {reference_index}"
                                     )
                                 })?;
-                                next_root_offset = best.0 + 1;
-                                best
-                            }
-                        };
-                        let (result, status) = match eig_full {
-                            EigenvalueResult::Converged(result) => (result, "converged"),
-                            EigenvalueResult::Stagnated(result) => (result, "stagnated"),
-                            EigenvalueResult::Approximate(result) => (result, "approximate"),
-                            EigenvalueResult::Failed { iterations, reason } => anyhow::bail!(
-                                "CCM root {} failed after {} iterations: {}",
+                                    next_root_offset = best.0 + 1;
+                                    best
+                                }
+                            };
+                            let (result, status) = match eig_full {
+                                EigenvalueResult::Converged(result) => (result, "converged"),
+                                EigenvalueResult::Stagnated(result) => (result, "stagnated"),
+                                EigenvalueResult::Approximate(result) => (result, "approximate"),
+                                EigenvalueResult::Failed { iterations, reason } => anyhow::bail!(
+                                    "CCM root {} failed after {} iterations: {}",
+                                    hp_result.first_positive_root_index + root_offset,
+                                    iterations,
+                                    reason
+                                ),
+                            };
+                            let eig_hp = rug::Float::with_val(cmp_prec, &result.value);
+                            let abs_err_str = if abs_err.is_zero() {
+                                "0".to_string()
+                            } else {
+                                xc_numerics::fmt::display_hp(&abs_err, column_digits)
+                            };
+                            let matching = if abs_err.is_zero() {
+                                format!(">={}", cmp_prec / 3)
+                            } else {
+                                let m = xc_numerics::fmt::matching_digits(&eig_hp, &ref_val);
+                                xc_numerics::fmt::display_hp(&m, column_digits)
+                            };
+                            let eig_str = xc_numerics::fmt::display_hp(&eig_hp, display_digits);
+                            println!(
+                                "{:>7}  {:>8}  {:>22}  {:>22}  {:>14}  {:>14}  {:>11}",
+                                reference_first + reference_offset,
                                 hp_result.first_positive_root_index + root_offset,
-                                iterations,
-                                reason
-                            ),
-                        };
-                        let eig_hp = rug::Float::with_val(cmp_prec, &result.value);
-                        let abs_err_str = if abs_err.is_zero() {
-                            "0".to_string()
-                        } else {
-                            xc_numerics::fmt::display_hp(&abs_err, column_digits)
-                        };
-                        let matching = if abs_err.is_zero() {
-                            format!(">={}", cmp_prec / 3)
-                        } else {
-                            let m = xc_numerics::fmt::matching_digits(&eig_hp, &ref_val);
-                            xc_numerics::fmt::display_hp(&m, column_digits)
-                        };
-                        let eig_str = xc_numerics::fmt::display_hp(&eig_hp, display_digits);
-                        println!(
-                            "{:>7}  {:>8}  {:>22}  {:>22}  {:>14}  {:>14}  {:>11}",
-                            reference_first + reference_offset,
-                            hp_result.first_positive_root_index + root_offset,
-                            eig_str,
-                            xc_numerics::fmt::display_hp(&ref_val, display_digits),
-                            abs_err_str,
-                            matching,
-                            status
-                        );
+                                eig_str,
+                                xc_numerics::fmt::display_hp(&ref_val, display_digits),
+                                abs_err_str,
+                                matching,
+                                status
+                            );
+                        }
                     }
 
                     if let (Some(evenness), Some(sectors), Some(sector_eigenpairs)) =
@@ -612,6 +669,9 @@ fn main() -> Result<()> {
                         research_capture,
                         research_sector_eigenpairs,
                         root_acquisition,
+                        root_report,
+                        minimum_match_digits,
+                        reference_zero_limit,
                         root_validation,
                         root_enclosure_digits,
                     );
@@ -804,6 +864,305 @@ fn main() -> Result<()> {
                 }
             }
         }
+    }
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct AlignmentScore {
+    matches: usize,
+    quality: f64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AlignmentStep {
+    Start,
+    SkipRoot,
+    SkipReference,
+    Match,
+}
+
+fn score_is_better(candidate: AlignmentScore, current: AlignmentScore) -> bool {
+    candidate.matches > current.matches
+        || (candidate.matches == current.matches && candidate.quality > current.quality)
+}
+
+/// Find a monotone one-to-one alignment between discovered roots and reference
+/// zeros. A candidate edge exists only when it meets the requested digit
+/// threshold. The primary objective is the number of identified zeros; total
+/// matching digits resolve otherwise equivalent alignments.
+fn align_discovered_roots(
+    matching_digits: &[Vec<Option<f64>>],
+    minimum_match_digits: f64,
+) -> Vec<Option<usize>> {
+    let root_count = matching_digits.len();
+    let reference_count = matching_digits.first().map_or(0, Vec::len);
+    assert!(
+        matching_digits
+            .iter()
+            .all(|row| row.len() == reference_count),
+        "matching matrix must be rectangular"
+    );
+
+    let width = reference_count + 1;
+    let mut scores = vec![AlignmentScore::default(); (root_count + 1) * width];
+    let mut steps = vec![AlignmentStep::Start; (root_count + 1) * width];
+
+    for root in 1..=root_count {
+        steps[root * width] = AlignmentStep::SkipRoot;
+    }
+    for reference in 1..=reference_count {
+        steps[reference] = AlignmentStep::SkipReference;
+    }
+
+    for root in 1..=root_count {
+        for reference in 1..=reference_count {
+            let index = root * width + reference;
+            let skip_root = scores[(root - 1) * width + reference];
+            let skip_reference = scores[root * width + reference - 1];
+            let mut best = skip_root;
+            let mut step = AlignmentStep::SkipRoot;
+            if score_is_better(skip_reference, best) {
+                best = skip_reference;
+                step = AlignmentStep::SkipReference;
+            }
+
+            if let Some(digits) = matching_digits[root - 1][reference - 1] {
+                if digits.is_finite() && digits >= minimum_match_digits {
+                    let previous = scores[(root - 1) * width + reference - 1];
+                    let candidate = AlignmentScore {
+                        matches: previous.matches + 1,
+                        quality: previous.quality + digits,
+                    };
+                    if score_is_better(candidate, best) {
+                        best = candidate;
+                        step = AlignmentStep::Match;
+                    }
+                }
+            }
+            scores[index] = best;
+            steps[index] = step;
+        }
+    }
+
+    let mut assignments = vec![None; root_count];
+    let mut root = root_count;
+    let mut reference = reference_count;
+    while root > 0 || reference > 0 {
+        match steps[root * width + reference] {
+            AlignmentStep::Match => {
+                assignments[root - 1] = Some(reference - 1);
+                root -= 1;
+                reference -= 1;
+            }
+            AlignmentStep::SkipRoot => root -= 1,
+            AlignmentStep::SkipReference => reference -= 1,
+            AlignmentStep::Start => break,
+        }
+    }
+    assignments
+}
+
+#[cfg(feature = "hp")]
+fn root_value_and_status(root: &ccm::hp::EigenvalueResult) -> (Option<&rug::Float>, &'static str) {
+    match root {
+        ccm::hp::EigenvalueResult::Converged(result) => (Some(&result.value), "converged"),
+        ccm::hp::EigenvalueResult::Stagnated(result) => (Some(&result.value), "stagnated"),
+        ccm::hp::EigenvalueResult::Approximate(result) => (Some(&result.value), "approximate"),
+        ccm::hp::EigenvalueResult::Failed { .. } => (None, "failed"),
+    }
+}
+
+#[cfg(feature = "hp")]
+fn comparison_metrics(
+    value: &rug::Float,
+    reference: &rug::Float,
+    precision_bits: u32,
+) -> (rug::Float, f64) {
+    let mut difference = rug::Float::with_val(precision_bits, value);
+    difference -= reference;
+    let absolute_error = difference.abs();
+    let digits = if absolute_error.is_zero() {
+        f64::from(precision_bits) * std::f64::consts::LOG10_2
+    } else {
+        xc_numerics::fmt::matching_digits(value, reference).to_f64()
+    };
+    (absolute_error, digits)
+}
+
+#[cfg(feature = "hp")]
+fn print_discovery_ordering_report(
+    result: &ccm::hp::HighPrecResult,
+    requested_roots: usize,
+    reference_zero_limit: usize,
+    minimum_match_digits: u32,
+    precision_digits: u32,
+    display_digits: usize,
+) -> Result<()> {
+    let roots = result
+        .eigenvalues_pos
+        .iter()
+        .take(requested_roots)
+        .collect::<Vec<_>>();
+    if roots.len() != requested_roots {
+        anyhow::bail!(
+            "discovery-ordering report requested {requested_roots} roots but the CCM run returned {}",
+            roots.len()
+        );
+    }
+
+    let reference_strings = xc_zeta::zeros::bundled_first_n_strings(reference_zero_limit)?;
+    let comparison_precision = result.precision_bits.saturating_mul(2);
+    let references = reference_strings
+        .iter()
+        .map(|text| {
+            rug::Float::parse(text)
+                .map(|parsed| rug::Float::with_val(comparison_precision, parsed))
+                .map_err(|error| {
+                    anyhow::anyhow!("failed to parse bundled reference zero {text:?}: {error}")
+                })
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let mut digit_matrix = vec![vec![None; references.len()]; roots.len()];
+    for (root_offset, root) in roots.iter().enumerate() {
+        let (Some(value), _) = root_value_and_status(root) else {
+            continue;
+        };
+        let value = rug::Float::with_val(comparison_precision, value);
+        for (reference_offset, reference) in references.iter().enumerate() {
+            let (_, digits) = comparison_metrics(&value, reference, comparison_precision);
+            digit_matrix[root_offset][reference_offset] = Some(digits);
+        }
+    }
+    let assignments = align_discovered_roots(&digit_matrix, f64::from(minimum_match_digits));
+    let column_digits = ((precision_digits as f64).log10().ceil() as usize + 2).max(5);
+
+    println!(
+        "\nDiscovery-ordering classification: monotone one-to-one alignment against the first {} reference zeros; match threshold >= {} decimal digits",
+        references.len(),
+        minimum_match_digits
+    );
+    println!(
+        "{:>8}  {:>22}  {:>5}  {:>9}  {:>22}  {:>14}  {:>14}  {:>12}  {:>11}",
+        "CCM root",
+        "discovered value",
+        "match",
+        "candidate k",
+        "reference zero",
+        "abs error",
+        "matching digits",
+        "displacement",
+        "status"
+    );
+    println!("{}", "-".repeat(142));
+
+    let mut matched = 0usize;
+    let mut correct_position = 0usize;
+    let mut displacements = Vec::new();
+    let mut first_zero_root = None;
+
+    for (root_offset, root) in roots.iter().enumerate() {
+        let root_index = result.first_positive_root_index + root_offset;
+        let (value, status) = root_value_and_status(root);
+        let Some(value) = value else {
+            println!(
+                "{:>8}  {:>22}  {:>5}  {:>9}  {:>22}  {:>14}  {:>14}  {:>12}  {:>11}",
+                root_index, "--", "NO", "--", "--", "--", "--", "--", status
+            );
+            continue;
+        };
+        let value = rug::Float::with_val(comparison_precision, value);
+
+        let accepted_reference = assignments[root_offset];
+        let displayed_reference = accepted_reference.or_else(|| {
+            digit_matrix[root_offset]
+                .iter()
+                .enumerate()
+                .filter_map(|(index, digits)| digits.map(|digits| (index, digits)))
+                .max_by(|(_, left), (_, right)| {
+                    left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .map(|(index, _)| index)
+        });
+        let Some(reference_offset) = displayed_reference else {
+            anyhow::bail!("discovery-ordering report has no reference zeros");
+        };
+        let reference_index = reference_offset + 1;
+        let reference = &references[reference_offset];
+        let (absolute_error, digits) = comparison_metrics(&value, reference, comparison_precision);
+        let accepted = accepted_reference.is_some();
+        let displacement = if accepted {
+            let displacement = isize::try_from(root_index)?
+                .checked_sub(isize::try_from(reference_index)?)
+                .ok_or_else(|| anyhow::anyhow!("root displacement overflow"))?;
+            matched += 1;
+            if displacement == 0 {
+                correct_position += 1;
+            }
+            if reference_index == 1 {
+                first_zero_root = Some(root_index);
+            }
+            displacements.push(displacement);
+            displacement.to_string()
+        } else {
+            "--".to_owned()
+        };
+        let absolute_error = if absolute_error.is_zero() {
+            "0".to_owned()
+        } else {
+            xc_numerics::fmt::display_hp(&absolute_error, column_digits)
+        };
+        let matching_digits = if digits.is_finite() {
+            format!("{digits:.6}")
+        } else {
+            format!(">={}", comparison_precision / 3)
+        };
+        println!(
+            "{:>8}  {:>22}  {:>5}  {:>9}  {:>22}  {:>14}  {:>14}  {:>12}  {:>11}",
+            root_index,
+            xc_numerics::fmt::display_hp(&value, display_digits),
+            if accepted { "YES" } else { "NO" },
+            reference_index,
+            xc_numerics::fmt::display_hp(reference, display_digits),
+            absolute_error,
+            matching_digits,
+            displacement,
+            status
+        );
+    }
+
+    let percentage = 100.0 * matched as f64 / requested_roots as f64;
+    println!("\n=== Root-ordering summary ===");
+    println!("  identified reference zeros: {matched}/{requested_roots} ({percentage:.2}%)");
+    println!(
+        "  unmatched finite-source roots: {}/{} ({:.2}%)",
+        requested_roots - matched,
+        requested_roots,
+        100.0 - percentage
+    );
+    println!(
+        "  correct ordinal position: {correct_position}/{matched}; displaced matches: {}",
+        matched.saturating_sub(correct_position)
+    );
+    if let Some(root_index) = first_zero_root {
+        println!(
+            "  first reference zero occurs at CCM root {root_index} (displacement {:+})",
+            isize::try_from(root_index)? - 1
+        );
+    } else {
+        println!("  first reference zero was not identified in the requested CCM root window");
+    }
+    if let (Some(minimum), Some(maximum)) = (displacements.iter().min(), displacements.iter().max())
+    {
+        let max_absolute = displacements
+            .iter()
+            .map(|value| value.unsigned_abs())
+            .max()
+            .unwrap_or(0);
+        println!(
+            "  matched-root displacement range: {minimum:+}..{maximum:+}; maximum absolute displacement: {max_absolute}"
+        );
     }
     Ok(())
 }
@@ -1139,6 +1498,61 @@ mod cli_tests {
             panic!("run command was not parsed");
         };
         assert_eq!(root_acquisition, RootAcquisitionMode::Independent);
+    }
+
+    #[test]
+    fn discovery_ordering_flags_parse() {
+        let cli = Cli::try_parse_from([
+            "ccm-reproduction",
+            "run",
+            "--root-acquisition",
+            "independent",
+            "--root-report",
+            "discovery-ordering",
+            "--minimum-match-digits",
+            "12",
+            "--reference-zero-limit",
+            "500",
+        ])
+        .unwrap();
+        let Command::Run {
+            root_report,
+            minimum_match_digits,
+            reference_zero_limit,
+            ..
+        } = cli.command
+        else {
+            panic!("run command was not parsed");
+        };
+        assert_eq!(root_report, RootReport::DiscoveryOrdering);
+        assert_eq!(minimum_match_digits, 12);
+        assert_eq!(reference_zero_limit, 500);
+    }
+
+    #[test]
+    fn discovery_alignment_preserves_root_order_and_spurious_entries() {
+        let digits = vec![
+            vec![Some(1.0), Some(0.5), Some(0.1)],
+            vec![Some(80.0), Some(2.0), Some(1.0)],
+            vec![Some(3.0), Some(75.0), Some(2.0)],
+            vec![Some(1.0), Some(4.0), Some(70.0)],
+        ];
+        assert_eq!(
+            align_discovered_roots(&digits, 10.0),
+            vec![None, Some(0), Some(1), Some(2)]
+        );
+    }
+
+    #[test]
+    fn discovery_alignment_handles_a_missing_reference_zero() {
+        let digits = vec![
+            vec![Some(60.0), Some(1.0), Some(0.5)],
+            vec![Some(0.5), Some(2.0), Some(55.0)],
+        ];
+        assert_eq!(
+            align_discovered_roots(&digits, 10.0),
+            vec![Some(0), Some(2)]
+        );
     }
 
     #[test]

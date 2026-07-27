@@ -250,6 +250,18 @@ bash scripts/claim7_convergence_n.sh         # N-sweep (§4.3)
 bash scripts/claim8_natural_eigenvector.sh   # forced-vs-natural comparison
 ```
 
+Claim 9 is a research prototype for measuring how \(N\) affects independent
+CCM root ordering at \(\lambda^2=250\), HP-1500. Each variant preserves the
+first 200 discovered roots in their CCM order, identifies reference-zero
+matches, and reports the match rate and ordinal displacements:
+
+```bash
+bash scripts/claim9a_root_ordering_n1500.sh
+bash scripts/claim9b_root_ordering_n2000.sh
+bash scripts/claim9c_root_ordering_n2500.sh
+bash scripts/claim9d_root_ordering_n3000.sh
+```
+
 Example: run Claim 1 with the natural eigenvector:
 ```bash
 FORCE_EVEN=false bash scripts/claim1a_lambda13.sh
