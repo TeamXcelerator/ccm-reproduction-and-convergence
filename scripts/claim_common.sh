@@ -11,6 +11,8 @@ RESEARCH_SECTOR_EIGENPAIRS=${RESEARCH_SECTOR_EIGENPAIRS:-8}
 ROOT_ACQUISITION_MODE=${ROOT_ACQUISITION_MODE:-seeded}
 ROOT_VALIDATION_LEVEL=${ROOT_VALIDATION_LEVEL:-off}
 ROOT_ENCLOSURE_DIGITS=${ROOT_ENCLOSURE_DIGITS:-}
+INCLUDE_NEGATIVE_ROOTS=${INCLUDE_NEGATIVE_ROOTS:-false}
+ALLOW_ROOT_OVERSUBSCRIPTION=${ALLOW_ROOT_OVERSUBSCRIPTION:-false}
 while (($# > 0)); do
   case "$1" in
     --research-capture)
@@ -53,12 +55,21 @@ while (($# > 0)); do
       RESEARCH_SECTOR_EIGENPAIRS=$2
       shift 2
       ;;
+    --include-negative-roots)
+      INCLUDE_NEGATIVE_ROOTS=true
+      shift
+      ;;
+    --allow-root-oversubscription)
+      ALLOW_ROOT_OVERSUBSCRIPTION=true
+      shift
+      ;;
     --help|-h)
-      echo "Usage: bash ${BASH_SOURCE[1]} [--research-capture LEVEL] [--research-sector-eigenpairs COUNT] [--root-acquisition MODE] [--root-validation LEVEL] [--root-enclosure-digits DIGITS]"
+      echo "Usage: bash ${BASH_SOURCE[1]} [--research-capture LEVEL] [--research-sector-eigenpairs COUNT] [--root-acquisition MODE] [--root-validation LEVEL] [--root-enclosure-digits DIGITS] [--include-negative-roots] [--allow-root-oversubscription]"
       echo "  LEVEL: claim, research (default), gap, or maximum"
       echo "  ROOT ACQUISITION: seeded (default for every claim script) or independent"
       echo "  ROOT VALIDATION: off (default) or certified"
       echo "  ROOT ENCLOSURE: defaults to the claim's display digits; override only when needed"
+      echo "  ADVANCED ROOTS: signed and finite-shortfall controls require independent HP discovery"
       exit 0
       ;;
     *)
@@ -133,9 +144,27 @@ case "$ROOT_ACQUISITION_MODE" in
     ;;
 esac
 
+ADVANCED_ROOT_ARGS=()
+if [[ "$INCLUDE_NEGATIVE_ROOTS" == "true" ]]; then
+  ADVANCED_ROOT_ARGS+=(--include-negative-roots)
+elif [[ "$INCLUDE_NEGATIVE_ROOTS" != "false" ]]; then
+  echo "INCLUDE_NEGATIVE_ROOTS must be true or false" >&2
+  exit 1
+fi
+if [[ "$ALLOW_ROOT_OVERSUBSCRIPTION" == "true" ]]; then
+  ADVANCED_ROOT_ARGS+=(--allow-root-oversubscription)
+elif [[ "$ALLOW_ROOT_OVERSUBSCRIPTION" != "false" ]]; then
+  echo "ALLOW_ROOT_OVERSUBSCRIPTION must be true or false" >&2
+  exit 1
+fi
+if ((${#ADVANCED_ROOT_ARGS[@]} > 0)) && [[ "$ROOT_ACQUISITION_MODE" != "independent" ]]; then
+  echo "Advanced root controls require ROOT_ACQUISITION_MODE=independent" >&2
+  exit 1
+fi
+
 run_research_claim() {
   if [[ "${1:-}" == "run" ]]; then
-    "$BIN" "$@" "${RESEARCH_CAPTURE_ARGS[@]}" "${ROOT_ACQUISITION_ARGS[@]}" "${ROOT_VALIDATION_ARGS[@]}"
+    "$BIN" "$@" "${RESEARCH_CAPTURE_ARGS[@]}" "${ROOT_ACQUISITION_ARGS[@]}" "${ROOT_VALIDATION_ARGS[@]}" "${ADVANCED_ROOT_ARGS[@]}"
   elif [[ "${1:-}" == "check-evenness" ]]; then
     "$BIN" "$@" "${RESEARCH_CAPTURE_ARGS[@]}" "${ROOT_ACQUISITION_ARGS[@]}"
   else

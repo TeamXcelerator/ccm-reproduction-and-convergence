@@ -12,7 +12,7 @@
 **Contact:** randrewsmath@gmail.com  
 **Date:** June 2026
 
-**Release:** v2.2 (Xcelerator Toolkit v0.13.2)
+**Release:** v2.3 (Xcelerator Toolkit v0.13.3)
 
 ## Headline Results
 
@@ -256,13 +256,27 @@ first 200 discovered roots in their CCM order, identifies reference-zero
 matches, and reports the match rate and ordinal displacements:
 
 ```bash
-bash scripts/claim9_root_ordering.sh 250     # arbitrary positive N
+bash scripts/claim9_root_ordering.sh 250                # one positive N
+bash scripts/claim9_root_ordering.sh 100 250 500        # whitespace-separated sweep
+bash scripts/claim9_root_ordering.sh 100,250,500        # comma-separated sweep
 bash scripts/claim9a_root_ordering_n500.sh   # exploratory lower-N comparison
 bash scripts/claim9a_root_ordering_n1000.sh  # exploratory lower-N comparison
 bash scripts/claim9a_root_ordering_n1500.sh
 bash scripts/claim9b_root_ordering_n2000.sh
 bash scripts/claim9c_root_ordering_n2500.sh
 bash scripts/claim9d_root_ordering_n3000.sh
+```
+
+Every sweep configuration prints its own root table and summary. If a sweep
+includes \(N<200\), or should retain a finite-source shortfall instead of
+failing, add `--allow-root-oversubscription`; a finite window containing no
+roots is reported as a valid empty result. Add
+`--include-negative-roots` as well to classify a signed finite window:
+
+```bash
+bash scripts/claim9_root_ordering.sh 100 250 500 \
+  --research-capture research \
+  --allow-root-oversubscription
 ```
 
 Example: run Claim 1 with the natural eigenvector:
@@ -278,7 +292,7 @@ servers.
 
 ## Cache infrastructure
 
-Xcelerator Toolkit v0.13.2 manages reusable quadrature, CCM component,
+Xcelerator Toolkit v0.13.3 manages reusable quadrature, CCM component,
 matrix, eigenpair, and evidence artifacts in a per-user cache. Compatible
 public artifacts are resolved and validated automatically by default; a miss
 is computed and stored locally. Normal reproduction requires no credentials
@@ -288,7 +302,7 @@ Set `XC_CACHE_REMOTE=none` to prohibit remote reads. `XC_CACHE_ROOT` may point
 to an isolated cache directory for a cold run. Publication remains disabled
 unless an author explicitly selects an author profile and publication policy.
 Private-shard author publication uses generation-fenced leases and atomic
-content-plus-coordination updates supplied by Toolkit v0.13.2, preventing
+content-plus-coordination updates supplied by Toolkit v0.13.3, preventing
 concurrent publishers from advancing the same shard from stale state.
 
 ## Architecture
@@ -296,7 +310,7 @@ concurrent publishers from advancing the same shard from stale state.
 This repository contains the paper-specific CLI harness and
 reproduction scripts. The core mathematical library is the
 [Xcelerator Toolkit](https://github.com/TeamXcelerator/xcelerator-toolkit),
-pulled automatically from the immutable `v0.13.2` release tag by Cargo.
+pulled automatically from the immutable `v0.13.3` release tag by Cargo.
 `Cargo.lock` also pins the exact resolved toolkit commit so the claim scripts,
 configurations, and output interpretation remain reproducible. No manual
 cloning or toolkit configuration is required.

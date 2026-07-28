@@ -1,6 +1,6 @@
 [package]
 name = "ccm-reproduction"
-version = "2.2.0"
+version = "2.3.0"
 edition = "2021"
 description = "Independent reproduction and convergence analysis of the CCM Zeta Spectral Triple (arxiv 2511.22755)"
 authors = ["Ronnie Andrews, Jr. <5178942+TeamXceleratorDev@users.noreply.github.com>"]
@@ -23,11 +23,11 @@ clap = { version = "4.5", features = ["derive"] }
 rayon = "1.10"
 rug = { version = "1.30", optional = true, default-features = false, features = ["float", "integer"] }
 
-# Xcelerator Toolkit v0.13.2. The immutable release tag and Cargo.lock bind
+# Xcelerator Toolkit v0.13.3. The immutable release tag and Cargo.lock bind
 # every claim run to the qualified numerical and artifact-format milestone.
-xc-spectral = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.13.2" }
-xc-zeta     = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.13.2" }
-xc-numerics = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.13.2" }
+xc-spectral = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.13.3" }
+xc-zeta     = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.13.3" }
+xc-numerics = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.13.3" }
 
 [profile.release]
 opt-level = 3

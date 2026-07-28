@@ -3,15 +3,26 @@
 set -euo pipefail
 
 if (($# < 1)); then
-  echo "Usage: bash ${BASH_SOURCE[0]} N [claim options]" >&2
-  echo "Example: bash ${BASH_SOURCE[0]} 250 --research-capture research" >&2
+  echo "Usage: bash ${BASH_SOURCE[0]} N [N ...] [claim options]" >&2
+  echo "       bash ${BASH_SOURCE[0]} N[,N...] [claim options]" >&2
+  echo "Example: bash ${BASH_SOURCE[0]} 100 250 500 --research-capture research" >&2
   exit 2
 fi
 
-N_MODES=$1
-shift
-if [[ ! "$N_MODES" =~ ^[1-9][0-9]*$ ]]; then
-  echo "Claim 9 N must be a positive integer, received: $N_MODES" >&2
+N_VALUES=()
+while (($# > 0)) && [[ "$1" != --* ]]; do
+  IFS=',' read -r -a TOKEN_VALUES <<< "$1"
+  for N_MODES in "${TOKEN_VALUES[@]}"; do
+    if [[ ! "$N_MODES" =~ ^[1-9][0-9]*$ ]]; then
+      echo "Claim 9 N must be a positive integer, received: $N_MODES" >&2
+      exit 2
+    fi
+    N_VALUES+=("$N_MODES")
+  done
+  shift
+done
+if ((${#N_VALUES[@]} == 0)); then
+  echo "Claim 9 requires at least one positive N before claim options" >&2
   exit 2
 fi
 
@@ -23,13 +34,22 @@ if [[ "$ROOT_ACQUISITION_MODE" != "independent" ]]; then
   exit 2
 fi
 
-echo "=== Claim 9 exploratory: independent root ordering at lambda^2=250, N=$N_MODES, HP-1500 ==="
-run_research_claim run \
-  --lambda-sq 250 \
-  --n-modes "$N_MODES" \
-  --precision-digits 1500 \
-  --display-digits "${DISPLAY_DIGITS:-50}" \
-  --top 200 \
-  --root-report discovery-ordering \
-  --minimum-match-digits "${MINIMUM_MATCH_DIGITS:-10}" \
-  --reference-zero-limit "${REFERENCE_ZERO_LIMIT:-400}"
+echo "=== Claim 9 root-ordering sweep: lambda^2=250, HP-1500 ==="
+echo "N values: ${N_VALUES[*]}"
+
+for INDEX in "${!N_VALUES[@]}"; do
+  N_MODES=${N_VALUES[$INDEX]}
+  echo
+  echo "================================================================"
+  echo "  Claim 9 configuration $((INDEX + 1))/${#N_VALUES[@]}: N=$N_MODES"
+  echo "================================================================"
+  run_research_claim run \
+    --lambda-sq 250 \
+    --n-modes "$N_MODES" \
+    --precision-digits 1500 \
+    --display-digits "${DISPLAY_DIGITS:-50}" \
+    --top 200 \
+    --root-report discovery-ordering \
+    --minimum-match-digits "${MINIMUM_MATCH_DIGITS:-10}" \
+    --reference-zero-limit "${REFERENCE_ZERO_LIMIT:-400}"
+done

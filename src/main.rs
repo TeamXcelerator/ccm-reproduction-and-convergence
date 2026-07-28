@@ -86,12 +86,13 @@ enum Command {
         /// Mode cutoff N. Matrix size is 2N+1.
         #[arg(long, default_value_t = 120)]
         n_modes: usize,
-        /// How many positive eigenvalues to print.
+        /// How many CCM roots to request and print.
         #[arg(long, default_value_t = 20)]
         top: usize,
         /// One-based index of the first positive CCM root to acquire.
         /// The default reproduces the ordinary first-K prefix; values above
-        /// one target a later ordinal window under the selected acquisition policy.
+        /// one target a later ordinal window under the selected acquisition
+        /// policy. Advanced signed discovery requires this to remain one.
         #[arg(long, default_value_t = 1)]
         first_root_index: usize,
         /// Working precision in decimal digits (requires --features hp).
@@ -136,6 +137,14 @@ enum Command {
         /// sequence alignment.
         #[arg(long, default_value_t = 400)]
         reference_zero_limit: usize,
+        /// Advanced independent-discovery mode: scan the complete signed
+        /// finite source window [-Tmax, Tmax] instead of positive roots only.
+        #[arg(long, default_value_t = false)]
+        include_negative_roots: bool,
+        /// Advanced independent-discovery mode: permit top > N and return all
+        /// roots actually found when the finite source cannot fill the target.
+        #[arg(long, default_value_t = false)]
+        allow_root_oversubscription: bool,
         /// Optional root-only certification. This does not interval-certify Tau or the eigenstate.
         #[arg(long, value_enum, default_value_t = RootValidation::Off)]
         root_validation: RootValidation,
@@ -227,6 +236,8 @@ fn main() -> Result<()> {
             root_report,
             minimum_match_digits,
             reference_zero_limit,
+            include_negative_roots,
+            allow_root_oversubscription,
             root_validation,
             root_enclosure_digits,
         } => {
@@ -272,6 +283,29 @@ fn main() -> Result<()> {
                     anyhow::bail!("reference_zero_limit must be positive");
                 }
             }
+            if include_negative_roots || allow_root_oversubscription {
+                if root_acquisition != RootAcquisitionMode::Independent {
+                    anyhow::bail!(
+                        "advanced signed or oversubscribed roots require --root-acquisition independent"
+                    );
+                }
+                if f64_only {
+                    anyhow::bail!("advanced signed or oversubscribed roots require the HP tier");
+                }
+                if first_root_index != 1 {
+                    anyhow::bail!(
+                        "advanced signed or oversubscribed discovery currently requires --first-root-index 1"
+                    );
+                }
+                if root_validation != RootValidation::Off {
+                    anyhow::bail!(
+                        "advanced signed or incomplete root windows cannot be root-certified"
+                    );
+                }
+            }
+            if include_negative_roots && root_report != RootReport::DiscoveryOrdering {
+                anyhow::bail!("--include-negative-roots requires --root-report discovery-ordering");
+            }
             if root_validation == RootValidation::Off && root_enclosure_digits.is_some() {
                 anyhow::bail!("--root-enclosure-digits requires --root-validation certified");
             }
@@ -309,11 +343,19 @@ fn main() -> Result<()> {
             } else {
                 #[cfg(feature = "hp")]
                 {
-                    if top > n_modes {
+                    if top > n_modes && !allow_root_oversubscription {
                         anyhow::bail!("requested root count cannot exceed N");
                     }
-                    let (target, requested_last_root_index) =
-                        explicit_ordinal_root_target(first_root_index, top, n_modes)?;
+                    let (target, requested_last_root_index) = explicit_ordinal_root_target(
+                        first_root_index,
+                        top,
+                        n_modes,
+                        allow_root_oversubscription,
+                    )?;
+                    let discovery_options = ccm::hp::IndependentRootDiscoveryOptions::advanced(
+                        include_negative_roots,
+                        allow_root_oversubscription,
+                    );
                     println!("  precision: {} decimal digits", precision_digits);
                     let mut cfg = ccm::hp::HighPrecConfig::for_decimal_digits(precision_digits);
                     cfg.n_eigenvalues = top;
@@ -355,6 +397,16 @@ fn main() -> Result<()> {
                             "  root acquisition: independent CCM discovery (indices {}..={})",
                             first_root_index, requested_last_root_index
                         );
+                        if include_negative_roots {
+                            println!(
+                                "  root domain: signed finite window [-Tmax, Tmax] (advanced)"
+                            );
+                        }
+                        if allow_root_oversubscription {
+                            println!(
+                                "  root count policy: return available finite roots on shortfall (advanced)"
+                            );
+                        }
                         None
                     };
                     let run_started = std::time::Instant::now();
@@ -414,12 +466,14 @@ fn main() -> Result<()> {
                     let (hp_result, captured_evenness, captured_sectors, root_certificate) =
                         match root_acquisition {
                             RootAcquisitionMode::Independent if capture_requested => {
-                                let captured = ccm::hp::run_independent_with_research_capture(
-                                    &params,
-                                    &cfg,
-                                    &target,
-                                    capture_options,
-                                )?;
+                                let captured =
+                                    ccm::hp::run_independent_with_options_and_research_capture(
+                                        &params,
+                                        &cfg,
+                                        &target,
+                                        discovery_options,
+                                        capture_options,
+                                    )?;
                                 (
                                     captured.primary,
                                     captured.evenness,
@@ -428,7 +482,12 @@ fn main() -> Result<()> {
                                 )
                             }
                             RootAcquisitionMode::Independent => (
-                                ccm::hp::run_independent(&params, &cfg, &target)?,
+                                ccm::hp::run_independent_with_options(
+                                    &params,
+                                    &cfg,
+                                    &target,
+                                    discovery_options,
+                                )?,
                                 None,
                                 None,
                                 None,
@@ -489,17 +548,33 @@ fn main() -> Result<()> {
                         xc_numerics::fmt::display_hp(&hp_result.weil_min_eigenvalue, 6)
                     );
 
-                    if hp_result.eigenvalues_pos.is_empty() {
+                    if hp_result.eigenvalues_pos.is_empty() && !allow_root_oversubscription {
                         anyhow::bail!("CCM root acquisition returned no roots");
+                    }
+                    if include_negative_roots || allow_root_oversubscription {
+                        println!(
+                            "  advanced discovery result: requested {}, returned {}, domain={}",
+                            top,
+                            hp_result.eigenvalues_pos.len(),
+                            if include_negative_roots {
+                                "signed"
+                            } else {
+                                "positive"
+                            }
+                        );
                     }
                     if root_report == RootReport::DiscoveryOrdering {
                         print_discovery_ordering_report(
                             &hp_result,
-                            top,
-                            reference_zero_limit,
-                            minimum_match_digits,
-                            precision_digits,
-                            display_digits,
+                            &DiscoveryOrderingReportOptions {
+                                requested_roots: top,
+                                reference_zero_limit,
+                                minimum_match_digits,
+                                precision_digits,
+                                display_digits,
+                                allow_incomplete: allow_root_oversubscription,
+                                signed_domain: include_negative_roots,
+                            },
                         )?;
                     } else {
                         // HP-native reference-ordinal eigenvalue table.
@@ -911,12 +986,14 @@ fn align_discovered_roots(
     for root in 1..=root_count {
         steps[root * width] = AlignmentStep::SkipRoot;
     }
-    for reference in 1..=reference_count {
-        steps[reference] = AlignmentStep::SkipReference;
+    for step in steps.iter_mut().take(width).skip(1) {
+        *step = AlignmentStep::SkipReference;
     }
 
-    for root in 1..=root_count {
-        for reference in 1..=reference_count {
+    for (root_offset, digit_row) in matching_digits.iter().enumerate() {
+        let root = root_offset + 1;
+        for (reference_offset, digits) in digit_row.iter().enumerate() {
+            let reference = reference_offset + 1;
             let index = root * width + reference;
             let skip_root = scores[(root - 1) * width + reference];
             let skip_reference = scores[root * width + reference - 1];
@@ -927,12 +1004,12 @@ fn align_discovered_roots(
                 step = AlignmentStep::SkipReference;
             }
 
-            if let Some(digits) = matching_digits[root - 1][reference - 1] {
-                if digits.is_finite() && digits >= minimum_match_digits {
+            if let Some(digits) = digits {
+                if digits.is_finite() && *digits >= minimum_match_digits {
                     let previous = scores[(root - 1) * width + reference - 1];
                     let candidate = AlignmentScore {
                         matches: previous.matches + 1,
-                        quality: previous.quality + digits,
+                        quality: previous.quality + *digits,
                     };
                     if score_is_better(candidate, best) {
                         best = candidate;
@@ -991,24 +1068,61 @@ fn comparison_metrics(
 }
 
 #[cfg(feature = "hp")]
-fn print_discovery_ordering_report(
-    result: &ccm::hp::HighPrecResult,
+struct DiscoveryOrderingReportOptions {
     requested_roots: usize,
     reference_zero_limit: usize,
     minimum_match_digits: u32,
     precision_digits: u32,
     display_digits: usize,
+    allow_incomplete: bool,
+    signed_domain: bool,
+}
+
+#[cfg(feature = "hp")]
+fn print_discovery_ordering_report(
+    result: &ccm::hp::HighPrecResult,
+    options: &DiscoveryOrderingReportOptions,
 ) -> Result<()> {
+    let DiscoveryOrderingReportOptions {
+        requested_roots,
+        reference_zero_limit,
+        minimum_match_digits,
+        precision_digits,
+        display_digits,
+        allow_incomplete,
+        signed_domain,
+    } = *options;
     let roots = result
         .eigenvalues_pos
         .iter()
         .take(requested_roots)
         .collect::<Vec<_>>();
-    if roots.len() != requested_roots {
+    if roots.len() != requested_roots && !allow_incomplete {
         anyhow::bail!(
             "discovery-ordering report requested {requested_roots} roots but the CCM run returned {}",
             roots.len()
         );
+    }
+    if roots.is_empty() && !allow_incomplete {
+        anyhow::bail!("discovery-ordering report received no finite-source roots");
+    }
+    if roots.len() < requested_roots {
+        println!(
+            "  finite discovery shortfall: requested {requested_roots}, reporting all {} roots returned",
+            roots.len()
+        );
+    }
+    if roots.is_empty() {
+        println!(
+            "\nDiscovery-ordering classification: no finite-source roots were returned for comparison"
+        );
+        println!("\n=== Root-ordering summary ===");
+        println!("  requested finite roots: {requested_roots}; returned: 0");
+        println!("  identified reference zeros: 0/0 (not applicable)");
+        println!("  unmatched finite-source roots: 0/0 (not applicable)");
+        println!("  correct ordinal position: 0/0; displaced matches: 0");
+        println!("  first reference zero was not present in the finite CCM root window");
+        return Ok(());
     }
 
     let reference_strings = xc_zeta::zeros::bundled_first_n_strings(reference_zero_limit)?;
@@ -1061,9 +1175,29 @@ fn print_discovery_ordering_report(
     let mut correct_position = 0usize;
     let mut displacements = Vec::new();
     let mut first_zero_root = None;
+    let negative_roots = if signed_domain {
+        roots
+            .iter()
+            .filter(|root| {
+                root_value_and_status(root)
+                    .0
+                    .is_some_and(|value| value < &0)
+            })
+            .count()
+    } else {
+        0
+    };
 
     for (root_offset, root) in roots.iter().enumerate() {
-        let root_index = result.first_positive_root_index + root_offset;
+        let root_index = if signed_domain {
+            if root_offset < negative_roots {
+                isize::try_from(root_offset)? - isize::try_from(negative_roots)?
+            } else {
+                isize::try_from(root_offset - negative_roots + 1)?
+            }
+        } else {
+            isize::try_from(result.first_positive_root_index + root_offset)?
+        };
         let (value, status) = root_value_and_status(root);
         let Some(value) = value else {
             println!(
@@ -1093,7 +1227,7 @@ fn print_discovery_ordering_report(
         let (absolute_error, digits) = comparison_metrics(&value, reference, comparison_precision);
         let accepted = accepted_reference.is_some();
         let displacement = if accepted {
-            let displacement = isize::try_from(root_index)?
+            let displacement = root_index
                 .checked_sub(isize::try_from(reference_index)?)
                 .ok_or_else(|| anyhow::anyhow!("root displacement overflow"))?;
             matched += 1;
@@ -1132,13 +1266,15 @@ fn print_discovery_ordering_report(
         );
     }
 
-    let percentage = 100.0 * matched as f64 / requested_roots as f64;
+    let returned_roots = roots.len();
+    let percentage = 100.0 * matched as f64 / returned_roots as f64;
     println!("\n=== Root-ordering summary ===");
-    println!("  identified reference zeros: {matched}/{requested_roots} ({percentage:.2}%)");
+    println!("  requested finite roots: {requested_roots}; returned: {returned_roots}");
+    println!("  identified reference zeros: {matched}/{returned_roots} ({percentage:.2}%)");
     println!(
         "  unmatched finite-source roots: {}/{} ({:.2}%)",
-        requested_roots - matched,
-        requested_roots,
+        returned_roots - matched,
+        returned_roots,
         100.0 - percentage
     );
     println!(
@@ -1148,7 +1284,7 @@ fn print_discovery_ordering_report(
     if let Some(root_index) = first_zero_root {
         println!(
             "  first reference zero occurs at CCM root {root_index} (displacement {:+})",
-            isize::try_from(root_index)? - 1
+            root_index - 1
         );
     } else {
         println!("  first reference zero was not identified in the requested CCM root window");
@@ -1189,6 +1325,7 @@ fn explicit_ordinal_root_target(
     first_root_index: usize,
     root_count: usize,
     n_modes: usize,
+    allow_oversubscription: bool,
 ) -> Result<(ccm::window::ZeroTarget, usize)> {
     if first_root_index == 0 || root_count == 0 {
         anyhow::bail!("CCM ordinal root targets require positive indices and counts");
@@ -1196,7 +1333,7 @@ fn explicit_ordinal_root_target(
     let last = first_root_index
         .checked_add(root_count - 1)
         .ok_or_else(|| anyhow::anyhow!("requested root index range overflows usize"))?;
-    if last > n_modes {
+    if last > n_modes && !allow_oversubscription {
         anyhow::bail!("requested root window exceeds the finite CCM reach N");
     }
     let target = if first_root_index == 1 {
@@ -1513,12 +1650,16 @@ mod cli_tests {
             "12",
             "--reference-zero-limit",
             "500",
+            "--include-negative-roots",
+            "--allow-root-oversubscription",
         ])
         .unwrap();
         let Command::Run {
             root_report,
             minimum_match_digits,
             reference_zero_limit,
+            include_negative_roots,
+            allow_root_oversubscription,
             ..
         } = cli.command
         else {
@@ -1527,6 +1668,8 @@ mod cli_tests {
         assert_eq!(root_report, RootReport::DiscoveryOrdering);
         assert_eq!(minimum_match_digits, 12);
         assert_eq!(reference_zero_limit, 500);
+        assert!(include_negative_roots);
+        assert!(allow_root_oversubscription);
     }
 
     #[test]
@@ -1566,14 +1709,14 @@ mod cli_tests {
 
     #[test]
     fn claim_root_targets_are_bounded_explicit_ordinals() {
-        let (prefix, last) = explicit_ordinal_root_target(1, 25, 120).unwrap();
+        let (prefix, last) = explicit_ordinal_root_target(1, 25, 120, false).unwrap();
         assert!(matches!(
             prefix,
             ccm::window::ZeroTarget::FirstK { count: 25 }
         ));
         assert_eq!(last, 25);
 
-        let (later, last) = explicit_ordinal_root_target(51, 25, 120).unwrap();
+        let (later, last) = explicit_ordinal_root_target(51, 25, 120, false).unwrap();
         assert!(matches!(
             later,
             ccm::window::ZeroTarget::IndexRange {
@@ -1582,7 +1725,13 @@ mod cli_tests {
             }
         ));
         assert_eq!(last, 75);
-        assert!(explicit_ordinal_root_target(101, 25, 120).is_err());
+        assert!(explicit_ordinal_root_target(101, 25, 120, false).is_err());
+        let (advanced, last) = explicit_ordinal_root_target(1, 200, 100, true).unwrap();
+        assert!(matches!(
+            advanced,
+            ccm::window::ZeroTarget::FirstK { count: 200 }
+        ));
+        assert_eq!(last, 200);
     }
 
     #[test]
