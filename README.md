@@ -256,6 +256,8 @@ first 200 discovered roots in their CCM order, identifies reference-zero
 matches, and reports the match rate and ordinal displacements:
 
 ```bash
+bash scripts/claim9a_root_ordering_n500.sh   # exploratory lower-N comparison
+bash scripts/claim9a_root_ordering_n1000.sh  # exploratory lower-N comparison
 bash scripts/claim9a_root_ordering_n1500.sh
 bash scripts/claim9b_root_ordering_n2000.sh
 bash scripts/claim9c_root_ordering_n2500.sh
