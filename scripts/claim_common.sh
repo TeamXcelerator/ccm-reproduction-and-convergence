@@ -9,6 +9,7 @@ cd "$CLAIM_REPO_ROOT"
 RESEARCH_CAPTURE_LEVEL=${RESEARCH_CAPTURE_LEVEL:-research}
 RESEARCH_SECTOR_EIGENPAIRS=${RESEARCH_SECTOR_EIGENPAIRS:-8}
 ROOT_ACQUISITION_MODE=${ROOT_ACQUISITION_MODE:-seeded}
+PARITY_POLICY=${PARITY_POLICY:-even-sector}
 ROOT_VALIDATION_LEVEL=${ROOT_VALIDATION_LEVEL:-off}
 ROOT_ENCLOSURE_DIGITS=${ROOT_ENCLOSURE_DIGITS:-}
 INCLUDE_NEGATIVE_ROOTS=${INCLUDE_NEGATIVE_ROOTS:-false}
@@ -39,6 +40,14 @@ while (($# > 0)); do
       ROOT_ACQUISITION_MODE=$2
       shift 2
       ;;
+    --parity-policy)
+      if (($# < 2)); then
+        echo "--parity-policy requires natural, adaptive-even, or even-sector" >&2
+        exit 2
+      fi
+      PARITY_POLICY=$2
+      shift 2
+      ;;
     --root-enclosure-digits)
       if (($# < 2)); then
         echo "--root-enclosure-digits requires a positive integer" >&2
@@ -64,9 +73,10 @@ while (($# > 0)); do
       shift
       ;;
     --help|-h)
-      echo "Usage: bash ${BASH_SOURCE[1]} [--research-capture LEVEL] [--research-sector-eigenpairs COUNT] [--root-acquisition MODE] [--root-validation LEVEL] [--root-enclosure-digits DIGITS] [--include-negative-roots] [--allow-root-oversubscription]"
+      echo "Usage: bash ${BASH_SOURCE[1]} [--research-capture LEVEL] [--research-sector-eigenpairs COUNT] [--root-acquisition MODE] [--parity-policy POLICY] [--root-validation LEVEL] [--root-enclosure-digits DIGITS] [--include-negative-roots] [--allow-root-oversubscription]"
       echo "  LEVEL: claim, research (default), gap, or maximum"
       echo "  ROOT ACQUISITION: seeded (default for every claim script) or independent"
+      echo "  PARITY POLICY: even-sector (default), natural, or adaptive-even"
       echo "  ROOT VALIDATION: off (default) or certified"
       echo "  ROOT ENCLOSURE: defaults to the claim's display digits; override only when needed"
       echo "  ADVANCED ROOTS: signed and finite-shortfall controls require independent HP discovery"
@@ -144,6 +154,16 @@ case "$ROOT_ACQUISITION_MODE" in
     ;;
 esac
 
+case "$PARITY_POLICY" in
+  natural|adaptive-even|even-sector)
+    PARITY_POLICY_ARGS=(--parity-policy "$PARITY_POLICY")
+    ;;
+  *)
+    echo "PARITY_POLICY must be natural, adaptive-even, or even-sector" >&2
+    exit 1
+    ;;
+esac
+
 ADVANCED_ROOT_ARGS=()
 if [[ "$INCLUDE_NEGATIVE_ROOTS" == "true" ]]; then
   ADVANCED_ROOT_ARGS+=(--include-negative-roots)
@@ -164,7 +184,7 @@ fi
 
 run_research_claim() {
   if [[ "${1:-}" == "run" ]]; then
-    "$BIN" "$@" "${RESEARCH_CAPTURE_ARGS[@]}" "${ROOT_ACQUISITION_ARGS[@]}" "${ROOT_VALIDATION_ARGS[@]}" "${ADVANCED_ROOT_ARGS[@]}"
+    "$BIN" "$@" "${RESEARCH_CAPTURE_ARGS[@]}" "${ROOT_ACQUISITION_ARGS[@]}" "${PARITY_POLICY_ARGS[@]}" "${ROOT_VALIDATION_ARGS[@]}" "${ADVANCED_ROOT_ARGS[@]}"
   elif [[ "${1:-}" == "check-evenness" ]]; then
     "$BIN" "$@" "${RESEARCH_CAPTURE_ARGS[@]}" "${ROOT_ACQUISITION_ARGS[@]}"
   else

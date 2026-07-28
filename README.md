@@ -59,10 +59,10 @@ the eigenvector representative becomes numerically degenerate and
 entirely (deviation 1.87 → 3.54×10⁻⁷⁴⁹). The only variable changed
 is precision.
 
-The forced-even projection is empirically unnecessary: across **38
-configurations** (λ²=13–1000, N=10–800, HP-200–HP-2000), running the
-full pipeline with the projection disabled (`--no-force-even`) produces
-**bit-identical** zeros in every case.
+The even-sector restriction is empirically unnecessary at the tested
+above-floor configurations: running the unrestricted natural path produces
+numerically equivalent zeros. The reproduction default nevertheless remains
+the optimized direct even-sector solve.
 
 ### 4. Monotone λ-Convergence and Precision Ceiling
 
@@ -189,14 +189,15 @@ bash scripts/claim1a_lambda13.sh \
 
 For unattended machines, the equivalent environment variables are
 `RESEARCH_CAPTURE_LEVEL`, `RESEARCH_SECTOR_EIGENPAIRS`, and
-`ROOT_ACQUISITION_MODE`; explicit script arguments take precedence. Every
-claim script uses `seeded` when no override is supplied.
+`ROOT_ACQUISITION_MODE`, and `PARITY_POLICY`; explicit script arguments take
+precedence. Every claim script uses `seeded` and `even-sector` when no
+override is supplied.
 
 At maximum capture, the retained set includes:
 
 - the explicit ordinal root window requested by the claim, acquired entirely
   under the selected seeded or independent policy;
-- the natural and forced-even Weil states and evenness evidence;
+- the natural and even-sector Weil states and evenness evidence;
 - the even and odd parity matrices;
 - up to eight guarded low eigenpairs from each parity sector and GapLog; and
 - the underlying quadrature inputs, archimedean and prime components, Tau
@@ -220,14 +221,26 @@ artifacts such as Tau and the Weil eigenstate, but neither root artifact can
 satisfy a request for the other mode. Root certificates remain independently
 derived from the exact finite secular source and may reconcile either mode.
 
-### Reproduce with natural eigenvector (no forced-even projection)
+### Select the eigenstate parity policy
+
+All paper claims default to `even-sector`, the optimized reduced solve used by
+the existing v0.13 artifacts. Research runs can instead select:
+
+- `natural`: unrestricted full-space solve with no projection;
+- `adaptive-even`: original full-space inverse iteration with conditional
+  projection only when the iterate materially drifts from evenness; or
+- `even-sector`: direct reduced even-sector solve (default).
 
 ```bash
 ./target/release/ccm-reproduction run \
   --lambda-sq 1000 --n-modes 800 \
   --precision-digits 1000 --display-digits 50 --top 25 \
-  --no-force-even
+  --parity-policy natural
 ```
+
+`--no-force-even` and `FORCE_EVEN=false` remain compatibility aliases for the
+natural policy. Natural, adaptive-even, and even-sector eigenpairs and all
+downstream secular/root artifacts have separate cache identities.
 
 ### Reproduce all claims
 
@@ -235,9 +248,9 @@ derived from the exact finite secular source and may reconcile either mode.
 bash scripts/retest_all_claims.sh
 ```
 
-Or run individual claims (any claim script supports `FORCE_EVEN=false`
-to test the natural eigenvector path). Balanced research capture is automatic
-for these scripts and can be changed with `--research-capture`:
+Or run individual claims (any claim script accepts `--parity-policy`).
+Balanced research capture is automatic for these scripts and can be changed
+with `--research-capture`:
 
 ```bash
 bash scripts/claim1_reproduction.sh          # 999-digit headline (§4.1–4.2)
@@ -276,12 +289,13 @@ roots is reported as a valid empty result. Add
 ```bash
 bash scripts/claim9_root_ordering.sh 100 250 500 \
   --research-capture research \
+  --parity-policy natural \
   --allow-root-oversubscription
 ```
 
 Example: run Claim 1 with the natural eigenvector:
 ```bash
-FORCE_EVEN=false bash scripts/claim1a_lambda13.sh
+bash scripts/claim1a_lambda13.sh --parity-policy natural
 ```
 
 ### Parallel reproduction

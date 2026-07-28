@@ -65,6 +65,27 @@ enum RootReport {
     DiscoveryOrdering,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum ParityPolicy {
+    /// Unrestricted full-space solve with no parity projection.
+    Natural,
+    /// Full-space inverse iteration with conditional even projection.
+    AdaptiveEven,
+    /// Optimized reduced even-sector solve used by existing claims.
+    EvenSector,
+}
+
+#[cfg(feature = "hp")]
+impl From<ParityPolicy> for ccm::hp::CcmParityPolicy {
+    fn from(value: ParityPolicy) -> Self {
+        match value {
+            ParityPolicy::Natural => Self::Natural,
+            ParityPolicy::AdaptiveEven => Self::AdaptiveEven,
+            ParityPolicy::EvenSector => Self::EvenSector,
+        }
+    }
+}
+
 impl ResearchCapture {
     fn sector_eigenpairs(self, maximum_count: usize) -> Option<usize> {
         match self {
@@ -109,11 +130,10 @@ enum Command {
         /// paper's publication-grade convergence claims.
         #[arg(long, default_value_t = false)]
         f64_only: bool,
-        /// Disable the forced-even projection during inverse iteration.
-        /// When set, the natural (unprojected) smallest eigenvector is
-        /// used to build R(t) and find zeros. If the natural eigenvector
-        /// is even (as conjectured), results are identical to the default
-        /// forced-even path.
+        /// Parity policy for the selected HP eigenstate.
+        #[arg(long, value_enum, default_value_t = ParityPolicy::EvenSector)]
+        parity_policy: ParityPolicy,
+        /// Compatibility alias for `--parity-policy natural`.
         #[arg(long, default_value_t = false)]
         no_force_even: bool,
         /// Controls additional research capture without changing arithmetic or convergence rules.
@@ -229,6 +249,7 @@ fn main() -> Result<()> {
             precision_digits,
             display_digits,
             f64_only,
+            parity_policy,
             no_force_even,
             research_capture,
             research_sector_eigenpairs,
@@ -337,6 +358,7 @@ fn main() -> Result<()> {
                     anyhow::bail!("indexed root windows require the HP independent-discovery tier");
                 }
                 let _ = display_digits;
+                let _ = parity_policy;
                 let _ = no_force_even;
                 let result = ccm::run_f64(&params)?;
                 print_results_f64(&result, top)?;
@@ -359,12 +381,21 @@ fn main() -> Result<()> {
                     println!("  precision: {} decimal digits", precision_digits);
                     let mut cfg = ccm::hp::HighPrecConfig::for_decimal_digits(precision_digits);
                     cfg.n_eigenvalues = top;
-                    // Both acquisition modes use the same production HP
-                    // Halley refinement and convergence policy.
-                    if no_force_even {
-                        cfg.force_even = false;
-                        println!("  forced-even projection: DISABLED (natural eigenvector)");
-                    }
+                    let parity_policy = if no_force_even {
+                        if parity_policy != ParityPolicy::EvenSector {
+                            anyhow::bail!(
+                                "--no-force-even cannot be combined with an explicit non-default --parity-policy"
+                            );
+                        }
+                        ParityPolicy::Natural
+                    } else {
+                        parity_policy
+                    };
+                    cfg.set_parity_policy(parity_policy.into());
+                    println!(
+                        "  parity policy: {}",
+                        cfg.effective_parity_policy().as_str()
+                    );
 
                     // Capture level never changes root acquisition semantics or
                     // expands an ordinal claim into a height window. A run is
@@ -1635,6 +1666,28 @@ mod cli_tests {
             panic!("run command was not parsed");
         };
         assert_eq!(root_acquisition, RootAcquisitionMode::Independent);
+    }
+
+    #[test]
+    fn parity_policy_defaults_to_even_sector_and_accepts_research_routes() {
+        let cli = Cli::try_parse_from(["ccm-reproduction", "run"]).unwrap();
+        let Command::Run { parity_policy, .. } = cli.command else {
+            panic!("run command was not parsed");
+        };
+        assert_eq!(parity_policy, ParityPolicy::EvenSector);
+
+        for (argument, expected) in [
+            ("natural", ParityPolicy::Natural),
+            ("adaptive-even", ParityPolicy::AdaptiveEven),
+            ("even-sector", ParityPolicy::EvenSector),
+        ] {
+            let cli = Cli::try_parse_from(["ccm-reproduction", "run", "--parity-policy", argument])
+                .unwrap();
+            let Command::Run { parity_policy, .. } = cli.command else {
+                panic!("run command was not parsed");
+            };
+            assert_eq!(parity_policy, expected);
+        }
     }
 
     #[test]

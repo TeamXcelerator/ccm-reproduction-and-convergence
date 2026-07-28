@@ -5,7 +5,7 @@ set -euo pipefail
 if (($# < 1)); then
   echo "Usage: bash ${BASH_SOURCE[0]} N [N ...] [claim options]" >&2
   echo "       bash ${BASH_SOURCE[0]} N[,N...] [claim options]" >&2
-  echo "Example: bash ${BASH_SOURCE[0]} 100 250 500 --research-capture research" >&2
+  echo "Example: bash ${BASH_SOURCE[0]} 100 250 500 --research-capture research --parity-policy natural" >&2
   exit 2
 fi
 
@@ -36,6 +36,7 @@ fi
 
 echo "=== Claim 9 root-ordering sweep: lambda^2=250, HP-1500 ==="
 echo "N values: ${N_VALUES[*]}"
+echo "Parity policy: $PARITY_POLICY"
 
 for INDEX in "${!N_VALUES[@]}"; do
   N_MODES=${N_VALUES[$INDEX]}
