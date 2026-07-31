@@ -1,30 +1,28 @@
 #!/usr/bin/env bash
-# Claim 8: Forced-even projection is unnecessary above the floor.
+# Claim 8: The even-sector restriction is unnecessary above the floor.
 #
-# The standard CCM path projects onto the even subspace at each
-# inverse-iteration step (forced-even). If the smallest eigenvector is
-# naturally even (the conjecture of Claim 4), that projection is a
-# no-op: running WITHOUT it must reproduce the SAME eigenvalues and the
-# SAME matching digits on the Riemann zeros.
+# The reproduction default solves the reduced even-sector problem directly.
+# If the smallest full-space eigenvector is naturally even (the conjecture of
+# Claim 4), the unrestricted natural solve should reproduce numerically
+# equivalent eigenvalues and the same reported Riemann-zero accuracy.
 #
 # This script runs each config TWICE at identical (λ, N, precision) —
-# once forced-even (default) and once natural (--no-force-even) — so the
-# forced-even flag is the ONLY variable changed. Compare the
-# matching-digits columns row by row: identical output establishes that
-# the natural (unprojected) ground state is even and the projection is
-# not required.
+# once with the default reduced even-sector policy and once with the natural
+# full-space policy. The parity policy is the intentional variable; the two
+# routes use different state spaces and arithmetic sequences, so terminal
+# bit patterns need not be identical. Compare the reported eigenvalues and
+# matching-digit columns at their stated precision.
 #
 # Configs are chosen to be reusable and CLEARLY ABOVE
-# the precision floor (so the natural eigenvector is trustworthy, not a
-# floor-degenerate representative):
-#   8a  λ²=13,  N=120, HP-1000  — ε_N ~10⁻⁵⁹  (~17× above the 1005-digit floor)
+# the precision floor (so the natural eigenvector is trustworthy, not an
+# under-resolved representative):
+#   8a  λ²=13,  N=120, HP-1000  — ε_N ~10⁻⁵⁹ (far above the floor)
 #   8b  λ²=100, N=500, HP-1000  — ε_N ~10⁻⁴⁶⁴ (~2.2× above the floor)
 #
-# Compatible tau and quadrature artifacts are resolved through the managed
-# public cache fabric. Default claim execution also captures the wider root
-# prefix, evenness evidence, and both parity-sector spectra.
-# The natural run does a FRESH inverse iteration (the cache keys on the
-# forced-even flag, so the natural ξ is computed, not the cached forced ξ).
+# Compatible Tau and quadrature artifacts are resolved through the configured
+# managed cache layers. The default research level does not add an odd-sector
+# solve. Parity policy and eigenstate algorithm participate in artifact
+# identity, so a natural state cannot be mistaken for an even-sector state.
 set -euo pipefail
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
@@ -38,7 +36,7 @@ CONFIGS=(
   "100  500  8b"
 )
 
-echo "=== Claim 8: natural vs forced-even eigenvector (flag is the only variable) ==="
+echo "=== Claim 8: natural full-space vs reduced even-sector eigenstate ==="
 echo
 
 for cfg in "${CONFIGS[@]}"; do
@@ -48,7 +46,7 @@ for cfg in "${CONFIGS[@]}"; do
   echo "#  Claim ${LABEL}: λ²=${LAMBDA_SQ}, N=${N}, HP-${PREC}"
   echo "################################################################"
 
-  echo "---- [${LABEL}] FORCED-EVEN (default CCM path) ----"
+  echo "---- [${LABEL}] EVEN-SECTOR (default reproduction path) ----"
   run_research_claim run \
     --lambda-sq "$LAMBDA_SQ" \
     --n-modes "$N" \
@@ -57,7 +55,7 @@ for cfg in "${CONFIGS[@]}"; do
     --top "$TOP"
   echo
 
-  echo "---- [${LABEL}] NATURAL (--no-force-even, projection disabled) ----"
+  echo "---- [${LABEL}] NATURAL (unrestricted full-space path) ----"
   run_research_claim run \
     --lambda-sq "$LAMBDA_SQ" \
     --n-modes "$N" \
@@ -67,8 +65,8 @@ for cfg in "${CONFIGS[@]}"; do
     --no-force-even
   echo
 
-  echo "==> [${LABEL}] Compare the two matching-digits columns above:"
-  echo "    identical ⇒ the natural eigenvector is even and the forced-even"
-  echo "    projection is unnecessary at this configuration."
+  echo "==> [${LABEL}] Compare the two reported eigenvalues and matching-digit columns:"
+  echo "    numerical equivalence at reported accuracy supports natural evenness"
+  echo "    and shows the reduced even-sector restriction is unnecessary here."
   echo
 done

@@ -1,10 +1,11 @@
 # Independent Reproduction and Convergence Analysis of the CCM Zeta Spectral Triple
 
 > Empirical study of the Connes–Consani–Moscovici operator construction
-> (arXiv 2511.22755), independently implemented in Rust at arbitrary
-> precision. Extends the paper's 55-digit headline to **999 digits**,
-> characterizes convergence behavior, and establishes that the smallest
-> eigenvector is naturally even at every configuration tested —
+> (arXiv:2511.22755), independently implemented in Rust at arbitrary
+> precision. Extends the paper's 55-digit headline to **1019.0 measured
+> matching digits** at guarded working precision,
+> characterizes convergence behavior, and finds that the smallest
+> eigenvector is naturally even at every tested above-floor configuration —
 > including configurations far beyond the published range.
 
 **Author:** Ronnie Andrews, Jr.  
@@ -18,32 +19,33 @@
 
 | Finding | Value |
 |---|---|
-| First Riemann zero accuracy (λ²=1000, N=800, HP-1000) | **999 matching digits** |
-| First Riemann zero accuracy (λ²=100, N=500, HP-1000)  | 460 matching digits |
+| First Riemann zero accuracy (λ²=1000, N=800, HP-1000) | **1019.0 measured matching digits** |
+| First Riemann zero accuracy (λ²=100, N=500, HP-1000)  | 460.09 matching digits |
 | Smallest useful matrix (λ²=13, N=10) | 21×21 → **21.585 digits** |
-| ε_N decay rate (above-floor, N/√λ²≈28) | **~437–613 digits per doubling of prime count** (increases with λ) |
+| ε_N decay rate (above-floor, N/√λ²≈28) | **~437–613 decimal orders per doubling of prime count** across the measured range |
 | Accuracy ceiling | Controlled by ε_N (Weil eigenvalue), N (basis), and working precision jointly |
-| Even-symmetry conjecture | Smallest eigenvector naturally even at all 38 configs tested (HP-200 through HP-2000, λ²=13–1200) |
-| Forced-even projection | Empirically unnecessary — natural path produces bit-identical zeros |
+| Even-symmetry conjecture | Smallest eigenvector naturally even at every tested above-floor configuration (HP-200 through HP-2000, λ²=13–1200) |
+| Even-sector restriction | Empirically unnecessary for the tested above-floor results — the natural and reduced-sector paths are numerically equivalent at reported accuracy |
 
 ## Key Findings
 
-### 1. Reproduction and Extension (999 digits)
+### 1. Reproduction and Extension (1019.0 measured digits)
 
 Independently reproduced CCM's headline (55 digits at λ²=13, N=120)
-on Rust + rug/MPFR. Extended to **999 matching digits** at λ²=1000,
-N=800, HP-1000. Accuracy is jointly controlled by λ (via ε_N), N
+on Rust + rug/MPFR. Extended to **1019.0 measured matching digits** at
+λ²=1000, N=800, HP-1000. Here HP-1000 is the requested target; the
+toolkit's 64 guard bits provide about 1019.3 decimal digits of working
+precision. Accuracy is jointly controlled by λ (via ε_N), N
 (basis completeness), and working precision — all three must be scaled
 together.
 
-### 2. Super-Exponential Decay of ε_N
+### 2. Rapid Empirical Decay of ε_N
 
-ε_N decays faster than any polynomial in the prime count. Above-floor
-measurements (HP-1500/HP-2000, N/√λ²≈28) show several hundred digits
-gained per doubling of prime count, with the rate itself increasing
-with λ (non-monotonically, ~440–613 across the measured range). The
-specific rate depends on how N is scaled with λ; the qualitative
-super-exponential decay is robust.
+Above-floor measurements (HP-1500/HP-2000, N/√λ²≈28) show rapid decay
+and several hundred decimal orders gained per doubling of prime count
+(~437–613 across the measured range). The specific rate depends on how
+N is scaled with λ. This finite sample does not by itself establish an
+asymptotic decay class.
 
 ### 3. Even-Symmetry (the major new finding)
 
@@ -53,11 +55,12 @@ floor**, up to λ²=1200 at HP-2000. We conjecture it holds universally.
 
 The previously-reported "mixed-symmetry" at large λ (λ²≥1000) is a
 **precision-floor artifact**: when ε_N falls below the working precision,
-the eigenvector representative becomes numerically degenerate and
-*appears* non-even. Raising precision at the *identical* configuration
+the computed eigenvector becomes under-resolved and can *appear* non-even.
+Raising precision at the *identical* configuration
 (λ²=1000, N=800: HP-1000→HP-2000) collapses the apparent breakdown
-entirely (deviation 1.87 → 3.54×10⁻⁷⁴⁹). The only variable changed
-is precision.
+entirely. The latest 64-guard-bit result changes the deviation from
+1.87 to 7.634×10⁻⁷⁶³; the requested precision is the controlling
+change in that comparison.
 
 The even-sector restriction is empirically unnecessary at the tested
 above-floor configurations: running the unrestricted natural path produces
@@ -87,7 +90,7 @@ spurious saturation.
 cargo build --release --features hp --locked
 ```
 
-### Reproduce headline (999 digits)
+### Reproduce headline (1019.0 measured digits)
 
 ```bash
 ./target/release/ccm-reproduction run \
@@ -166,8 +169,9 @@ analyses execute, never the arithmetic precision or convergence rules:
   window. This is the claim-script default.
 - `gap` adds natural-evenness evidence, both parity matrices, GapLog, and the
   two lowest eigenpairs from each sector.
-- `maximum` adds the same sector analysis with eight low eigenpairs per sector
-  by default. Override that bound with `RESEARCH_SECTOR_EIGENPAIRS`.
+- `maximum` adds complete guarded eigenvalue spectra for both sectors and
+  retains eight low eigenvectors per sector by default. Override the retained
+  eigenvector bound with `RESEARCH_SECTOR_EIGENPAIRS`.
 
 For example:
 
@@ -188,7 +192,7 @@ bash scripts/claim1a_lambda13.sh \
 ```
 
 For unattended machines, the equivalent environment variables are
-`RESEARCH_CAPTURE_LEVEL`, `RESEARCH_SECTOR_EIGENPAIRS`, and
+`RESEARCH_CAPTURE_LEVEL`, `RESEARCH_SECTOR_EIGENPAIRS`,
 `ROOT_ACQUISITION_MODE`, and `PARITY_POLICY`; explicit script arguments take
 precedence. Every claim script uses `seeded` and `even-sector` when no
 override is supplied.
@@ -199,7 +203,8 @@ At maximum capture, the retained set includes:
   under the selected seeded or independent policy;
 - the natural and even-sector Weil states and evenness evidence;
 - the even and odd parity matrices;
-- up to eight guarded low eigenpairs from each parity sector and GapLog; and
+- complete guarded eigenvalue spectra, up to eight retained low eigenvectors
+  from each parity sector, and GapLog; and
 - the underlying quadrature inputs, archimedean and prime components, Tau
   matrix, factorization, secular source, root-window, and convergence evidence.
 
@@ -248,49 +253,21 @@ downstream secular/root artifacts have separate cache identities.
 bash scripts/retest_all_claims.sh
 ```
 
-Or run individual claims (any claim script accepts `--parity-policy`).
+Or run individual claims. Root-producing claim scripts accept
+`--parity-policy`; the Claim 4 evenness scripts always compute both the
+natural full-space and reduced even-sector states.
 Balanced research capture is automatic for these scripts and can be changed
 with `--research-capture`:
 
 ```bash
-bash scripts/claim1_reproduction.sh          # 999-digit headline (§4.1–4.2)
+bash scripts/claim1_reproduction.sh          # 1019.0-digit measured headline (§4.1–4.2)
 bash scripts/claim2_lambda_precision.sh      # λ-sweep HP-200/1000 (§4.6)
 bash scripts/claim3_critical_n.sh            # critical N (§4.7)
 bash scripts/claim4_evenness.sh              # even-symmetry (§4.8, HP-1000/2000)
 bash scripts/claim6_eps_n.sh                 # ε_N decay (§4.5)
 bash scripts/claim6b_eps_n_abovefloor.sh     # above-floor ε_N series (Table 5)
 bash scripts/claim7_convergence_n.sh         # N-sweep (§4.3)
-bash scripts/claim8_natural_eigenvector.sh   # forced-vs-natural comparison
-```
-
-Claim 9 is a research prototype for measuring how \(N\) affects independent
-CCM root ordering at \(\lambda^2=250\), HP-1500. Each variant preserves the
-first 200 discovered roots in their CCM order, identifies reference-zero
-matches, and reports the match rate and ordinal displacements:
-
-```bash
-bash scripts/claim9_root_ordering.sh 250                # one positive N
-bash scripts/claim9_root_ordering.sh 100 250 500        # whitespace-separated sweep
-bash scripts/claim9_root_ordering.sh 100,250,500        # comma-separated sweep
-bash scripts/claim9a_root_ordering_n500.sh   # exploratory lower-N comparison
-bash scripts/claim9a_root_ordering_n1000.sh  # exploratory lower-N comparison
-bash scripts/claim9a_root_ordering_n1500.sh
-bash scripts/claim9b_root_ordering_n2000.sh
-bash scripts/claim9c_root_ordering_n2500.sh
-bash scripts/claim9d_root_ordering_n3000.sh
-```
-
-Every sweep configuration prints its own root table and summary. If a sweep
-includes \(N<200\), or should retain a finite-source shortfall instead of
-failing, add `--allow-root-oversubscription`; a finite window containing no
-roots is reported as a valid empty result. Add
-`--include-negative-roots` as well to classify a signed finite window:
-
-```bash
-bash scripts/claim9_root_ordering.sh 100 250 500 \
-  --research-capture research \
-  --parity-policy natural \
-  --allow-root-oversubscription
+bash scripts/claim8_natural_eigenvector.sh   # natural-vs-even-sector comparison
 ```
 
 Example: run Claim 1 with the natural eigenvector:
@@ -342,7 +319,10 @@ TeamXcelerator/ccm-reproduction-and-convergence.
 1. Connes, A., Consani, C., Moscovici, H. (2025). *Zeta Spectral
    Triples*. arXiv:2511.22755.
 2. Odlyzko, A. M. Tables of zeros of the Riemann zeta function.
-3. The PARI Group. PARI/GP version 2.15.
+3. Johansson, F. (2017). *Arb: Efficient Arbitrary-Precision
+   Midpoint-Radius Interval Arithmetic*. IEEE Transactions on Computers,
+   66(8), 1281–1292.
+4. The PARI Group. PARI/GP version 2.15.
 
 ## License
 

@@ -26,6 +26,3 @@ Thumbs.db
 # Local toolkit practice-run state and publication journals. Credentials are
 # held by Git Credential Manager and must never be written below this tree.
 .xcelerator-local/
-
-# `data/zeta_zeros.json` is tracked reference data. Runtime cache artifacts
-# belong under the toolkit-managed cache root, not under `data/`.

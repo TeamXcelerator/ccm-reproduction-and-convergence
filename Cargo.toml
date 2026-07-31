@@ -2,7 +2,7 @@
 name = "ccm-reproduction"
 version = "2.3.0"
 edition = "2021"
-description = "Independent reproduction and convergence analysis of the CCM Zeta Spectral Triple (arxiv 2511.22755)"
+description = "Independent reproduction and convergence analysis of the CCM Zeta Spectral Triple (arXiv:2511.22755)"
 authors = ["Ronnie Andrews, Jr. <5178942+TeamXceleratorDev@users.noreply.github.com>"]
 license-file = "LICENSE"
 

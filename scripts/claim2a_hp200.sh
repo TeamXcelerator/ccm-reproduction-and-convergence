@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Claim 2a: λ-sweep at HP-200, N=120 (5 configs).
 #
-# First half of the Claim 2 comparison: shows apparent saturation at
-# the HP-200 precision floor when ε_N is near 10⁻²¹⁵. Pair with
-# claim2b_hp1000.sh for the full Claim 2 comparison.
+# First half of the Claim 2 comparison. The 64 guard bits retain the reported
+# root accuracy even at λ²=100, while ε_N and GapLog approach the guarded
+# working-precision floor. Pair with claim2b_hp1000.sh.
 #
 # Designed to run independently on its own server alongside claim2b.
 set -euo pipefail
@@ -13,11 +13,11 @@ N=${N:-120}
 PREC=${PREC:-200}
 DISPLAY_DIGITS=${DISPLAY_DIGITS:-50}
 
-# FORCE_EVEN=false disables the even projection (tests natural eigenvector).
+# FORCE_EVEN=false is the legacy alias for the unrestricted natural policy.
 EVEN_FLAG=""
 if [[ "${FORCE_EVEN:-true}" == "false" ]]; then
   EVEN_FLAG="--no-force-even"
-  echo "  *** forced-even projection DISABLED (natural eigenvector) ***"
+  echo "  *** parity policy: natural full-space solve ***"
 fi
 
 echo "=== Claim 2a: λ-sweep at N=${N}, HP-${PREC} ==="

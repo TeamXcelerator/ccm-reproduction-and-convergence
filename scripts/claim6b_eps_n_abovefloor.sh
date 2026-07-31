@@ -12,21 +12,21 @@
 #   λ²=1000, N=890  @ HP-2000   (ε_N ~1.5×10⁻¹³⁶², 168 primes)
 #   λ²=1200, N=970  @ HP-2000   (ε_N ~6.8×10⁻¹⁴⁹⁹, 196 primes)
 #
-# These are heavy HP runs (matrices 1261²–1941², τ multi-GB). All τ
-# compatible fixtures may be resolved from the managed public cache fabric, but
-# the per-config inverse iteration still dominates — budget hours per
-# config. Run each on its own server; the λ²=1200 row needs ≥30 GB
-# disk. PREC is set per row inline.
+# These are heavy HP runs (matrices 1261²–1941², Tau multi-GB).
+# Compatible fixtures may be resolved from the configured managed cache
+# layers, but the per-config eigenstate solve remains expensive. Budget hours
+# per configuration and substantially more disk for author publication than
+# for compute-only reuse. PREC is set per row inline.
 set -euo pipefail
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
 DISPLAY_DIGITS=${DISPLAY_DIGITS:-12}
 
-# FORCE_EVEN=false disables the even projection (tests natural eigenvector).
+# FORCE_EVEN=false is the legacy alias for the unrestricted natural policy.
 EVEN_FLAG=""
 if [[ "${FORCE_EVEN:-true}" == "false" ]]; then
   EVEN_FLAG="--no-force-even"
-  echo "  *** forced-even projection DISABLED (natural eigenvector) ***"
+  echo "  *** parity policy: natural full-space solve ***"
 fi
 
 echo "=== Claim 6b: above-floor ε_N series (N/√λ²≈28) ==="

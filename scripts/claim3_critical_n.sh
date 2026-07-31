@@ -8,11 +8,11 @@ source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
 PREC=${PREC:-1000}
 DISPLAY_DIGITS=${DISPLAY_DIGITS:-50}
 
-# FORCE_EVEN=false disables the even projection (tests natural eigenvector).
+# FORCE_EVEN=false is the legacy alias for the unrestricted natural policy.
 EVEN_FLAG=""
 if [[ "${FORCE_EVEN:-true}" == "false" ]]; then
   EVEN_FLAG="--no-force-even"
-  echo "  *** forced-even projection DISABLED (natural eigenvector) ***"
+  echo "  *** parity policy: natural full-space solve ***"
 fi
 
 echo "=== Claim 3: Critical N at HP-${PREC} ==="

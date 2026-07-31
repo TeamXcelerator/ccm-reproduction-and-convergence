@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full retest cycle for all Paper A claims.
+# Full retest cycle for all Paper 1 claims.
 #
 # Runs each claim sequentially. Output goes to the terminal; scroll
 # back to review. Each claim can also be run individually via its own
@@ -23,7 +23,7 @@ CLAIM_ARGS=("$@")
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh" "${CLAIM_ARGS[@]}"
 export BIN
 
-echo "=== Paper A full retest cycle ==="
+echo "=== Paper 1 full retest cycle ==="
 echo "Toolkit: $(grep '^xc-spectral' Cargo.toml)"
 echo "Started: $(date)"
 echo

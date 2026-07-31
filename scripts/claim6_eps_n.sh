@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Claim 6: Super-exponential decay of ε_N with prime count (tab:eps_N).
+# Claim 6: Rapid empirical decay of ε_N with prime count (tab:eps_N).
 # ε_N is the smallest Weil eigenvalue (printed by `run` in HP).
 #
 # Three configurations, each at working precision sufficient to RESOLVE
@@ -10,9 +10,9 @@
 #   λ²=1000, N=800  @ HP-2000  (ε_N ~3.9×10⁻¹²⁶⁴, 168 primes)
 #
 # IMPORTANT: λ²=1000 MUST run at HP-2000, not HP-1000. At HP-1000 its
-# ε_N (~10⁻¹²⁶⁴) underflows the ~1005-digit precision floor and reads
-# as a spurious ~10⁻¹⁰⁰⁵ (even with a wrong sign); the above-floor
-# HP-2000 value is the one the paper reports.
+# ε_N (~10⁻¹²⁶⁴) is below the approximately 1019.3-decimal-digit guarded
+# working range and reads as a floor-limited value (potentially with a wrong
+# sign); the above-floor HP-2000 value is the one the paper reports.
 #
 # Per-config precision is set inline (the PREC env var is overridden
 # per row). See claim6b_eps_n_abovefloor.sh for the extended above-floor
@@ -22,11 +22,11 @@ set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
 DISPLAY_DIGITS=${DISPLAY_DIGITS:-12}
 
-# FORCE_EVEN=false disables the even projection (tests natural eigenvector).
+# FORCE_EVEN=false is the legacy alias for the unrestricted natural policy.
 EVEN_FLAG=""
 if [[ "${FORCE_EVEN:-true}" == "false" ]]; then
   EVEN_FLAG="--no-force-even"
-  echo "  *** forced-even projection DISABLED (natural eigenvector) ***"
+  echo "  *** parity policy: natural full-space solve ***"
 fi
 
 echo "=== Claim 6: ε_N decay (each config at floor-resolving precision) ==="

@@ -3,8 +3,9 @@
 #
 # First of the four Claim 4 evenness configs. At λ²=13 the smallest
 # eigenvalue (ε_N ~10⁻⁵⁹) is far above the HP-1000 floor, so the
-# natural smallest eigenvector is unambiguously even (deviation
-# ~10⁻⁹⁵¹, natural and forced-even bit-identical) — the small-λ
+# natural smallest eigenvector is unambiguously even (latest deviation
+# 2.126×10⁻⁹⁶⁶; natural and even-sector eigenvalues agree to about
+# 962 relative decimal digits) — the small-λ
 # reference point for the evenness study. Supplemental roots, when requested,
 # use the same acquisition policy as the claim invocation.
 #

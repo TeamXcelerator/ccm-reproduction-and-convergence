@@ -620,7 +620,8 @@ fn main() -> Result<()> {
                             xc_zeta::zeros::bundled_first_n_strings(reference_last)?;
                         let ref_strings = &all_ref_strings[reference_first - 1..reference_last];
                         let cmp_prec = hp_result.precision_bits * 2;
-                        // Enough sig digits to resolve e.g. 999.4 at HP-1000.
+                        // Enough significant digits to display guard-space
+                        // measurements such as 1019.0 at HP-1000.
                         let column_digits =
                             ((precision_digits as f64).log10().ceil() as usize + 2).max(5);
 
@@ -839,21 +840,21 @@ fn main() -> Result<()> {
                     display_hp(&result.natural_eigenvalue, display_digits)
                 );
                 println!(
-                    "  forced-even smallest eigenvalue = {}",
+                    "  even-sector smallest eigenvalue = {}",
                     display_hp(&result.forced_eigenvalue, display_digits)
                 );
 
                 let nat_sign = sign_of(&result.natural_eigenvalue);
                 let forced_sign = sign_of(&result.forced_eigenvalue);
                 println!(
-                    "  natural sign = {}, forced-even sign = {}",
+                    "  natural sign = {}, even-sector sign = {}",
                     nat_sign.as_str(),
                     forced_sign.as_str()
                 );
 
                 if nat_sign != forced_sign && nat_sign != Sign::Zero && forced_sign != Sign::Zero {
                     println!(
-                        "  => natural and forced-even smallest eigenvalues have OPPOSITE SIGNS"
+                        "  => natural and even-sector smallest eigenvalues have OPPOSITE SIGNS"
                     );
                 }
 
@@ -872,11 +873,13 @@ fn main() -> Result<()> {
                         relative_difference(&result.natural_eigenvalue, &result.forced_eigenvalue)
                     {
                         println!(
-                            "  |natural - forced| / |forced| = {}",
+                            "  |natural - even-sector| / |even-sector| = {}",
                             display_hp(&rel, display_digits)
                         );
                     } else {
-                        println!("  forced-even eigenvalue is exactly zero; relative difference undefined");
+                        println!(
+                            "  even-sector eigenvalue is exactly zero; relative difference undefined"
+                        );
                     }
                 }
 
@@ -974,12 +977,14 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+#[cfg(any(feature = "hp", test))]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct AlignmentScore {
     matches: usize,
     quality: f64,
 }
 
+#[cfg(any(feature = "hp", test))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum AlignmentStep {
     Start,
@@ -988,6 +993,7 @@ enum AlignmentStep {
     Match,
 }
 
+#[cfg(any(feature = "hp", test))]
 fn score_is_better(candidate: AlignmentScore, current: AlignmentScore) -> bool {
     candidate.matches > current.matches
         || (candidate.matches == current.matches && candidate.quality > current.quality)
@@ -997,6 +1003,7 @@ fn score_is_better(candidate: AlignmentScore, current: AlignmentScore) -> bool {
 /// zeros. A candidate edge exists only when it meets the requested digit
 /// threshold. The primary objective is the number of identified zeros; total
 /// matching digits resolve otherwise equivalent alignments.
+#[cfg(any(feature = "hp", test))]
 fn align_discovered_roots(
     matching_digits: &[Vec<Option<f64>>],
     minimum_match_digits: f64,
@@ -1378,6 +1385,7 @@ fn explicit_ordinal_root_target(
     Ok((target, last))
 }
 
+#[cfg(feature = "hp")]
 fn research_capture_label(capture: ResearchCapture, maximum_count: usize) -> String {
     match capture {
         ResearchCapture::Claim => "claim (requested roots and native artifacts)".to_string(),

@@ -5,8 +5,9 @@
 # the published λ²=1000 and past the extrapolated symmetry-breakdown
 # "onset" (~λ²≈1167) suggested by the floor-tinged HP-1500 climb. With
 # HP-2000 headroom (ε_N ~6.8×10⁻¹⁴⁹⁹, floor ratio ≈1.34) the natural
-# smallest eigenvector is STILL essentially even (deviation ~9.3×10⁻⁵¹⁴,
-# natural and forced-even bit-identical) — there is no breakdown.
+# smallest eigenvector is STILL essentially even (deviation 2.948×10⁻⁵²⁸).
+# Its natural and even-sector eigenvalues are numerically equivalent at the
+# attainable precision (relative difference 7.927×10⁻⁵²⁶).
 #
 # This is the strongest single point for the conjecture that the
 # smallest eigenvector is even at every configuration above the
@@ -14,14 +15,15 @@
 # results are precision artifacts.
 #
 # N=970 sized at N/√λ²≈28. Matrix 1941²; τ ~7 GB JSON — the heaviest
-# config in the affordable set (needs ≥30 GB disk); compatible artifacts
-# may be resolved from the managed public cache fabric. Supplemental root
-# and parity-sector capture adds workload beyond the historical core timing.
+# config in the affordable set. A compute-only cache needs tens of GB, while
+# author publication staging can require well over 100 GB of temporary space.
+# Compatible artifacts may be resolved from the configured managed cache
+# layers. Supplemental root and parity-sector capture adds workload.
 # Run on a dedicated server.
 #
 # (The earlier λ²=10000, N=1500 config is intentionally retired: at
 # HP-1000 it was a floor artifact, and an above-floor re-measurement
-# would require HP-2000+ on a ≥64 GB box beyond the current hardware
+# would require HP-2000+ beyond the current hardware
 # budget. Its published "mixed-symmetry" row is refuted by the same
 # floor mechanism demonstrated here and at λ²=1000, by inference.)
 set -euo pipefail

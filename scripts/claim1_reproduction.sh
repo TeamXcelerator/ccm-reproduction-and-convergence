@@ -3,7 +3,7 @@
 # Three configurations at HP-1000:
 #   λ²=13, N=120          (CCM headline reproduction)
 #   λ²=100, N=500         (intermediate ceiling)
-#   λ²=1000, N=800        (999-digit extension)
+#   λ²=1000, N=800        (1019.0 measured matching-digit extension)
 #
 # This is the single-server wrapper: runs all three sub-scripts
 # sequentially. For parallel multi-server reproductions, run the three

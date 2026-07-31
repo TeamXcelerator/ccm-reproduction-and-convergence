@@ -7,6 +7,3 @@
 *.toml text
 *.md text
 *.lock text
-
-# Reference data files — leave as-is, never normalize.
-data/zeta_zeros.json -text

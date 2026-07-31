@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Claim 2: Precision-dependent λ convergence at fixed N=120.
-# λ-sweep at HP-200 (apparent saturation) vs HP-1000 (monotone-clean).
+# Claim 2: λ convergence and precision diagnostics at fixed N=120.
+# The HP-200 and HP-1000 root-accuracy columns agree in the current sweep;
+# the comparison also exposes finer floor sensitivity in ε_N and GapLog.
 #
 # This is the single-server wrapper: runs both sub-scripts sequentially.
 # For parallel multi-server reproductions, run claim2a_hp200.sh and

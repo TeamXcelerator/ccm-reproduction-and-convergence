@@ -2,22 +2,23 @@
 # Claim 7: Two-regime convergence in N at fixed λ²=13.
 #
 # Two-precision sweep:
-#   HP-200:  legacy reproduction (showing saturation at ~55 digits)
-#   HP-1000: HP-1000 sweep (showing true convergence past saturation)
+#   HP-200:  independent low-precision reproduction
+#   HP-1000: guarded high-precision comparison
 #
-# This claim shows both regimes side by side to demonstrate the
-# precision-dependent saturation phenomenon in Section 4.3 of the paper.
+# The two sweeps give the same reported root accuracy here. This establishes
+# that the plateau near 55.764 digits is the intrinsic ε_N ceiling for this
+# λ²=13 family, not a working-precision ceiling.
 set -euo pipefail
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
 DISPLAY_DIGITS=${DISPLAY_DIGITS:-50}
 TOP=${TOP:-5}
 
-# FORCE_EVEN=false disables the even projection (tests natural eigenvector).
+# FORCE_EVEN=false is the legacy alias for the unrestricted natural policy.
 EVEN_FLAG=""
 if [[ "${FORCE_EVEN:-true}" == "false" ]]; then
   EVEN_FLAG="--no-force-even"
-  echo "  *** forced-even projection DISABLED (natural eigenvector) ***"
+  echo "  *** parity policy: natural full-space solve ***"
 fi
 
 # Ascending order is intentional: Toolkit Auto searches the configured cache
