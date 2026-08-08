@@ -13,7 +13,7 @@
 **Contact:** randrewsmath@gmail.com  
 **Date:** June 2026
 
-**Release:** v2.3 (Xcelerator Toolkit v0.13.3)
+**Release:** v2.3 (Xcelerator Toolkit v0.13.4)
 
 ## Headline Results
 
@@ -283,17 +283,35 @@ servers.
 
 ## Cache infrastructure
 
-Xcelerator Toolkit v0.13.3 manages reusable quadrature, CCM component,
+Xcelerator Toolkit v0.13.4 manages reusable quadrature, CCM component,
 matrix, eigenpair, and evidence artifacts in a per-user cache. Compatible
 public artifacts are resolved and validated automatically by default; a miss
 is computed and stored locally. Normal reproduction requires no credentials
 or cache configuration.
 
+Cache-output verification is disabled by default. To validate a toolkit change
+against the current reference artifacts, opt in with either the CLI flag or the
+equivalent environment variable:
+
+```bash
+./target/release/ccm-reproduction --verify-cache run \
+  --lambda-sq 13 --n-modes 120 --precision-digits 200
+
+XC_CACHE_MODE=verify bash scripts/claim1a_lambda13.sh
+# Equivalent claim-script form:
+bash scripts/claim1a_lambda13.sh --verify-cache
+```
+
+Verification recomputes the complete claim into an isolated validation cache,
+allows reference artifacts to supply continuation seeds, compares newly
+computed payloads with their references, and writes one claim-wide report. It
+does not publish or modify the production cache.
+
 Set `XC_CACHE_REMOTE=none` to prohibit remote reads. `XC_CACHE_ROOT` may point
 to an isolated cache directory for a cold run. Publication remains disabled
 unless an author explicitly selects an author profile and publication policy.
 Private-shard author publication uses generation-fenced leases and atomic
-content-plus-coordination updates supplied by Toolkit v0.13.3, preventing
+content-plus-coordination updates supplied by Toolkit v0.13.4, preventing
 concurrent publishers from advancing the same shard from stale state.
 
 ## Architecture
@@ -301,7 +319,7 @@ concurrent publishers from advancing the same shard from stale state.
 This repository contains the paper-specific CLI harness and
 reproduction scripts. The core mathematical library is the
 [Xcelerator Toolkit](https://github.com/TeamXcelerator/xcelerator-toolkit),
-pulled automatically from the immutable `v0.13.3` release tag by Cargo.
+pulled automatically from the immutable `v0.13.4` release tag by Cargo.
 `Cargo.lock` also pins the exact resolved toolkit commit so the claim scripts,
 configurations, and output interpretation remain reproducible. No manual
 cloning or toolkit configuration is required.

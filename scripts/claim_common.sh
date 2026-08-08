@@ -72,14 +72,19 @@ while (($# > 0)); do
       ALLOW_ROOT_OVERSUBSCRIPTION=true
       shift
       ;;
+    --verify-cache)
+      export XC_CACHE_MODE=verify
+      shift
+      ;;
     --help|-h)
-      echo "Usage: bash ${BASH_SOURCE[1]} [--research-capture LEVEL] [--research-sector-eigenpairs COUNT] [--root-acquisition MODE] [--parity-policy POLICY] [--root-validation LEVEL] [--root-enclosure-digits DIGITS] [--include-negative-roots] [--allow-root-oversubscription]"
+      echo "Usage: bash ${BASH_SOURCE[1]} [--research-capture LEVEL] [--research-sector-eigenpairs COUNT] [--root-acquisition MODE] [--parity-policy POLICY] [--root-validation LEVEL] [--root-enclosure-digits DIGITS] [--include-negative-roots] [--allow-root-oversubscription] [--verify-cache]"
       echo "  LEVEL: claim, research (default), gap, or maximum"
       echo "  ROOT ACQUISITION: seeded (default for every claim script) or independent"
       echo "  PARITY POLICY: even-sector (default), natural, or adaptive-even"
       echo "  ROOT VALIDATION: off (default) or certified"
       echo "  ROOT ENCLOSURE: defaults to the claim's display digits; override only when needed"
       echo "  ADVANCED ROOTS: signed and finite-shortfall controls require independent HP discovery"
+      echo "  CACHE VALIDATION: --verify-cache recomputes and compares claim artifacts; disabled by default"
       exit 0
       ;;
     *)

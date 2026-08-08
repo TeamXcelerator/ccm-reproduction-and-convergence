@@ -25,6 +25,10 @@ use xc_spectral::ccm::{self, CcmParams, CcmResult};
     version
 )]
 struct Cli {
+    /// Recompute claim artifacts and compare them with the current reference cache.
+    /// Equivalent to setting XC_CACHE_MODE=verify.
+    #[arg(long, global = true, default_value_t = false)]
+    verify_cache: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -239,7 +243,25 @@ fn print_runtime_parallelism() {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    if cli.verify_cache {
+        std::env::set_var("XC_CACHE_MODE", "verify");
+    }
+    let validation = xc_spectral::OutputValidationClaim::from_environment()?;
+    let result = run(cli);
+    let validation_result = validation
+        .finish(result.is_ok())
+        .map_err(anyhow::Error::from);
+    match (result, validation_result) {
+        (Ok(()), Ok(_)) => Ok(()),
+        (Ok(()), Err(validation_error)) => Err(validation_error),
+        (Err(command_error), Ok(_)) => Err(command_error),
+        (Err(command_error), Err(validation_error)) => Err(command_error.context(format!(
+            "output-validation finalization also failed: {validation_error}"
+        ))),
+    }
+}
 
+fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Run {
             lambda_sq,
@@ -1617,6 +1639,18 @@ mod cli_tests {
         };
         assert_eq!(error.kind(), clap::error::ErrorKind::DisplayVersion);
         assert!(error.to_string().contains(env!("CARGO_PKG_VERSION")));
+    }
+
+    #[test]
+    fn cache_verification_flag_is_opt_in_and_global() {
+        let default = Cli::try_parse_from(["ccm-reproduction", "run"]).unwrap();
+        assert!(!default.verify_cache);
+
+        let before = Cli::try_parse_from(["ccm-reproduction", "--verify-cache", "run"]).unwrap();
+        assert!(before.verify_cache);
+
+        let after = Cli::try_parse_from(["ccm-reproduction", "run", "--verify-cache"]).unwrap();
+        assert!(after.verify_cache);
     }
 
     #[test]

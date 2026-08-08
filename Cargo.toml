@@ -23,11 +23,11 @@ clap = { version = "4.5", features = ["derive"] }
 rayon = "1.10"
 rug = { version = "1.30", optional = true, default-features = false, features = ["float", "integer"] }
 
-# Xcelerator Toolkit v0.13.3. The immutable release tag and Cargo.lock bind
+# Xcelerator Toolkit v0.13.4. The immutable release tag and Cargo.lock bind
 # every claim run to the qualified numerical and artifact-format milestone.
-xc-spectral = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.13.3" }
-xc-zeta     = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.13.3" }
-xc-numerics = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.13.3" }
+xc-spectral = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.13.4" }
+xc-zeta     = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.13.4" }
+xc-numerics = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.13.4" }
 
 [profile.release]
 opt-level = 3

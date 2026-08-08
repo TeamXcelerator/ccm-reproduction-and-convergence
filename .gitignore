@@ -26,3 +26,10 @@ Thumbs.db
 # Local toolkit practice-run state and publication journals. Credentials are
 # held by Git Credential Manager and must never be written below this tree.
 .xcelerator-local/
+
+# Local cache-output validation artifacts and comparison reports.
+.xcelerator-cache/
+cache-validation/
+xcelerator-validation/
+.xcelerator-cache-validation/
+.xcelerator-validation/
