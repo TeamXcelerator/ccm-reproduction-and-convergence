@@ -33,3 +33,12 @@ cache-validation/
 xcelerator-validation/
 .xcelerator-cache-validation/
 .xcelerator-validation/
+
+# Local performance reports. These contain machine- and run-specific timing
+# observations and are never paper evidence or cache artifacts.
+benchmark-results/
+*.benchmark.json
+
+# Toolkit-internal stage timing sidecars.
+performance-reports/
+*.performance.json

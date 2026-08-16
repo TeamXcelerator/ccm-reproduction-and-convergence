@@ -15,10 +15,14 @@
 
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
+use std::path::PathBuf;
 
 use xc_spectral::ccm::{self, CcmParams, CcmResult};
 
-#[derive(Parser)]
+mod benchmark;
+use benchmark::{BenchmarkComparisonMode, BenchmarkOptions, BenchmarkRecorder};
+
+#[derive(Debug, Parser)]
 #[command(
     name = "ccm-reproduction",
     about = "CCM Zeta Spectral Triple - reproduction and convergence analysis",
@@ -29,6 +33,40 @@ struct Cli {
     /// Equivalent to setting XC_CACHE_MODE=verify.
     #[arg(long, global = true, default_value_t = false)]
     verify_cache: bool,
+    /// Experimental native-Linux mode: use root-level Rayon when a cold
+    /// Gauss--Legendre batch has too few distinct tables to occupy the pool.
+    /// Equivalent to setting XC_GL_ROOT_PARALLEL=true. Unsupported on WSL.
+    #[arg(long, global = true, default_value_t = false)]
+    parallel_gl_roots: bool,
+    /// Write machine-readable wall-time measurements for this run.
+    #[arg(long, global = true, value_name = "PATH")]
+    benchmark_report: Option<PathBuf>,
+    /// Compare this run with a prior successful benchmark report.
+    #[arg(
+        long,
+        global = true,
+        value_name = "PATH",
+        requires = "benchmark_report"
+    )]
+    benchmark_baseline: Option<PathBuf>,
+    /// Human-readable label stored in the benchmark report (for example, before or after).
+    #[arg(
+        long,
+        global = true,
+        value_name = "LABEL",
+        requires = "benchmark_report"
+    )]
+    benchmark_label: Option<String>,
+    /// Select the strict comparison contract. The policy-delta mode permits
+    /// only serial-versus-parallel GL-root scheduling to differ.
+    #[arg(
+        long,
+        global = true,
+        value_enum,
+        value_name = "MODE",
+        requires = "benchmark_baseline"
+    )]
+    benchmark_comparison_mode: Option<BenchmarkComparisonMode>,
     #[command(subcommand)]
     command: Command,
 }
@@ -100,7 +138,7 @@ impl ResearchCapture {
     }
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 enum Command {
     /// Run the CCM construction at given (lambda^2, N) and report eigenvalues
     /// vs Riemann zeros.
@@ -243,25 +281,101 @@ fn print_runtime_parallelism() {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    let process_started = std::time::Instant::now();
+    let parallel_gl_roots = resolve_parallel_gl_roots(cli.parallel_gl_roots)?;
+    let benchmark_options = BenchmarkOptions {
+        report_path: cli.benchmark_report.clone(),
+        baseline_path: cli.benchmark_baseline.clone(),
+        label: cli.benchmark_label.clone(),
+        parallel_gl_roots,
+        comparison_mode: cli.benchmark_comparison_mode.unwrap_or_default(),
+    };
+    let workload_signature = format!("{:?}", cli.command);
     if cli.verify_cache {
         std::env::set_var("XC_CACHE_MODE", "verify");
     }
+    let mut benchmark = BenchmarkRecorder::new(benchmark_options, workload_signature)?;
     let validation = xc_spectral::OutputValidationClaim::from_environment()?;
-    let result = run(cli);
+    let command_started = std::time::Instant::now();
+    let result = run_with_runtime_policy(cli, &mut benchmark, parallel_gl_roots);
+    benchmark.record_duration("command_total", command_started.elapsed());
     let validation_result = validation
         .finish(result.is_ok())
         .map_err(anyhow::Error::from);
-    match (result, validation_result) {
+    let result = match (result, validation_result) {
         (Ok(()), Ok(_)) => Ok(()),
         (Ok(()), Err(validation_error)) => Err(validation_error),
         (Err(command_error), Ok(_)) => Err(command_error),
         (Err(command_error), Err(validation_error)) => Err(command_error.context(format!(
             "output-validation finalization also failed: {validation_error}"
         ))),
+    };
+    benchmark.record_duration("process_total", process_started.elapsed());
+    let benchmark_result = benchmark.finish(result.is_ok());
+    match (result, benchmark_result) {
+        (Ok(()), Ok(_)) => Ok(()),
+        (Ok(()), Err(benchmark_error)) => Err(benchmark_error),
+        (Err(command_error), Ok(_)) => Err(command_error),
+        (Err(command_error), Err(benchmark_error)) => Err(command_error.context(format!(
+            "benchmark report finalization also failed: {benchmark_error}"
+        ))),
     }
 }
 
-fn run(cli: Cli) -> Result<()> {
+fn resolve_parallel_gl_roots(cli_requested: bool) -> Result<bool> {
+    if cli_requested {
+        return Ok(true);
+    }
+    let Some(value) = std::env::var_os("XC_GL_ROOT_PARALLEL") else {
+        return Ok(false);
+    };
+    let value = value.into_string().map_err(|_| {
+        anyhow::anyhow!("XC_GL_ROOT_PARALLEL must contain valid Unicode true or false")
+    })?;
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" | "" => Ok(false),
+        _ => anyhow::bail!("XC_GL_ROOT_PARALLEL must be true/false, yes/no, on/off, or 1/0"),
+    }
+}
+
+fn run_with_runtime_policy(
+    cli: Cli,
+    benchmark: &mut BenchmarkRecorder,
+    parallel_gl_roots: bool,
+) -> Result<()> {
+    if !parallel_gl_roots {
+        return run(cli, benchmark);
+    }
+    if matches!(&cli.command, Command::Run { f64_only: true, .. }) {
+        anyhow::bail!("GL root parallelism applies only to high-precision computation");
+    }
+
+    #[cfg(all(feature = "hp", feature = "experimental-gl-root-parallel"))]
+    {
+        let policy = xc_numerics::hp_runtime::HpRuntimePolicy {
+            parallel_gl_roots: true,
+            ..xc_numerics::hp_runtime::HpRuntimePolicy::default()
+        };
+        eprintln!(
+            "  EXPERIMENTAL: GL root parallelism enabled; native-Linux qualification is required and WSL is unsupported"
+        );
+        xc_numerics::hp_runtime::run_hp_with_policy(&policy, || run(cli, benchmark))
+            .map_err(anyhow::Error::from)
+            .and_then(std::convert::identity)
+    }
+
+    #[cfg(not(all(feature = "hp", feature = "experimental-gl-root-parallel")))]
+    {
+        let _ = (cli, benchmark);
+        anyhow::bail!(
+            "GL root parallelism requires a v0.13.5 build with --features hp,experimental-gl-root-parallel"
+        );
+    }
+}
+
+fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
+    print_runtime_parallelism();
     match cli.command {
         Command::Run {
             lambda_sq,
@@ -284,7 +398,6 @@ fn run(cli: Cli) -> Result<()> {
             root_validation,
             root_enclosure_digits,
         } => {
-            print_runtime_parallelism();
             if lambda_sq < 2 {
                 anyhow::bail!("lambda_sq must be >= 2 (got {lambda_sq})");
             }
@@ -383,6 +496,7 @@ fn run(cli: Cli) -> Result<()> {
                 let _ = parity_policy;
                 let _ = no_force_even;
                 let result = ccm::run_f64(&params)?;
+                benchmark.record_seconds("toolkit_primary", result.elapsed_seconds)?;
                 print_results_f64(&result, top)?;
             } else {
                 #[cfg(feature = "hp")]
@@ -582,6 +696,7 @@ fn run(cli: Cli) -> Result<()> {
                                 )
                             }
                         };
+                    benchmark.record_seconds("toolkit_primary", hp_result.elapsed_seconds)?;
 
                     if let Some(certificate) = &root_certificate {
                         println!(
@@ -785,9 +900,11 @@ fn run(cli: Cli) -> Result<()> {
                             xc_numerics::fmt::display_hp(&sectors.gap_log, display_digits)
                         );
                     }
+                    let claim_elapsed = run_started.elapsed();
+                    benchmark.record_duration("claim_and_research_capture", claim_elapsed);
                     println!(
                         "\n  total claim and research capture time: {:.3}s",
-                        run_started.elapsed().as_secs_f64()
+                        claim_elapsed.as_secs_f64()
                     );
                 }
                 #[cfg(not(feature = "hp"))]
@@ -847,7 +964,10 @@ fn run(cli: Cli) -> Result<()> {
                     lambda_sq, n_modes, precision_digits
                 );
 
+                let claim_started = std::time::Instant::now();
+                let toolkit_started = std::time::Instant::now();
                 let result = ccm::hp::measure_evenness(&params, &cfg)?;
+                benchmark.record_duration("toolkit_primary", toolkit_started.elapsed());
 
                 // Pure HP display — no f64 conversion.
                 use xc_numerics::fmt::{display_hp, relative_difference, sign_of, Sign};
@@ -921,6 +1041,7 @@ fn run(cli: Cli) -> Result<()> {
                         },
                     )?;
                 }
+                benchmark.record_duration("claim_and_research_capture", claim_started.elapsed());
             }
         }
 
@@ -957,7 +1078,9 @@ fn run(cli: Cli) -> Result<()> {
                     "CCM sector analysis: lambda^2={}, N={}, precision={} digits, retained={} per sector",
                     lambda_sq, n_modes, precision_digits, eigenpairs
                 );
+                let toolkit_started = std::time::Instant::now();
                 let result = ccm::hp::analyze_sector_gap(&params, &cfg, eigenpairs)?;
+                benchmark.record_duration("toolkit_primary", toolkit_started.elapsed());
                 let show = |value: &rug::Float| xc_numerics::fmt::display_hp(value, display_digits);
                 println!("  lambda_even             = {}", show(&result.lambda_even));
                 println!("  lambda_odd              = {}", show(&result.lambda_odd));
@@ -1651,6 +1774,87 @@ mod cli_tests {
 
         let after = Cli::try_parse_from(["ccm-reproduction", "run", "--verify-cache"]).unwrap();
         assert!(after.verify_cache);
+    }
+
+    #[test]
+    fn gl_root_parallel_flag_is_opt_in_and_global() {
+        let default = Cli::try_parse_from(["ccm-reproduction", "run"]).unwrap();
+        assert!(!default.parallel_gl_roots);
+
+        let before =
+            Cli::try_parse_from(["ccm-reproduction", "--parallel-gl-roots", "run"]).unwrap();
+        assert!(before.parallel_gl_roots);
+
+        let after =
+            Cli::try_parse_from(["ccm-reproduction", "run", "--parallel-gl-roots"]).unwrap();
+        assert!(after.parallel_gl_roots);
+        assert!(resolve_parallel_gl_roots(true).unwrap());
+    }
+
+    #[test]
+    fn benchmark_flags_are_opt_in_global_and_require_a_report() {
+        let default = Cli::try_parse_from(["ccm-reproduction", "run"]).unwrap();
+        assert!(default.benchmark_report.is_none());
+        assert!(default.benchmark_baseline.is_none());
+        assert!(default.benchmark_label.is_none());
+        assert!(default.benchmark_comparison_mode.is_none());
+
+        let parsed = Cli::try_parse_from([
+            "ccm-reproduction",
+            "run",
+            "--benchmark-report",
+            "benchmark-results/after.benchmark.json",
+            "--benchmark-baseline",
+            "benchmark-results/before.benchmark.json",
+            "--benchmark-label",
+            "after",
+            "--benchmark-comparison-mode",
+            "gl-root-policy-delta",
+        ])
+        .unwrap();
+        assert_eq!(
+            parsed.benchmark_report.as_deref(),
+            Some(std::path::Path::new(
+                "benchmark-results/after.benchmark.json"
+            ))
+        );
+        assert_eq!(
+            parsed.benchmark_baseline.as_deref(),
+            Some(std::path::Path::new(
+                "benchmark-results/before.benchmark.json"
+            ))
+        );
+        assert_eq!(parsed.benchmark_label.as_deref(), Some("after"));
+        assert_eq!(
+            parsed.benchmark_comparison_mode,
+            Some(BenchmarkComparisonMode::GlRootPolicyDelta)
+        );
+
+        let missing_report = Cli::try_parse_from([
+            "ccm-reproduction",
+            "--benchmark-baseline",
+            "before.benchmark.json",
+            "run",
+        ])
+        .unwrap_err();
+        assert_eq!(
+            missing_report.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
+
+        let missing_baseline = Cli::try_parse_from([
+            "ccm-reproduction",
+            "--benchmark-report",
+            "after.benchmark.json",
+            "--benchmark-comparison-mode",
+            "gl-root-policy-delta",
+            "run",
+        ])
+        .unwrap_err();
+        assert_eq!(
+            missing_baseline.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
     }
 
     #[test]

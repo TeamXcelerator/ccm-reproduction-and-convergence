@@ -13,7 +13,7 @@
 **Contact:** randrewsmath@gmail.com  
 **Date:** June 2026
 
-**Release:** v2.3 (Xcelerator Toolkit v0.13.4)
+**Release:** v2.3 (Xcelerator Toolkit v0.13.5)
 
 ## Headline Results
 
@@ -283,11 +283,19 @@ servers.
 
 ## Cache infrastructure
 
-Xcelerator Toolkit v0.13.4 manages reusable quadrature, CCM component,
+Xcelerator Toolkit v0.13.5 manages reusable quadrature, CCM component,
 matrix, eigenpair, and evidence artifacts in a per-user cache. Compatible
 public artifacts are resolved and validated automatically by default; a miss
 is computed and stored locally. Normal reproduction requires no credentials
 or cache configuration.
+
+Version 0.13.5 is payload-preserving: it does not change mathematical semantic
+keys, artifact schemas, precision targets, solver selection, convergence
+rules, or default scheduling. Compatible artifacts from the preceding 0.13.x
+releases therefore remain reusable without migration. Its high-precision CCM
+component construction writes directly into final matrix storage, removing
+full-size intermediate collections while preserving the established MPFR
+operation order.
 
 Cache-output verification is disabled by default. To validate a toolkit change
 against the current reference artifacts, opt in with either the CLI flag or the
@@ -307,11 +315,102 @@ allows reference artifacts to supply continuation seeds, compares newly
 computed payloads with their references, and writes one claim-wide report. It
 does not publish or modify the production cache.
 
+### Benchmark toolkit changes
+
+Benchmarking is also opt-in. A report records the toolkit's primary CCM time,
+the complete claim-and-research-capture time, and the process time including
+cache-output validation finalization. Timings are observational sidecars: they
+do not enter artifact payloads, semantic keys, or validation comparisons.
+
+For an apples-to-apples before/after comparison, use the same optimized build
+profile, claim arguments, cache mode, machine, and Rayon worker count:
+
+```bash
+# Before changing the toolkit.
+bash scripts/claim1a_lambda13.sh \
+  --verify-cache \
+  --benchmark-report benchmark-results/claim1a-before.benchmark.json \
+  --benchmark-label before
+
+# After changing and rebuilding the toolkit.
+bash scripts/claim1a_lambda13.sh \
+  --verify-cache \
+  --benchmark-report benchmark-results/claim1a-after.benchmark.json \
+  --benchmark-baseline benchmark-results/claim1a-before.benchmark.json \
+  --benchmark-label after
+```
+
+The comparison report records the exact toolkit version and resolved Git
+revision, absolute nanosecond measurements, percentage change, and speedup for
+every timing present in both runs. Negative percentage change and speedup
+greater than 1 mean the candidate is faster. Comparison
+fails closed when the command workload, optimized/debug build state, cache
+mode, available CPU count, Rayon worker count, or GL-root scheduling policy
+differs. Benchmark reports and the `benchmark-results/` directory are
+gitignored by default. Reports are never overwritten; use a distinct path for
+each process. Use these flags with the direct CLI or a single-configuration
+claim script; benchmark sweep and wrapper configurations separately so every
+process has its own report path.
+
+The experimental GL-root qualification is the one intentional exception. Use
+the strict `gl-root-policy-delta` comparison mode on the parallel candidate:
+
+```bash
+# Both commands use a release binary built with the experimental feature.
+BIN=/path/to/ccm-reproduction \
+  bash scripts/claim1a_lambda13.sh \
+    --benchmark-report benchmark-results/gl-serial.benchmark.json \
+    --benchmark-label gl-serial
+
+BIN=/path/to/ccm-reproduction \
+  bash scripts/claim1a_lambda13.sh \
+    --parallel-gl-roots \
+    --benchmark-report benchmark-results/gl-parallel.benchmark.json \
+    --benchmark-baseline benchmark-results/gl-serial.benchmark.json \
+    --benchmark-comparison-mode gl-root-policy-delta \
+    --benchmark-label gl-parallel
+```
+
+This is not a general comparability override. It requires the GL-root policy
+to differ, records both policies and the selected comparison contract in the
+comparison report, and still rejects every other workload or runtime mismatch.
+
+### Experimental GL root scheduling
+
+Toolkit v0.13.5 can use root-level Rayon parallelism when a cold
+Gauss--Legendre batch contains too few distinct tables to occupy the worker
+pool. This is disabled by default and must remain disabled on WSL because
+concurrent GMP allocation has exhibited non-deterministic allocator failures
+there. Native-Linux qualification runs can opt in explicitly:
+
+```bash
+bash scripts/claim1a_lambda13.sh --parallel-gl-roots
+
+# Equivalent caller-level environment selection:
+XC_GL_ROOT_PARALLEL=true \
+  bash scripts/claim1a_lambda13.sh
+```
+
+When it builds the binary itself, the claim script adds the
+`experimental-gl-root-parallel` application feature only for these opt-in
+runs. A caller-supplied `BIN` must already have been built with that feature.
+Ordinary reproduction builds remain on the established root-serial policy.
+
+The selected policy is recorded in application benchmark reports, and the
+resolved table/root schedule is recorded in toolkit stage-performance reports.
+Set `XC_PERF_REPORT` to a `*.performance.json` path to write the latter; the
+sidecar is diagnostic only and never participates in cache identity or
+publication.
+The toolkit policy exposes a distinct execution-fingerprint label to callers
+that persist `SolverProvenance`. A root-parallel cache-verification run must use
+the same flag or environment variable; ordinary verification exercises only
+the established root-serial default.
+
 Set `XC_CACHE_REMOTE=none` to prohibit remote reads. `XC_CACHE_ROOT` may point
 to an isolated cache directory for a cold run. Publication remains disabled
 unless an author explicitly selects an author profile and publication policy.
 Private-shard author publication uses generation-fenced leases and atomic
-content-plus-coordination updates supplied by Toolkit v0.13.4, preventing
+content-plus-coordination updates supplied by Toolkit v0.13.5, preventing
 concurrent publishers from advancing the same shard from stale state.
 
 ## Architecture
@@ -319,7 +418,7 @@ concurrent publishers from advancing the same shard from stale state.
 This repository contains the paper-specific CLI harness and
 reproduction scripts. The core mathematical library is the
 [Xcelerator Toolkit](https://github.com/TeamXcelerator/xcelerator-toolkit),
-pulled automatically from the immutable `v0.13.4` release tag by Cargo.
+pulled automatically from the immutable `v0.13.5` release tag by Cargo.
 `Cargo.lock` also pins the exact resolved toolkit commit so the claim scripts,
 configurations, and output interpretation remain reproducible. No manual
 cloning or toolkit configuration is required.
