@@ -23,12 +23,29 @@
 # managed cache layers. The default research level does not add an odd-sector
 # solve. Parity policy and eigenstate algorithm participate in artifact
 # identity, so a natural state cannot be mistaken for an even-sector state.
+# Prime-power and u-flow responses are defined only for an isolated even-sector
+# state. When ultra capture is requested, the even branch therefore keeps the
+# full ultra bundle while the natural branch uses maximum capture plus the
+# distance/deviation measurements that remain meaningful for that state.
 set -euo pipefail
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
 PREC=${PREC:-1000}
 DISPLAY_DIGITS=${DISPLAY_DIGITS:-50}
 TOP=${TOP:-25}
+PUBLISH_AFTER_COMPARISON=${XC_PUBLISH_EXECUTE:-false}
+
+EVEN_CAPTURE_ARGS=("${RESEARCH_CAPTURE_ARGS[@]}")
+NATURAL_CAPTURE_ARGS=("${RESEARCH_CAPTURE_ARGS[@]}")
+if [[ "$RESEARCH_CAPTURE_LEVEL" == "ultra" ]]; then
+  NATURAL_CAPTURE_ARGS=(
+    --research-capture maximum
+    --research-sector-eigenpairs "$RESEARCH_SECTOR_EIGENPAIRS"
+  )
+  if [[ "$CAPTURE_DISTANCE" == "true" ]]; then
+    NATURAL_CAPTURE_ARGS+=(--capture-deviation-decomposition)
+  fi
+fi
 
 # (lambda_sq, N, label)
 CONFIGS=(
@@ -37,6 +54,13 @@ CONFIGS=(
 )
 
 echo "=== Claim 8: natural full-space vs reduced even-sector eigenstate ==="
+if [[ "$RESEARCH_CAPTURE_LEVEL" == "ultra" ]]; then
+  echo "Natural branches: maximum capture plus applicable distance/deviation measurements"
+  echo "Even-sector-only prime-power and u-flow responses remain on the even branches"
+fi
+if [[ "$PUBLISH_AFTER_COMPARISON" == "true" || "$PUBLISH_AFTER_COMPARISON" == "1" ]]; then
+  echo "Publication: staged throughout comparison; one cumulative execution after 8b natural"
+fi
 echo
 
 for cfg in "${CONFIGS[@]}"; do
@@ -47,6 +71,8 @@ for cfg in "${CONFIGS[@]}"; do
   echo "################################################################"
 
   echo "---- [${LABEL}] EVEN-SECTOR (default reproduction path) ----"
+  export XC_PUBLISH_EXECUTE=false
+  RESEARCH_CAPTURE_ARGS=("${EVEN_CAPTURE_ARGS[@]}")
   run_research_claim run \
     --lambda-sq "$LAMBDA_SQ" \
     --n-modes "$N" \
@@ -56,6 +82,12 @@ for cfg in "${CONFIGS[@]}"; do
   echo
 
   echo "---- [${LABEL}] NATURAL (unrestricted full-space path) ----"
+  RESEARCH_CAPTURE_ARGS=("${NATURAL_CAPTURE_ARGS[@]}")
+  if [[ "$LABEL" == "8b" ]]; then
+    export XC_PUBLISH_EXECUTE="$PUBLISH_AFTER_COMPARISON"
+  else
+    export XC_PUBLISH_EXECUTE=false
+  fi
   run_research_claim run \
     --lambda-sq "$LAMBDA_SQ" \
     --n-modes "$N" \

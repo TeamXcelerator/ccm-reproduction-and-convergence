@@ -42,3 +42,6 @@ benchmark-results/
 # Toolkit-internal stage timing sidecars.
 performance-reports/
 *.performance.json
+
+# Legacy GL node cache when XC_CACHE_ROOT is unset (see xc-numerics quadrature).
+/data/

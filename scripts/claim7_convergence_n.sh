@@ -21,8 +21,9 @@ if [[ "${FORCE_EVEN:-true}" == "false" ]]; then
   echo "  *** parity policy: natural full-space solve ***"
 fi
 
-# Ascending order is intentional: Toolkit Auto searches the configured cache
-# layers for the nearest compatible lower-N eigenstate before each solve.
+# Ascending order is intentional for presentation. Persisted eigenstate solves
+# always use the canonical initial state, so sweep order and lower-N cache
+# contents cannot change their retained bytes.
 N_VALUES=(10 20 30 40 50 60 80 100 120)
 PUBLISH_AFTER_SWEEP=${XC_PUBLISH_EXECUTE:-false}
 

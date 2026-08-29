@@ -13,7 +13,17 @@
 **Contact:** randrewsmath@gmail.com  
 **Date:** June 2026
 
-**Release:** v2.3 (Xcelerator Toolkit v0.13.5)
+**Release:** v2.4 (Xcelerator Toolkit v0.14.2)
+
+> **New in v2.4.** Adopts Xcelerator Toolkit v0.14.2 and documents the remote
+> cache visibility settings. Adds the `ultra` research-capture level and
+> individual flags for the four research artifacts that sit outside the named
+> levels, so every diagnostic the toolkit can produce is now reachable from a
+> claim script. The toolkit release preserves the 0.14.1 mathematical
+> semantics and numerical definitions while accelerating remote reuse,
+> reconstruction, and publication staging; the paper's claims,
+> configurations, and every reported value are unchanged at any capture
+> level.
 
 ## Headline Results
 
@@ -172,6 +182,16 @@ analyses execute, never the arithmetic precision or convergence rules:
 - `maximum` adds complete guarded eigenvalue spectra for both sectors and
   retains eight low eigenvectors per sector by default. Override the retained
   eigenvector bound with `RESEARCH_SECTOR_EIGENPAIRS`.
+- `ultra` retains everything `maximum` does, and additionally the three
+  research artifacts that are measurements rather than proofs: the deviation
+  decomposition, the per-prime-power response, and the full `u`-flow response.
+  It deliberately excludes the exact sector-gap certificate, which is a
+  certification rather than a data point and carries the interval-assembly and
+  rational-inertia proof cost; request that separately with
+  `--capture-sector-gap-certificate`.
+
+The deviation decomposition also needs `--capture-distance`, since it is
+computed from the retained eigenfunction profile.
 
 For example:
 
@@ -189,7 +209,32 @@ bash scripts/claim1a_lambda13.sh --research-capture claim
 bash scripts/claim1a_lambda13.sh \
   --research-capture maximum \
   --research-sector-eigenpairs 8
+
+# Everything except the certificate, for a data-generation sweep
+bash scripts/claim1a_lambda13.sh \
+  --research-capture ultra \
+  --research-sector-eigenpairs 8 \
+  --capture-distance
 ```
+
+The four research artifacts outside the named levels are individually
+selectable, and compose with any level:
+
+| flag | artifact |
+| --- | --- |
+| `--capture-deviation-decomposition` | `ccm_deviation_decomposition` |
+| `--capture-prime-power-response` | `ccm_prime_power_response_analysis` |
+| `--capture-u-flow-response` | `ccm_u_flow_response_analysis` |
+| `--capture-sector-gap-certificate` | `ccm_sector_gap_certificate` |
+
+`ultra` is exactly `maximum` plus the first three. None of them changes any
+reported value; they only add retained evidence.
+
+Prime-power and `u`-flow responses require the isolated even-sector
+eigenstate. A direct natural or adaptive-even request for either response is
+rejected before the eigensolve begins. Claim 8 handles this distinction
+automatically: each even branch keeps `ultra`, while its natural comparison
+uses `maximum` plus the applicable distance and deviation measurements.
 
 For unattended machines, the equivalent environment variables are
 `RESEARCH_CAPTURE_LEVEL`, `RESEARCH_SECTOR_EIGENPAIRS`,
@@ -207,6 +252,16 @@ At maximum capture, the retained set includes:
   from each parity sector, and GapLog; and
 - the underlying quadrature inputs, archimedean and prime components, Tau
   matrix, factorization, secular source, root-window, and convergence evidence.
+
+At `ultra` the set additionally includes, per configuration:
+
+- the deviation-decomposition amplitude in `f - tau`, with the deviation,
+  reference-shape and residual norms, retained under both readings of the
+  distance weight;
+- each active prime power's isolated contribution to `dQ/du`, with the
+  eigenvalue, full eigenvector, and per-root responses; and
+- the decomposed `u`-flow in its four channels, with eigenstate transport and
+  moving-root responses.
 
 These artifacts are managed by the toolkit and are directly reusable by
 downstream research projects. The requested root window is stored as one
@@ -275,6 +330,42 @@ Example: run Claim 1 with the natural eigenvector:
 bash scripts/claim1a_lambda13.sh --parity-policy natural
 ```
 
+### Target-distance retention
+
+No claim in this paper depends on the CCM target function, so retention of the
+normalized eigenfunction profile and its weighted distance to `tau(u)` is off
+by default and no `ccm-distance` artifact is produced. Request it explicitly
+when the run is intended to serve the target-distance program:
+
+```bash
+bash scripts/claim1a_lambda13.sh --capture-distance
+```
+
+The retained measurement records `alpha = 1/2` under two integration rules from
+different families -- composite trapezoid and Gauss--Legendre -- so the artifact
+shows its convention spread rather than a single unqualified number.
+
+Combining `--capture-distance` with `--research-capture maximum` also retains
+the v0.14.1 numerical-resolution evidence and target-residual analysis. The
+more expensive prime-power response, full `u`-flow response, deviation
+decomposition, and exact sector-gap certificate remain separate toolkit
+opt-ins and are not silently added to Paper 1 runs.
+
+The distance always derives from the even-sector ground state. Under the
+natural full-space parity policy (`--no-force-even`) the retained artifact is
+still the even-sector measurement -- numerically indistinguishable above the
+precision floor, but not a separate natural-state distance -- and the
+`check-evenness` subcommand does not accept distance flags at all. Adjust the
+node and cell counts with `--distance-resolution` (default 4000) and the profile
+abscissa count with `--distance-profile-steps` (default 1000). The retained
+profile carries the normalized `V_n` coefficients, so a reader can evaluate the
+eigenfunction at any abscissa and apply any rule at any resolution without
+repeating the spectral solve.
+
+Retention changes what is stored, never what is computed: precision targets,
+convergence criteria, root policy, and every reported value are identical with
+and without the flag.
+
 ### Parallel reproduction
 
 Claims are split into independent sub-scripts for multi-server runs.
@@ -283,16 +374,21 @@ servers.
 
 ## Cache infrastructure
 
-Xcelerator Toolkit v0.13.5 manages reusable quadrature, CCM component,
+Xcelerator Toolkit v0.14.2 manages reusable quadrature, CCM component,
 matrix, eigenpair, and evidence artifacts in a per-user cache. Compatible
 public artifacts are resolved and validated automatically by default; a miss
 is computed and stored locally. Normal reproduction requires no credentials
 or cache configuration.
 
-Version 0.13.5 is payload-preserving: it does not change mathematical semantic
-keys, artifact schemas, precision targets, solver selection, convergence
-rules, or default scheduling. Compatible artifacts from the preceding 0.13.x
-releases therefore remain reusable without migration. Its high-precision CCM
+Version 0.14.2 preserves the 0.14.1 mathematical semantic keys, payload
+schemas, precision targets, solver selection, convergence rules, and default
+scheduling. Compatible artifacts from the 0.14.1 and 0.13.x releases remain
+reusable without migration; newly produced canonical manifests record the
+0.14.2 producer version. The 0.14.1 additions -- the CCM
+target function, weighted eigenfunction distances, and their `ccm-distance`
+artifact family -- are not used by default claim runs here. Explicit
+maximum-with-distance runs retain the corresponding research artifacts without
+changing claim values. Its high-precision CCM
 component construction writes directly into final matrix storage, removing
 full-size intermediate collections while preserving the established MPFR
 operation order.
@@ -311,9 +407,9 @@ bash scripts/claim1a_lambda13.sh --verify-cache
 ```
 
 Verification recomputes the complete claim into an isolated validation cache,
-allows reference artifacts to supply continuation seeds, compares newly
-computed payloads with their references, and writes one claim-wide report. It
-does not publish or modify the production cache.
+starts every persisted eigenstate solve from its canonical initial state,
+compares newly computed payloads with their references, and writes one
+claim-wide report. It does not publish or modify the production cache.
 
 ### Benchmark toolkit changes
 
@@ -377,7 +473,7 @@ comparison report, and still rejects every other workload or runtime mismatch.
 
 ### Experimental GL root scheduling
 
-Toolkit v0.13.5 can use root-level Rayon parallelism when a cold
+The pinned Toolkit v0.14.2 can use root-level Rayon parallelism when a cold
 Gauss--Legendre batch contains too few distinct tables to occupy the worker
 pool. This is disabled by default and must remain disabled on WSL because
 concurrent GMP allocation has exhibited non-deterministic allocator failures
@@ -406,11 +502,36 @@ that persist `SolverProvenance`. A root-parallel cache-verification run must use
 the same flag or environment variable; ordinary verification exercises only
 the established root-serial default.
 
-Set `XC_CACHE_REMOTE=none` to prohibit remote reads. `XC_CACHE_ROOT` may point
-to an isolated cache directory for a cold run. Publication remains disabled
-unless an author explicitly selects an author profile and publication policy.
+### Remote cache visibility
+
+`XC_CACHE_REMOTE` selects which remote lanes are consulted. It defaults to
+`public`, which is the right setting for an independent reproduction: it needs
+no credentials.
+
+| Value | Lanes consulted |
+|---|---|
+| `public` (default) | public shards only |
+| `private` | private shards only |
+| `private_public` | private first, then public |
+| `none` | no remote reads at all |
+
+The public lane currently holds only the `lambda^2 = 13` configuration, so an
+ordinary run reuses published artifacts for Claim 1a and computes every other
+claim from scratch. That is expected: the public lane is a reproducibility
+sample, not a complete mirror.
+
+An author with private-shard access who wants to reuse the full retained
+corpus should set `XC_CACHE_REMOTE=private_public` before running the suite.
+Running the larger claims without it recomputes work that already exists,
+which for the HP-2000 and lambda^2 = 1000/1200 configurations is substantial.
+
+`XC_CACHE_ROOT` may point to an isolated cache directory for a cold run;
+combine it with `XC_CACHE_REMOTE=none` for a fully hermetic one.
+
+Publication remains disabled unless an author explicitly selects an author
+profile and publication policy.
 Private-shard author publication uses generation-fenced leases and atomic
-content-plus-coordination updates supplied by Toolkit v0.13.5, preventing
+content-plus-coordination updates retained by Toolkit v0.14.2, preventing
 concurrent publishers from advancing the same shard from stale state.
 
 ## Architecture
@@ -418,7 +539,7 @@ concurrent publishers from advancing the same shard from stale state.
 This repository contains the paper-specific CLI harness and
 reproduction scripts. The core mathematical library is the
 [Xcelerator Toolkit](https://github.com/TeamXcelerator/xcelerator-toolkit),
-pulled automatically from the immutable `v0.13.5` release tag by Cargo.
+pulled automatically from the immutable `v0.14.2` release tag by Cargo.
 `Cargo.lock` also pins the exact resolved toolkit commit so the claim scripts,
 configurations, and output interpretation remain reproducible. No manual
 cloning or toolkit configuration is required.

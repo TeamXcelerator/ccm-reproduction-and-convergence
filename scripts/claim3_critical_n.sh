@@ -18,8 +18,9 @@ fi
 echo "=== Claim 3: Critical N at HP-${PREC} ==="
 echo
 
-# Keep each lambda block in increasing N order. Toolkit Auto can then reuse the
-# nearest compatible lower-N eigenstate as a continuation seed.
+# Keep each lambda block in increasing N order so the sweep is easy to inspect.
+# Persisted eigenstate solves always use the canonical initial state, so the
+# retained bytes do not depend on sweep order or lower-N cache contents.
 CONFIGS=(
   "50    200"
   "50    250"

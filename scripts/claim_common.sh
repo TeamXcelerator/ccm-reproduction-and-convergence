@@ -18,12 +18,15 @@ BENCHMARK_REPORT=${BENCHMARK_REPORT:-}
 BENCHMARK_BASELINE=${BENCHMARK_BASELINE:-}
 BENCHMARK_LABEL=${BENCHMARK_LABEL:-}
 BENCHMARK_COMPARISON_MODE=${BENCHMARK_COMPARISON_MODE:-}
+CAPTURE_DISTANCE=${CAPTURE_DISTANCE:-false}
+DISTANCE_RESOLUTION=${DISTANCE_RESOLUTION:-4000}
+DISTANCE_PROFILE_STEPS=${DISTANCE_PROFILE_STEPS:-1000}
 GL_ROOT_PARALLEL=${XC_GL_ROOT_PARALLEL:-false}
 while (($# > 0)); do
   case "$1" in
     --research-capture)
       if (($# < 2)); then
-        echo "--research-capture requires claim, research, gap, or maximum" >&2
+        echo "--research-capture requires claim, research, gap, maximum, or ultra" >&2
         exit 2
       fi
       RESEARCH_CAPTURE_LEVEL=$2
@@ -67,6 +70,26 @@ while (($# > 0)); do
         exit 2
       fi
       RESEARCH_SECTOR_EIGENPAIRS=$2
+      shift 2
+      ;;
+    --capture-distance)
+      CAPTURE_DISTANCE=true
+      shift
+      ;;
+    --distance-resolution)
+      if (($# < 2)); then
+        echo "--distance-resolution requires a positive integer" >&2
+        exit 2
+      fi
+      DISTANCE_RESOLUTION=$2
+      shift 2
+      ;;
+    --distance-profile-steps)
+      if (($# < 2)); then
+        echo "--distance-profile-steps requires a positive integer" >&2
+        exit 2
+      fi
+      DISTANCE_PROFILE_STEPS=$2
       shift 2
       ;;
     --include-negative-roots)
@@ -118,13 +141,16 @@ while (($# > 0)); do
       shift 2
       ;;
     --help|-h)
-      echo "Usage: bash ${BASH_SOURCE[1]} [--research-capture LEVEL] [--research-sector-eigenpairs COUNT] [--root-acquisition MODE] [--parity-policy POLICY] [--root-validation LEVEL] [--root-enclosure-digits DIGITS] [--include-negative-roots] [--allow-root-oversubscription] [--verify-cache] [--parallel-gl-roots] [--benchmark-report PATH] [--benchmark-baseline PATH] [--benchmark-label LABEL] [--benchmark-comparison-mode MODE]"
-      echo "  LEVEL: claim, research (default), gap, or maximum"
+      echo "Usage: bash ${BASH_SOURCE[1]} [--research-capture claim|research|gap|maximum|ultra] [--research-sector-eigenpairs COUNT] [--root-acquisition MODE] [--parity-policy POLICY] [--root-validation LEVEL] [--root-enclosure-digits DIGITS] [--include-negative-roots] [--allow-root-oversubscription] [--capture-distance] [--distance-resolution COUNT] [--distance-profile-steps COUNT] [--verify-cache] [--parallel-gl-roots] [--benchmark-report PATH] [--benchmark-baseline PATH] [--benchmark-label LABEL] [--benchmark-comparison-mode MODE]"
+      echo "  LEVEL: claim, research (default), gap, maximum, or ultra"
       echo "  ROOT ACQUISITION: seeded (default for every claim script) or independent"
       echo "  PARITY POLICY: even-sector (default), natural, or adaptive-even"
       echo "  ROOT VALIDATION: off (default) or certified"
       echo "  ROOT ENCLOSURE: defaults to the claim's display digits; override only when needed"
       echo "  ADVANCED ROOTS: signed and finite-shortfall controls require independent HP discovery"
+      echo "  TARGET DISTANCE: --capture-distance retains the eigenfunction profile and its weighted"
+      echo "                   distance to tau(u); tune with --distance-resolution and"
+      echo "                   --distance-profile-steps. Off by default; no claim depends on it."
       echo "  CACHE VALIDATION: --verify-cache recomputes and compares claim artifacts; disabled by default"
       echo "  EXPERIMENTAL GL ROOTS: --parallel-gl-roots or XC_GL_ROOT_PARALLEL=true; native Linux only, never WSL"
       echo "  BENCHMARK: one process/report; benchmark sweep configurations separately with distinct paths"
@@ -203,14 +229,19 @@ case "$RESEARCH_CAPTURE_LEVEL" in
   claim|research|gap)
     RESEARCH_CAPTURE_ARGS=(--research-capture "$RESEARCH_CAPTURE_LEVEL")
     ;;
-  maximum)
+  maximum|ultra)
+    # ultra retains everything maximum does plus the measurement-only research
+    # artifacts (deviation decomposition, prime-power response, u-flow
+    # response). It does NOT request the exact sector-gap certificate, which
+    # stays on --capture-sector-gap-certificate because it is a proof rather
+    # than a data point and carries the interval-assembly cost.
     RESEARCH_CAPTURE_ARGS=(
-      --research-capture maximum
+      --research-capture "$RESEARCH_CAPTURE_LEVEL"
       --research-sector-eigenpairs "$RESEARCH_SECTOR_EIGENPAIRS"
     )
     ;;
   *)
-    echo "RESEARCH_CAPTURE_LEVEL must be claim, research, gap, or maximum" >&2
+    echo "RESEARCH_CAPTURE_LEVEL must be claim, research, gap, maximum, or ultra" >&2
     exit 1
     ;;
 esac
@@ -268,6 +299,20 @@ if ((${#ADVANCED_ROOT_ARGS[@]} > 0)) && [[ "$ROOT_ACQUISITION_MODE" != "independ
   exit 1
 fi
 
+# Target-distance retention is opt-in and applies to the run subcommand only.
+# It changes what is retained, never how anything is computed.
+DISTANCE_ARGS=()
+if [[ "$CAPTURE_DISTANCE" == "true" ]]; then
+  DISTANCE_ARGS+=(
+    --capture-distance
+    --distance-resolution "$DISTANCE_RESOLUTION"
+    --distance-profile-steps "$DISTANCE_PROFILE_STEPS"
+  )
+elif [[ "$CAPTURE_DISTANCE" != "false" ]]; then
+  echo "CAPTURE_DISTANCE must be true or false" >&2
+  exit 1
+fi
+
 BENCHMARK_ARGS=()
 if [[ -n "$BENCHMARK_REPORT" ]]; then
   BENCHMARK_ARGS+=(--benchmark-report "$BENCHMARK_REPORT")
@@ -289,7 +334,7 @@ fi
 
 run_research_claim() {
   if [[ "${1:-}" == "run" ]]; then
-    "$BIN" "${BENCHMARK_ARGS[@]}" "${RUNTIME_ARGS[@]}" "$@" "${RESEARCH_CAPTURE_ARGS[@]}" "${ROOT_ACQUISITION_ARGS[@]}" "${PARITY_POLICY_ARGS[@]}" "${ROOT_VALIDATION_ARGS[@]}" "${ADVANCED_ROOT_ARGS[@]}"
+    "$BIN" "${BENCHMARK_ARGS[@]}" "${RUNTIME_ARGS[@]}" "$@" "${RESEARCH_CAPTURE_ARGS[@]}" "${ROOT_ACQUISITION_ARGS[@]}" "${PARITY_POLICY_ARGS[@]}" "${ROOT_VALIDATION_ARGS[@]}" "${ADVANCED_ROOT_ARGS[@]}" "${DISTANCE_ARGS[@]}"
   elif [[ "${1:-}" == "check-evenness" ]]; then
     "$BIN" "${BENCHMARK_ARGS[@]}" "${RUNTIME_ARGS[@]}" "$@" "${RESEARCH_CAPTURE_ARGS[@]}" "${ROOT_ACQUISITION_ARGS[@]}"
   else

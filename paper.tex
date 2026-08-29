@@ -7,7 +7,13 @@
 \usepackage{pgfplots}
 \usepackage{orcidlink}
 \pgfplotsset{compat=1.18}
-\hypersetup{hidelinks}
+\hypersetup{
+  hidelinks,
+  pdftitle={Independent Reproduction and Convergence Analysis of the Connes--Consani--Moscovici Zeta Spectral Triple},
+  pdfauthor={Ronnie Andrews, Jr.},
+  pdfsubject={Independent high-precision reproduction and convergence analysis of the CCM zeta spectral triple},
+  pdfkeywords={Riemann zeta function, spectral triple, Weil quadratic form, high-precision computation, convergence}
+}
 \geometry{margin=1in}
 
 \newtheorem{theorem}{Theorem}
@@ -20,7 +26,7 @@ of the Connes--Consani--Moscovici Zeta Spectral Triple}
 \author{Ronnie Andrews, Jr.\,\orcidlink{0009-0003-9724-3104}%
 \thanks{Correspondence: \texttt{randrewsmath@gmail.com}}}
 
-\date{June 2026\\[2pt]{\small Revised August 2026}}
+\date{June 2026\\[2pt]{\small Revised September 2026 (version 2.4)}}
 
 \begin{document}
 \maketitle
@@ -82,6 +88,20 @@ $(\lambda^2{=}13, N{=}120)$ with 200-digit working precision.
 Subsequent independent work by Groskin reproduced the high-precision
 zero approximation from the truncated Weil form across multiple
 cutoffs~\cite{Groskin2026HighPrecision}.
+
+Recent continuum results provide complementary context for the parity
+observation below. Suzuki proves that, for sufficiently small compact-window
+half-width $a>0$, the localized Weil operator has a positive, simple lowest
+eigenvalue with an even eigenfunction~\cite{Suzuki2026WeilScrew}. Chuk reports
+an unconditional certificate through $a=0.8$, equivalently
+$\lambda^2=e^{2a}\approx4.95$, including a simple even continuum ground
+state~\cite{Chuk2026CompactWeil}. These analytic ranges remain below the
+finite full-space configurations tested here, which begin at
+$\lambda^2=13$; they do not exclude a later even--odd crossing. Chuk also
+proposes a Landau--Widom-type decay law for the continuum compact-window
+infimum, with a fitted leading constant. That proposal concerns a different
+limit and is not used here as an asymptotic law for the finite Galerkin
+quantity $\varepsilon_N(\lambda^2,N)$ or for secular-root error.
 
 In this paper we:
 \begin{enumerate}
@@ -200,7 +220,10 @@ Key algorithmic choices:
 direct reduced even-sector matrix. The default automatic solver first
 reuses an exact compatible eigenstate when available; on a cache miss
 it applies a retained-factor shift-invert Krylov/Rayleigh--Ritz method,
-optionally initialized by a compatible lower-$N$ cached state. A
+always initialized from its canonical state. Cache-derived or explicitly
+supplied continuation states are not admitted to the persisted solve, so
+the retained payload cannot depend on which compatible artifacts happened
+to be present before the run. A
 residual-verified LU inverse-iteration route remains the conservative
 fallback when the targeted Ritz value is not isolated unambiguously.
 The unrestricted natural and conditional-projection routes use the
@@ -229,7 +252,11 @@ workflows retain finite nonconverged values with diagnostics; they are
 not mislabeled as converged or certified.
 \item \textbf{Gauss--Legendre quadrature with disk cache:}
 GL nodes and weights at a given quadrature order and bit precision
-are computed once and cached for reuse across runs.
+are computed once and cached for reuse across runs. This quadrature
+evaluates the finite-$x$ representation of the full archimedean matrix
+entries used by the CCM construction; it does not introduce the separate
+finite-frequency cutoff $T$ used in Groskin's implementation and studied
+there for truncation sensitivity~\cite{Groskin2026HighPrecision}.
 \end{enumerate}
 
 \subsection{Reproducibility Infrastructure}
@@ -637,9 +664,9 @@ digits.}
 $\lambda^2$ & $N$ & Precision & Evenness deviation & Eigenvalue rel.\ diff. & Verdict \\
 \midrule
 13    & 120  & HP-1000  & $2.126 \times 10^{-966}$  & $1.107 \times 10^{-962}$ & essentially even \\
-100   & 500  & HP-1000  & $6.665 \times 10^{-563}$  & 0 (at working precision) & essentially even \\
-1000  & 800  & HP-2000  & $7.634 \times 10^{-763}$  & 0 (at working precision) & essentially even \\
-1000  & 890  & HP-2000  & $1.563 \times 10^{-664}$  & 0 (at working precision) & essentially even \\
+100   & 500  & HP-1000  & $6.665 \times 10^{-563}$  & $2.444 \times 10^{-559}$ & essentially even \\
+1000  & 800  & HP-2000  & $7.634 \times 10^{-763}$  & $1.559 \times 10^{-758}$ & essentially even \\
+1000  & 890  & HP-2000  & $1.563 \times 10^{-664}$  & $1.807 \times 10^{-660}$ & essentially even \\
 1200  & 970  & HP-2000  & $2.948 \times 10^{-528}$  & $7.927 \times 10^{-526}$ & essentially even \\
 \bottomrule
 \end{tabular}
@@ -652,15 +679,18 @@ approximately $48\log_{10}2=14.45$ decimal digits of arithmetic
 headroom, consistent with the roughly 15-order reduction to
 $6.665\times10^{-563}$. This change lowers the residual symmetry noise
 without changing the smallest eigenvalue, its sign, or the
-``essentially even'' conclusion.
+``essentially even'' conclusion; the natural and even-sector
+eigenvalues differ by only $2.444\times10^{-559}$ in relative terms.
 
 The $\lambda^2{=}1000$ rows show the same guard-reserve effect. At
 $N{=}800$ the deviation falls from the earlier
 $2.941\times10^{-748}$ to $7.634\times10^{-763}$, and at $N{=}890$
 from $6.279\times10^{-650}$ to $1.563\times10^{-664}$. Both
 improvements are approximately $14.6$ decimal orders, consistent
-with the added 48 guard bits; the natural and even-sector eigenvalues
-remain numerically equivalent at the reported precision.
+with the added 48 guard bits. The relative natural-versus-even
+eigenvalue differences are $1.559\times10^{-758}$ and
+$1.807\times10^{-660}$, respectively, so the two routes remain
+numerically equivalent to hundreds of decimal digits.
 
 The $\lambda^2{=}1200$, $N{=}970$ row was likewise remeasured with
 the 64-bit guard reserve. Its evenness deviation falls from
@@ -889,6 +919,12 @@ The complete paper-specific source code and reproduction scripts are
 available at:\\
 {\small\url{https://github.com/TeamXcelerator/ccm-reproduction-and-convergence}}
 
+\noindent All eight numbered claim groups were rerun at their stated
+precisions for the version 2.4 release. The release lockfile pins
+Xcelerator Toolkit version 0.14.2 at revision
+\href{https://github.com/TeamXcelerator/xcelerator-toolkit/commit/f2f4539bd1e51b257ebf57ded0ad2147c61411b3}%
+{\texttt{f2f4539bd1e5}} and records the full revision.
+
 \noindent The shared mathematical library and content-bound reference-zero
 dataset are supplied by the Xcelerator Toolkit at:\\
 {\small\url{https://github.com/TeamXcelerator/xcelerator-toolkit}}
@@ -905,7 +941,18 @@ arXiv:2511.22755 (2025).
 A.~Groskin,
 \emph{High-Precision Approximation of Riemann Zeros via the Truncated
 Weil Form},
-arXiv:2605.20224 (2026).
+arXiv:2605.20224v4 (2026).
+
+\bibitem{Suzuki2026WeilScrew}
+M.~Suzuki,
+\emph{Weil's Quadratic Form via the Screw Function},
+arXiv:2606.09096v2 (2026).
+
+\bibitem{Chuk2026CompactWeil}
+M.~Chuk,
+\emph{Weil Positivity in Compact Windows: Certified Two-Sided Bounds
+and a Landau--Widom Decay Law},
+arXiv:2608.24827v1 (2026).
 
 \bibitem{PARI}
 The PARI Group,

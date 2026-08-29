@@ -1,6 +1,6 @@
 [package]
 name = "ccm-reproduction"
-version = "2.3.0"
+version = "2.4.0"
 edition = "2021"
 description = "Independent reproduction and convergence analysis of the CCM Zeta Spectral Triple (arXiv:2511.22755)"
 authors = ["Ronnie Andrews, Jr. <5178942+TeamXceleratorDev@users.noreply.github.com>"]
@@ -16,7 +16,7 @@ hp = ["xc-spectral/hp", "xc-zeta/hp", "xc-numerics/hp", "dep:rug"]
 # the exact retained finite CCM point source. This is deliberately separate
 # from ordinary HP computation.
 root-certification = ["hp", "xc-spectral/arb"]
-# Local/native qualification surface for Toolkit v0.13.5's default-off GL
+# Local/native qualification surface for Toolkit v0.14.2's default-off GL
 # root scheduler. Ordinary reproduction builds do not enable it.
 experimental-gl-root-parallel = ["hp"]
 
@@ -28,11 +28,11 @@ rug = { version = "1.30", optional = true, default-features = false, features = 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# Xcelerator Toolkit v0.13.5. The immutable release tag and Cargo.lock bind
+# Xcelerator Toolkit v0.14.2. The immutable release tag and Cargo.lock bind
 # every claim run to the qualified numerical and artifact-format milestone.
-xc-spectral = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.13.5" }
-xc-zeta     = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.13.5" }
-xc-numerics = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.13.5" }
+xc-spectral = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.14.2" }
+xc-zeta     = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.14.2" }
+xc-numerics = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", tag = "v0.14.2" }
 
 [profile.release]
 opt-level = 3
