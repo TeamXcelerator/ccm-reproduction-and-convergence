@@ -7,6 +7,9 @@
 # This config produces the headline 1019.0 measured matching-digit result.
 # HP-1000 remains the requested target; 64 internal guard bits provide
 # approximately 1019.3 decimal digits of working precision.
+# The documented claim1c-hp1000 applicability policy excludes unsupported
+# target comparisons, isolated-state responses, and prefix exports up front.
+# See docs/CLAIM1C_CAPTURE.md. Other claim scripts retain the full recipe.
 set -euo pipefail
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
@@ -24,6 +27,7 @@ echo "=== Claim 1c: λ²=1000, N=800 at HP-${PREC} (1019.0 measured-digit extens
 echo
 
 run_research_claim run \
+  --capture-policy claim1c-hp1000 \
   --lambda-sq 1000 \
   --n-modes 800 \
   --precision-digits "$PREC" \

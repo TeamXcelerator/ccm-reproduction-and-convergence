@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Claim 1a: λ²=13, N=120 at HP-1000 (CCM headline reproduction).
 #
-# Smallest of the three Claim 1 configs. The default research capture retains
-# its explicit root window under the selected acquisition policy without
-# launching parity-sector solves.
+# Smallest of the three Claim 1 configs. Ultra retains the explicit root
+# window, both parity-sector spectra, and all applicable research measurements.
 # Designed to run independently on its own server so all three Claim 1
 # configs can run in parallel.
 set -euo pipefail

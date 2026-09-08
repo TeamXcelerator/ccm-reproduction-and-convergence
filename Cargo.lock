@@ -127,7 +127,7 @@ dependencies = [
 
 [[package]]
 name = "ccm-reproduction"
-version = "2.4.0"
+version = "2.5.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -135,6 +135,8 @@ dependencies = [
  "rug",
  "serde",
  "serde_json",
+ "xc-cache",
+ "xc-core",
  "xc-numerics",
  "xc-spectral",
  "xc-zeta",
@@ -754,8 +756,8 @@ dependencies = [
 
 [[package]]
 name = "xc-cache"
-version = "0.14.2"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?tag=v0.14.2#f2f4539bd1e51b257ebf57ded0ad2147c61411b3"
+version = "0.15.0"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=2bea90ec7cb23d4d615448c293c8af0f94e14119#2bea90ec7cb23d4d615448c293c8af0f94e14119"
 dependencies = [
  "fs2",
  "rayon",
@@ -768,8 +770,8 @@ dependencies = [
 
 [[package]]
 name = "xc-certify"
-version = "0.14.2"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?tag=v0.14.2#f2f4539bd1e51b257ebf57ded0ad2147c61411b3"
+version = "0.15.0"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=2bea90ec7cb23d4d615448c293c8af0f94e14119#2bea90ec7cb23d4d615448c293c8af0f94e14119"
 dependencies = [
  "rug",
  "serde",
@@ -781,8 +783,8 @@ dependencies = [
 
 [[package]]
 name = "xc-core"
-version = "0.14.2"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?tag=v0.14.2#f2f4539bd1e51b257ebf57ded0ad2147c61411b3"
+version = "0.15.0"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=2bea90ec7cb23d4d615448c293c8af0f94e14119#2bea90ec7cb23d4d615448c293c8af0f94e14119"
 dependencies = [
  "serde",
  "serde_json",
@@ -791,8 +793,8 @@ dependencies = [
 
 [[package]]
 name = "xc-numerics"
-version = "0.14.2"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?tag=v0.14.2#f2f4539bd1e51b257ebf57ded0ad2147c61411b3"
+version = "0.15.0"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=2bea90ec7cb23d4d615448c293c8af0f94e14119#2bea90ec7cb23d4d615448c293c8af0f94e14119"
 dependencies = [
  "anyhow",
  "rayon",
@@ -806,8 +808,8 @@ dependencies = [
 
 [[package]]
 name = "xc-operator"
-version = "0.14.2"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?tag=v0.14.2#f2f4539bd1e51b257ebf57ded0ad2147c61411b3"
+version = "0.15.0"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=2bea90ec7cb23d4d615448c293c8af0f94e14119#2bea90ec7cb23d4d615448c293c8af0f94e14119"
 dependencies = [
  "rayon",
  "rug",
@@ -818,8 +820,8 @@ dependencies = [
 
 [[package]]
 name = "xc-root"
-version = "0.14.2"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?tag=v0.14.2#f2f4539bd1e51b257ebf57ded0ad2147c61411b3"
+version = "0.15.0"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=2bea90ec7cb23d4d615448c293c8af0f94e14119#2bea90ec7cb23d4d615448c293c8af0f94e14119"
 dependencies = [
  "rayon",
  "rug",
@@ -831,8 +833,8 @@ dependencies = [
 
 [[package]]
 name = "xc-solver"
-version = "0.14.2"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?tag=v0.14.2#f2f4539bd1e51b257ebf57ded0ad2147c61411b3"
+version = "0.15.0"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=2bea90ec7cb23d4d615448c293c8af0f94e14119#2bea90ec7cb23d4d615448c293c8af0f94e14119"
 dependencies = [
  "nalgebra",
  "rug",
@@ -844,8 +846,8 @@ dependencies = [
 
 [[package]]
 name = "xc-spectral"
-version = "0.14.2"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?tag=v0.14.2#f2f4539bd1e51b257ebf57ded0ad2147c61411b3"
+version = "0.15.0"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=2bea90ec7cb23d4d615448c293c8af0f94e14119#2bea90ec7cb23d4d615448c293c8af0f94e14119"
 dependencies = [
  "anyhow",
  "cc",
@@ -867,8 +869,8 @@ dependencies = [
 
 [[package]]
 name = "xc-zeta"
-version = "0.14.2"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?tag=v0.14.2#f2f4539bd1e51b257ebf57ded0ad2147c61411b3"
+version = "0.15.0"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=2bea90ec7cb23d4d615448c293c8af0f94e14119#2bea90ec7cb23d4d615448c293c8af0f94e14119"
 dependencies = [
  "anyhow",
  "rug",

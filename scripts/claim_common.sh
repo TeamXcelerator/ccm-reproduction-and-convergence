@@ -6,7 +6,7 @@ cd "$CLAIM_REPO_ROOT"
 
 # Claim scripts accept capture controls directly. Environment variables remain
 # available for unattended server jobs, but command-line flags take precedence.
-RESEARCH_CAPTURE_LEVEL=${RESEARCH_CAPTURE_LEVEL:-research}
+RESEARCH_CAPTURE_LEVEL=${RESEARCH_CAPTURE_LEVEL:-ultra}
 RESEARCH_SECTOR_EIGENPAIRS=${RESEARCH_SECTOR_EIGENPAIRS:-8}
 ROOT_ACQUISITION_MODE=${ROOT_ACQUISITION_MODE:-seeded}
 PARITY_POLICY=${PARITY_POLICY:-even-sector}
@@ -22,6 +22,8 @@ CAPTURE_DISTANCE=${CAPTURE_DISTANCE:-false}
 DISTANCE_RESOLUTION=${DISTANCE_RESOLUTION:-4000}
 DISTANCE_PROFILE_STEPS=${DISTANCE_PROFILE_STEPS:-1000}
 GL_ROOT_PARALLEL=${XC_GL_ROOT_PARALLEL:-false}
+JOURNAL_ARGS=()
+EXPLICIT_CAPTURE_ARGS=()
 while (($# > 0)); do
   case "$1" in
     --research-capture)
@@ -31,6 +33,19 @@ while (($# > 0)); do
       fi
       RESEARCH_CAPTURE_LEVEL=$2
       shift 2
+      ;;
+    --capture-output|--capture-prefix-checkpoints|--capture-working-precision-bits|--capture-reduction-max-dimension)
+      if (($# < 2)); then echo "$1 requires a value" >&2; exit 2; fi
+      JOURNAL_ARGS+=("$1" "$2")
+      shift 2
+      ;;
+    --require-complete-capture)
+      JOURNAL_ARGS+=("$1")
+      shift
+      ;;
+    --capture-deviation-decomposition|--capture-prime-power-response|--capture-u-flow-response|--capture-sector-gap-certificate)
+      EXPLICIT_CAPTURE_ARGS+=("$1")
+      shift
       ;;
     --root-validation)
       if (($# < 2)); then
@@ -142,7 +157,7 @@ while (($# > 0)); do
       ;;
     --help|-h)
       echo "Usage: bash ${BASH_SOURCE[1]} [--research-capture claim|research|gap|maximum|ultra] [--research-sector-eigenpairs COUNT] [--root-acquisition MODE] [--parity-policy POLICY] [--root-validation LEVEL] [--root-enclosure-digits DIGITS] [--include-negative-roots] [--allow-root-oversubscription] [--capture-distance] [--distance-resolution COUNT] [--distance-profile-steps COUNT] [--verify-cache] [--parallel-gl-roots] [--benchmark-report PATH] [--benchmark-baseline PATH] [--benchmark-label LABEL] [--benchmark-comparison-mode MODE]"
-      echo "  LEVEL: claim, research (default), gap, maximum, or ultra"
+      echo "  LEVEL: claim, research, gap, maximum, or ultra (default)"
       echo "  ROOT ACQUISITION: seeded (default for every claim script) or independent"
       echo "  PARITY POLICY: even-sector (default), natural, or adaptive-even"
       echo "  ROOT VALIDATION: off (default) or certified"
@@ -150,7 +165,12 @@ while (($# > 0)); do
       echo "  ADVANCED ROOTS: signed and finite-shortfall controls require independent HP discovery"
       echo "  TARGET DISTANCE: --capture-distance retains the eigenfunction profile and its weighted"
       echo "                   distance to tau(u); tune with --distance-resolution and"
-      echo "                   --distance-profile-steps. Off by default; no claim depends on it."
+      echo "                   --distance-profile-steps. Included by maximum and ultra."
+      echo "  JOURNALS: --capture-output DIR, --capture-prefix-checkpoints k,...,"
+      echo "            --capture-working-precision-bits BITS, --capture-reduction-max-dimension N"
+      echo "  COMPLETENESS: --require-complete-capture fails after preserving partial evidence"
+      echo "  EXPLICIT: --capture-deviation-decomposition, --capture-prime-power-response,"
+      echo "            --capture-u-flow-response, --capture-sector-gap-certificate (run commands)"
       echo "  CACHE VALIDATION: --verify-cache recomputes and compares claim artifacts; disabled by default"
       echo "  EXPERIMENTAL GL ROOTS: --parallel-gl-roots or XC_GL_ROOT_PARALLEL=true; native Linux only, never WSL"
       echo "  BENCHMARK: one process/report; benchmark sweep configurations separately with distinct paths"
@@ -206,7 +226,7 @@ if [[ -z "${BIN+x}" ]]; then
   # built from an older toolkit lockfile, without HP, or in an externally
   # overridden CARGO_TARGET_DIR from being mistaken for the current binary.
   CLAIM_FEATURES=hp
-  if [[ "$ROOT_VALIDATION_LEVEL" == "certified" ]]; then
+  if [[ "$ROOT_VALIDATION_LEVEL" == "certified" || " ${EXPLICIT_CAPTURE_ARGS[*]} " == *" --capture-sector-gap-certificate "* ]]; then
     CLAIM_FEATURES=$CLAIM_FEATURES,root-certification
   fi
   if [[ "$GL_ROOT_PARALLEL_ENABLED" == "true" ]]; then
@@ -219,22 +239,15 @@ elif [[ ! -x "$BIN" ]]; then
   exit 1
 fi
 
-# Capture cost is explicit. The balanced "research" default retains the
-# claim's explicit ordinal root window and all artifacts naturally produced by
-# that calculation, but does not launch the much more expensive parity-sector
-# eigenvector analysis. Every paper claim defaults to seeded acquisition, and
-# capture level cannot change the selected policy. Arithmetic and convergence
-# criteria are identical in every mode.
+# Ultra is the default research recipe. Lower levels are explicit cost controls.
+# Every level preserves the selected root acquisition, parity, and arithmetic.
 case "$RESEARCH_CAPTURE_LEVEL" in
   claim|research|gap)
     RESEARCH_CAPTURE_ARGS=(--research-capture "$RESEARCH_CAPTURE_LEVEL")
     ;;
   maximum|ultra)
-    # ultra retains everything maximum does plus the measurement-only research
-    # artifacts (deviation decomposition, prime-power response, u-flow
-    # response). It does NOT request the exact sector-gap certificate, which
-    # stays on --capture-sector-gap-certificate because it is a proof rather
-    # than a data point and carries the interval-assembly cost.
+    # The shared recipe adds complete distance and retained-prefix diagnostics;
+    # exact interval certification remains an explicit request.
     RESEARCH_CAPTURE_ARGS=(
       --research-capture "$RESEARCH_CAPTURE_LEVEL"
       --research-sector-eigenpairs "$RESEARCH_SECTOR_EIGENPAIRS"
@@ -299,8 +312,9 @@ if ((${#ADVANCED_ROOT_ARGS[@]} > 0)) && [[ "$ROOT_ACQUISITION_MODE" != "independ
   exit 1
 fi
 
-# Target-distance retention is opt-in and applies to the run subcommand only.
-# It changes what is retained, never how anything is computed.
+# Maximum and Ultra request the complete default distance convention.
+# The same grid controls apply to root and evenness claim commands.
+JOURNAL_ARGS+=(--capture-grid-resolution "$DISTANCE_RESOLUTION" --capture-profile-steps "$DISTANCE_PROFILE_STEPS")
 DISTANCE_ARGS=()
 if [[ "$CAPTURE_DISTANCE" == "true" ]]; then
   DISTANCE_ARGS+=(
@@ -332,12 +346,56 @@ if [[ "$GL_ROOT_PARALLEL_ENABLED" == "true" ]]; then
   RUNTIME_ARGS+=(--parallel-gl-roots)
 fi
 
-run_research_claim() {
-  if [[ "${1:-}" == "run" ]]; then
-    "$BIN" "${BENCHMARK_ARGS[@]}" "${RUNTIME_ARGS[@]}" "$@" "${RESEARCH_CAPTURE_ARGS[@]}" "${ROOT_ACQUISITION_ARGS[@]}" "${PARITY_POLICY_ARGS[@]}" "${ROOT_VALIDATION_ARGS[@]}" "${ADVANCED_ROOT_ARGS[@]}" "${DISTANCE_ARGS[@]}"
-  elif [[ "${1:-}" == "check-evenness" ]]; then
-    "$BIN" "${BENCHMARK_ARGS[@]}" "${RUNTIME_ARGS[@]}" "$@" "${RESEARCH_CAPTURE_ARGS[@]}" "${ROOT_ACQUISITION_ARGS[@]}"
-  else
-    "$BIN" "${BENCHMARK_ARGS[@]}" "${RUNTIME_ARGS[@]}" "$@" "${RESEARCH_CAPTURE_ARGS[@]}"
+# A primary failure must not skip other independent cases. Each binary exit
+# status is retained, and the script itself fails after attempting its cases.
+CLAIM_FAILURES=0
+CLAIM_LOGS=()
+CLAIM_SCRIPT_NAME=$(basename "${BASH_SOURCE[1]}" .sh)
+claim_exit() {
+  local status=$?
+  trap - EXIT
+  if ((${#CLAIM_LOGS[@]} > 0)); then
+    local summary="${CLAIM_LOGS[0]%.log}.summary.json"
+    if python3 "$CLAIM_REPO_ROOT/scripts/claim_summary.py" --claim "$CLAIM_SCRIPT_NAME" --output "$summary" "${CLAIM_LOGS[@]}"; then :
+    else status=1
+    fi
   fi
+  if ((CLAIM_FAILURES > 0)); then
+    echo "Claim script finished with $CLAIM_FAILURES failed invocation(s). See claim logs." >&2
+    exit 1
+  fi
+  exit "$status"
+}
+trap claim_exit EXIT
+
+run_research_claim() {
+  local -a command=("$BIN" "${BENCHMARK_ARGS[@]}" "${RUNTIME_ARGS[@]}" "${JOURNAL_ARGS[@]}" "$@" "${RESEARCH_CAPTURE_ARGS[@]}")
+  if [[ "${1:-}" == "run" ]]; then
+    command+=("${ROOT_ACQUISITION_ARGS[@]}" "${PARITY_POLICY_ARGS[@]}" "${ROOT_VALIDATION_ARGS[@]}" "${ADVANCED_ROOT_ARGS[@]}" "${DISTANCE_ARGS[@]}" "${EXPLICIT_CAPTURE_ARGS[@]}")
+  elif [[ "${1:-}" == "check-evenness" ]]; then
+    command+=("${ROOT_ACQUISITION_ARGS[@]}")
+    if ((${#EXPLICIT_CAPTURE_ARGS[@]} > 0)); then
+      echo "Explicit diagnostic flags require a run claim; use Ultra for evenness capture." >&2
+      CLAIM_FAILURES=$((CLAIM_FAILURES + 1))
+      return 0
+    fi
+  fi
+  local log_root=${CLAIM_LOG_ROOT:-$CLAIM_REPO_ROOT/.xcelerator-cache/claim-logs}
+  mkdir -p "$log_root"
+  local log
+  log=$(mktemp "$log_root/claim-$(date -u +%Y%m%dT%H%M%S)-XXXXXX.log")
+  CLAIM_LOGS+=("$log")
+  echo "Claim log: $log"
+  local -a statuses
+  if XC_PERF_REPORT="${XC_PERF_REPORT:-${log%.log}.performance.json}" "${command[@]}" 2>&1 | tee "$log"; then
+    statuses=("${PIPESTATUS[@]}")
+  else
+    statuses=("${PIPESTATUS[@]}")
+  fi
+  printf 'binary_exit=%s\nlog_exit=%s\n' "${statuses[0]}" "${statuses[1]}" > "${log%.log}.status"
+  if ((statuses[0] != 0 || statuses[1] != 0)); then
+    CLAIM_FAILURES=$((CLAIM_FAILURES + 1))
+    echo "Claim invocation failed; preserved output and continuing independent cases: $log" >&2
+  fi
+  return 0
 }

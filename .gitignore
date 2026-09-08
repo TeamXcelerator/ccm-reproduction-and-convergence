@@ -45,3 +45,7 @@ performance-reports/
 
 # Legacy GL node cache when XC_CACHE_ROOT is unset (see xc-numerics quadrature).
 /data/
+
+# Python claim-summary test bytecode.
+__pycache__/
+*.py[cod]

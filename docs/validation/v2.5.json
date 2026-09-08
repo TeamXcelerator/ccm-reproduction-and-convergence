@@ -1,0 +1,172 @@
+{
+  "release": "v2.5",
+  "toolkit_release": "v0.15.0",
+  "toolkit_revision": "2bea90ec7cb23d4d615448c293c8af0f94e14119",
+  "qualified_at_utc": "2026-09-11T18:07:17.997508+00:00",
+  "source_digest": {
+    "sha256": "6ed70aff843ecd93d1b0ba7caa9f0daf35839295ffe42d974403bb7cc8ce4cfa",
+    "encoding": "sorted Cargo manifests/lock, toolchain, Rust sources/tests and Python/shell runners/tests; path NUL then LF-normalized contents NUL",
+    "file_count": 27
+  },
+  "checks": {
+    "windows_default": {
+      "passed": 28,
+      "failed": 0
+    },
+    "wsl_hp": {
+      "passed": 35,
+      "failed": 0
+    },
+    "wsl_python_and_shell": {
+      "passed": 17,
+      "failed": 0
+    },
+    "strict_clippy_default_and_hp": true,
+    "shell_syntax": true,
+    "manuscript_build_and_visual_review": true
+  },
+  "toolchains": {
+    "windows": "1.98.0",
+    "wsl": "1.98.1"
+  },
+  "bounded_integration": {
+    "lambda_squared": 13,
+    "n_modes": 16,
+    "precision_digits": 40,
+    "root_count": 1,
+    "resolution": 32,
+    "profile_steps": 32,
+    "requested_diagnostics": 13,
+    "with_target_completed": 13,
+    "missing_target_missing": 4,
+    "natural_missing_target_missing": 5,
+    "natural_missing_target_blocked": 2,
+    "primary_retained_in_all_cases": true,
+    "scope": "Application integration; numerical tolerance outcomes are retained, not promoted to certificates."
+  },
+  "paper_tables": "Historical v2.4 measurements; upgrading the harness does not rerun every table.",
+  "claim1a_qualification": {
+    "lambda_squared": 13,
+    "n_modes": 120,
+    "precision_digits": 1000,
+    "precision_bits": 3386,
+    "root_count": 25,
+    "root_acquisition": "seeded",
+    "parity_policy": "even-sector",
+    "capture_level": "ultra",
+    "sector_eigenpairs": 8,
+    "initial_distance_resolution": 4000,
+    "profile_steps": 1000,
+    "runtime_target_supplied": true,
+    "converged_roots": 25,
+    "numerical_checks_passed": true,
+    "completed_capture_requests": 13,
+    "reported_numerical_rejections": [],
+    "retained_reduction_checks_passed": true,
+    "prefix_checkpoint_dimension": 121,
+    "prefix_checkpoint_status": "export_checks_passed",
+    "prefix_ladder_completed": true,
+    "matching_digits": {
+      "1": "55.7635578786209875612106004032257186092562186968598887732005435498404724095857554157218842771425986411235195270329598197466524824773266826717212626510893221298859137129694787445227968867209334453722148653381479751601977667589383015408388315541850020735263266422389761419824195143652848733578952515436596046987921426515083651433386209544392468138020520781345168777375852205556633847891443668482015403927360526550164474230929967977761878685948321178388112855806156228625774963004588505590619066411504841445428106312807162177841499823061340401380341177028325555640040589048974129983925556040480274215362469697576655518602704690192046239817931705268138355947010035992104749565219500738836350655818673949910766942063376830186467567033732594874418092775330845981393909224136765386646140051412424245385953907491879708852644271415693421647944355244791035431224461216424974488438895801819931536923833950118534327784527109528563464367275220294457030703147563840529686246393782969082615784469652305653238579548449675773872458622489960139024427365840585227042171182024165597056287593619933374813935537600037210383614915563440639386957723458906050784582261959086676417488705135263066211195220940443999710219217950686030669345054039247818179591864296864492888669893968202954948274536733283122119458357031229799235077917149617425702001514221206096319251108260485922999364606913311665572409391116333301496772238227837793389837014525479947173731483281244559405519941036601718016215725058669861731300136503246392600897276091489241817783460734690961912250355090067912264522246205208745288508262802149647403569632953701617397167724733581950222115185908359607657397186808888667468006836131044730514033554113176282246634918540709625753329764563161357820843831230583145515864351116352890720056709085847285872386776090964358694166120721653417140467632609904556322975006517615045583669836622947428074277450942604296277501056551986154245793622859060526016360563421516939305124754525771033809530888707230583770406044616263865327444210590345498866738862040552318929614",
+      "20": "25.3386174265459048763148296436694499122415339106895934700719767435181316097829991517673613086940301101520339635613672190026529802820667895338268298644678867217867690846863144706348086494937352003018536996494425278913792737654480923420093222931127838283598856231616204535093301066656114212535065093509693249537673853042861366528696963063267481800397123481966402639070073039265240607999540173674507094563009724667790166550938352500044809614628905797878519596611949464228851159729404315596419132723448577073879288185957742452608409036342600261204769596777926401531832598263571387370008075964855059918894475001644223596443977623031072265919208527373014456563132843155012274745485082791675967660502323099073156906292058067624078002452978809816140876210052653175530643293780251437742052898393870592141711516348523742641411556239481320870035123145444932698548012032988661368042548052299785339502671152739066432130518358377358825672945251035751812302285304805661914810421937667722476534451489344064283837120630834196205789597232973978226312364154123049728217038216148166906327139649075342885776271645472027157668584499539012739949821286661511390045230830775928665080478130444082764809964370764461806222309528751379088085500042412274192782232933594689745741429571837228480650374536130432653078455167301442919663652914710870784493303814739655606544940103480870660987297229254208439011540682978909426067276259297597566471734431119918892013564288680688273062383161374783143031579925109294711324492441607453825100719633012200202903159837496544805669602671843231705954270052587071845429862788175468196400868626909496953533691659634917951597478848651987179125895507357294594411231419738038378574328557540292953632202442084698524585717115319888547272884857922632169961516274029929434044796620744165131604022224650212784203827070277182166889995442476222298988696261608198658721764221507280230510189871096232794810890503627597326239110067028875675465405325773666710083360021642012080954907860057172139022989637959925988632956244547634632971417336751689260119"
+    },
+    "primary_numerical_values_identical_on_cache_replay": true,
+    "primary_numerical_payload_sha256": "3514a96b1231f7d54a5e78c4a927bfd1bf7fd61d88837d71e0f8e2afcc17e2ad",
+    "private_journal": "c13-n120-p3386-1788891523808192007-1920",
+    "scope": "Final pinned release build, local artifacts, publication disabled; validates Claim 1a only.",
+    "previous_qualification_journal": "c13-n120-p3386-1788882042362161733-298",
+    "qualified_source_sha256": "da001e690b54264c61ac511f5ebfbd9da6865b76cb740680b7c2f4b1ae87ef53"
+  },
+  "capture_correction": {
+    "reason": "Cold managed ZIP production could bypass the retained payload observer while successfully staging numerical artifacts.",
+    "numerical_identities_changed": false,
+    "historical_receipts_preserved": true,
+    "qualification_scope": "Cold local ZIP cache with canonical publication staging and warm replay; no remote artifact mutation.",
+    "claim1a_replay_complete": true
+  },
+  "claim1c_applicability": {
+    "policy": "claim1c-hp1000",
+    "lambda_squared": 1000,
+    "n_modes": 800,
+    "precision_bits": 3386,
+    "parity_policy": "even-sector",
+    "requested_diagnostics": 5,
+    "excluded_diagnostics": 8,
+    "exclusions_recorded_before_execution": true,
+    "unexpected_failures_remain_incomplete": true,
+    "historical_records_preserved": true,
+    "toolkit_unchanged": true,
+    "qualification_scope": "HP policy and receipt tests, scientific-summary and shell tests, strict Clippy on both tiers, HP release build; full Claim 1c numerical run not repeated locally for this policy amendment."
+  },
+  "response_normalization_amendment": {
+    "prior_toolkit_revision": "8333552f548a5fd09f346f0c7c5a1623215e94da",
+    "prior_source_sha256": "e7a0733cb3a886ac2ebb2f0deb536331b60bca8daa11bb9f0283c7ad3d979bae",
+    "repeated_checks": [
+      "windows_default",
+      "wsl_hp",
+      "wsl_python_and_shell",
+      "strict_clippy_default_and_hp",
+      "shell_syntax"
+    ],
+    "historical_qualification": "The unchanged manuscript, bounded integration and scientific claim measurements retain their original toolkit revision; none was rerun for this dependency amendment.",
+    "log_sha256": {
+      "hp-clippy.log": "37bb2225063c80012bff8dd4c9fdcacab40ca7fa37161de483353d13b2f85ebd",
+      "hp-tests.log": "5bf4827336a7d26bd3c6825668c8f7568391c854fd8e0d7ceb7b2acb047c9eb4",
+      "native-clippy.log": "a0e0b4f80ef6d3e4f5f7cb5f739be830662aa359ba95b0c4a6f0c296254261b4",
+      "native-tests.log": "3e6eb19e2d6c6fbd5648924a31124654b94b05e33ff28ab9f9601938a85c454d",
+      "python-tests.log": "6c70c90ef3429d4c0e5634a7dc41e6c132fa8fd36f5d9c8704dff144fd23adfa"
+    }
+  },
+  "retained_repair_pin_scope": "Pins the toolkit retained response and capture-receipt repair release. Harness checks repeated; historical claim measurements and manuscript tables were not rerun or replaced.",
+  "published_receipt_reader_pin_scope": "Pins the corrected Toolkit canonical dependency validator. Native and HP harness tests, strict Clippy and 13 script tests repeated. No claim run, artifact mutation or publication was performed for this qualification.",
+  "publication_alias_pin_scope": "Pins the corrected Toolkit publication alias remapper. Native and HP harness tests, strict Clippy and 13 script tests repeated. No claim run, artifact mutation or publication was performed for this qualification.",
+  "claim8_applicability": {
+    "policy": "claim8-natural",
+    "prior_source_sha256": "0cbb56775aca24cfc0b590334d29b1a9c9342640fb2cf019b0a0b7fdde229afa",
+    "toolkit_unchanged": true,
+    "windows_tests": 28,
+    "hp_tests": 35,
+    "python_shell_tests": 17,
+    "offline_runner_tests": 10,
+    "strict_clippy_both_tiers": true,
+    "release_build": true,
+    "historical_receipts_preserved": true,
+    "full_claim8_comparison_rerun": false,
+    "remote_publication_performed": false,
+    "natural_route_integration": {
+      "lambda_squared": 13,
+      "n_modes": 120,
+      "precision_bits": 3386,
+      "parity_policy": "natural",
+      "capture_complete": true,
+      "applicable_requests": 10,
+      "excluded_exports": 3,
+      "prefix_status": "innovation_export_passed_eigenpair_not_supplied",
+      "innovation_vector_dimension": 121,
+      "eigenpair_source": null,
+      "converged_roots": 25,
+      "numerical_review": [],
+      "numerical_headlines_passed": true,
+      "source_sha256": {
+        "build.json": "979e41605e5a060688705541a3c1de17e348b10a0c69e7934dde98d07198055b",
+        "capture.json": "ecfbbcba69e259a183b50f8e61a21bbb7bda65eacac4157566a346fdce6e7149",
+        "claim-measurements.json": "de30a57360adbc03a2433f479278d903fc6704ee5c360ccac8df4b94cc3b8d57",
+        "primary-sources.json": "107e775fcc1b1d7325e56e47281f2f3ce6d16033345e26a1ea0dcf2d3583ce37",
+        "primary.json": "7ed669b399ad0a2b94c22758775b8c6dbdc705fdf99154495e7cc36a2464391e",
+        "request.json": "a07f18e4717ddf5422d4a10bcca1fc0b2b6043cd83920f64ca79149252dc3c2d",
+        "status.json": "dea905758d911b2133990765af334d7cd194ee44c2dcc2c1fd2e08f797b84b6e"
+      },
+      "scope": "Local source reuse, no remote cache or publication; C=100 comparison not rerun."
+    },
+    "log_sha256": {
+      "claim8-native-tests.log": "7dabca1b65ca840d9c3307ca8b1a46b453a8d57c83104726aa4320d7c5eb9c55",
+      "claim8-native-clippy.log": "bb47bfc9f99d23c30a44048ec14c134ddf705b20e598220feb55515cb7ecb093",
+      "claim8-hp-tests.log": "a7687955cb23cecf5c9ac398d1c5e340de91ed3d00da298bec640a2edcd390f8",
+      "claim8-hp-clippy.log": "49cc6ea24666ca9729cae111106c8d70e910f99c0b8523aea2b7e63248289e6f",
+      "claim8-python-tests.log": "e699944154ea2f25dad4b7ad8efdac32a821fb16a3af69f6860dc8659e17beed",
+      "claim8-runner-tests.log": "4e9426885b87053ec2ba46e0e37500a30f5566f23dbbf1c7f5d3a6baad1eaff3",
+      "claim8-build.log": "ec89f5016245deae54859b375ffa270fcb6bd4c083c4d47cd37d2b9a6839dbdf",
+      "claim8-policy-smoke.log": "80ae2da81aab3f5a8ab74a584a65fb09821c3807de144425a4f8f3d213cdda49"
+    }
+  }
+}

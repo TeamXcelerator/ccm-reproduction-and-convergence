@@ -20,6 +20,7 @@ use std::path::PathBuf;
 use xc_spectral::ccm::{self, CcmParams, CcmResult};
 
 mod benchmark;
+mod capture;
 use benchmark::{BenchmarkComparisonMode, BenchmarkOptions, BenchmarkRecorder};
 
 #[derive(Debug, Parser)]
@@ -29,6 +30,8 @@ use benchmark::{BenchmarkComparisonMode, BenchmarkOptions, BenchmarkRecorder};
     version
 )]
 struct Cli {
+    #[command(flatten)]
+    capture_journal: capture::CaptureJournalArgs,
     /// Recompute claim artifacts and compare them with the current reference cache.
     /// Equivalent to setting XC_CACHE_MODE=verify.
     #[arg(long, global = true, default_value_t = false)]
@@ -71,20 +74,8 @@ struct Cli {
     command: Command,
 }
 
-/// Capture levels are defined *here*, in the paper binary, not in the toolkit.
-///
-/// The toolkit owns what *can* be captured -- `CcmResearchCaptureOptions` and
-/// the per-kind builders on `CcmDistanceCaptureOptions`. Which bundle a claim
-/// run actually asks for is editorial policy, so it lives with the paper that
-/// makes the claim.
-///
-/// The toolkit does ship a `CcmResearchCaptureOptions::maximum(n)` preset, and
-/// this binary deliberately does **not** call it: it assembles the options
-/// struct field by field instead. The two are not identical and are not meant
-/// to be -- the toolkit preset turns distance capture on unconditionally, while
-/// `Maximum` here retains distance artifacts only when `--capture-distance` is
-/// passed, because no paper claim depends on them. If you change one, nothing
-/// makes the other follow; check both.
+/// Capture levels follow the toolkit shared recipe. The paper adds explicit
+/// diagnostic budgets and a durable journal for each claim invocation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum ResearchCapture {
     /// Only the roots requested for the claim and artifacts naturally produced while finding them.
@@ -97,7 +88,8 @@ enum ResearchCapture {
     Maximum,
     /// Everything `maximum` retains, plus every research artifact that is a
     /// measurement rather than a proof: the deviation decomposition, the
-    /// per-prime-power response, and the full `u`-flow response. The exact
+    /// per-prime-power response, full `u`-flow response, prefix moments,
+    /// checkpoint exports, and retained-reduction checks. The exact
     /// sector-gap certificate is deliberately excluded --- it is a
     /// certification, not a data point, and it carries the interval-assembly
     /// and rational-inertia proof cost. Request it separately with
@@ -349,48 +341,6 @@ fn print_runtime_parallelism() {
     }
 }
 
-/// Whether any research-capture route must run. An explicit distance
-/// request reaches the capture path on its own: without the third term, a
-/// plain `run --capture-distance` under the default capture level would
-/// parse successfully and silently skip the distance artifacts.
-#[cfg(any(feature = "hp", test))]
-#[allow(clippy::too_many_arguments)]
-fn research_capture_requested(
-    sector_analysis: bool,
-    root_certification: bool,
-    capture_distance: bool,
-    capture_prime_power_response: bool,
-    capture_u_flow_response: bool,
-    capture_sector_gap_certificate: bool,
-) -> bool {
-    sector_analysis
-        || root_certification
-        || capture_distance
-        || capture_prime_power_response
-        || capture_u_flow_response
-        || capture_sector_gap_certificate
-}
-
-#[cfg(feature = "hp")]
-fn validate_response_capture_parity(
-    parity_policy: ParityPolicy,
-    research_capture: ResearchCapture,
-    capture_prime_power_response: bool,
-    capture_u_flow_response: bool,
-) -> Result<()> {
-    let captures_responses = capture_prime_power_response
-        || capture_u_flow_response
-        || research_capture.includes_ultra();
-    if captures_responses && parity_policy != ParityPolicy::EvenSector {
-        anyhow::bail!(
-            "CCM response capture requires the even-sector eigenstate route; natural and \
-             adaptive-even states are rejected because no isolated parity branch is bound \
-             to their response semantics"
-        );
-    }
-    Ok(())
-}
-
 #[cfg(feature = "hp")]
 fn distance_capture_options(
     capture_distance: bool,
@@ -399,7 +349,7 @@ fn distance_capture_options(
     profile_steps: usize,
     capture_deviation_decomposition: bool,
 ) -> Option<ccm::hp::CcmDistanceCaptureOptions> {
-    capture_distance.then(|| {
+    (capture_distance || research_capture.includes_maximum()).then(|| {
         let mut options =
             ccm::hp::CcmDistanceCaptureOptions::default_convention(resolution, profile_steps);
         if research_capture.includes_maximum() {
@@ -502,7 +452,7 @@ fn run_with_runtime_policy(
     {
         let _ = (cli, benchmark);
         anyhow::bail!(
-            "GL root parallelism requires a v0.14.2 build with --features hp,experimental-gl-root-parallel"
+            "GL root parallelism requires a v0.15.0 build with --features hp,experimental-gl-root-parallel"
         );
     }
 }
@@ -563,6 +513,11 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                      --f64-only or drop every capture request"
                 );
             }
+            let capture_distance = capture_distance
+                || matches!(
+                    research_capture,
+                    ResearchCapture::Maximum | ResearchCapture::Ultra
+                );
             if capture_deviation_decomposition && !capture_distance {
                 anyhow::bail!(
                     "--capture-deviation-decomposition is computed from the retained \
@@ -589,24 +544,6 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                     "--capture-sector-gap-certificate needs parity-sector eigenpairs; use \
                      --research-capture gap, maximum, or ultra"
                 );
-            }
-            // The runtime target specification is loaded late in the toolkit,
-            // after the expensive matrix, eigenstate, and root phases. Fail
-            // here, before any computation, when a distance capture would
-            // eventually need it.
-            #[cfg(feature = "hp")]
-            if capture_distance && !f64_only {
-                let spec = xc_spectral::target::TargetProfileSpec::from_environment().map_err(
-                    |error| {
-                        anyhow::anyhow!(
-                            "--capture-distance requires a readable runtime target \
-                             specification ({} must point at the private specification \
-                             file): {error}",
-                            xc_spectral::target::TARGET_SPEC_FILE_ENV
-                        )
-                    },
-                )?;
-                eprintln!("  runtime target specification digest: {}", spec.digest()?);
             }
             if root_acquisition == RootAcquisitionMode::Seeded && f64_only {
                 anyhow::bail!(
@@ -722,12 +659,6 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                     } else {
                         parity_policy
                     };
-                    validate_response_capture_parity(
-                        parity_policy,
-                        research_capture,
-                        capture_prime_power_response,
-                        capture_u_flow_response,
-                    )?;
                     cfg.set_parity_policy(parity_policy.into());
                     println!(
                         "  parity policy: {}",
@@ -824,14 +755,6 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                             }
                         }
                     };
-                    let capture_requested = research_capture_requested(
-                        sector_analysis.is_some(),
-                        root_certification.is_some(),
-                        capture_distance,
-                        capture_prime_power_response,
-                        capture_u_flow_response,
-                        capture_sector_gap_certificate,
-                    );
                     let capture_options = ccm::hp::CcmResearchCaptureOptions {
                         capture_evenness: sector_analysis.is_some(),
                         sector_analysis,
@@ -839,13 +762,8 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                             ccm::sector_gap_certificate::CcmSectorGapCertificationOptions::default,
                         ),
                         root_certification,
-                        // Toolkit v0.14.1 can additionally retain eigenfunction
-                        // profiles and target distances. No paper claim depends
-                        // on them, so retention is off unless asked for and no
-                        // ccm-distance artifact is produced by default. When
-                        // requested it serves the target-distance program, and
-                        // the arithmetic behind every reported value is
-                        // unchanged either way.
+                        // Maximum and Ultra enable distance automatically. The
+                        // journal preserves unavailable target inputs as outcomes.
                         distance_capture: distance_capture_options(
                             capture_distance,
                             research_capture,
@@ -853,7 +771,7 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                             distance_profile_steps,
                             capture_deviation_decomposition,
                         ),
-                        // These v0.14.1 response artifacts are explicit under
+                        // Response artifacts are explicit under
                         // every level below ultra. Ultra requests both, while
                         // the individual flags compose with any lower level.
                         // No paper claim depends on them and no reported value
@@ -863,82 +781,35 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                         capture_u_flow_response: capture_u_flow_response
                             || research_capture.includes_ultra(),
                     };
-                    let (hp_result, captured_evenness, captured_sectors, root_certificate) =
-                        match root_acquisition {
-                            RootAcquisitionMode::Independent if capture_requested => {
-                                let captured =
-                                    ccm::hp::run_independent_with_options_and_research_capture(
-                                        &params,
-                                        &cfg,
-                                        &target,
-                                        discovery_options,
-                                        capture_options,
-                                    )?;
-                                (
-                                    captured.primary,
-                                    captured.evenness,
-                                    captured.sector_gap,
-                                    captured.root_certificate,
-                                )
-                            }
-                            RootAcquisitionMode::Independent => (
-                                ccm::hp::run_independent_with_options(
+                    let captured_run = capture::execute(
+                        &params,
+                        &cfg,
+                        research_capture,
+                        research_sector_eigenpairs,
+                        &cli.capture_journal,
+                        &capture_options,
+                        |cache| match root_acquisition {
+                            RootAcquisitionMode::Independent => {
+                                ccm::hp::capture_run::RetainedCcmRun::independent(
                                     &params,
                                     &cfg,
                                     &target,
                                     discovery_options,
-                                )?,
-                                None,
-                                None,
-                                None,
-                            ),
-                            RootAcquisitionMode::Seeded if capture_requested => {
-                                let (dataset, seed_first_index, seeds) = seeded_input
-                                    .as_ref()
-                                    .expect("seeded acquisition prepared reference inputs");
-                                let captured = ccm::hp::run_indexed_seeded_with_research_capture(
-                                    &params,
-                                    &cfg,
-                                    *seed_first_index,
-                                    seeds,
-                                    dataset,
-                                    capture_options,
-                                )?;
-                                (
-                                    captured.primary,
-                                    captured.evenness,
-                                    captured.sector_gap,
-                                    captured.root_certificate,
+                                    cache,
                                 )
                             }
                             RootAcquisitionMode::Seeded => {
-                                let (dataset, seed_first_index, seeds) = seeded_input
-                                    .as_ref()
-                                    .expect("seeded acquisition prepared reference inputs");
-                                (
-                                    ccm::hp::run_indexed_seeded(
-                                        &params,
-                                        &cfg,
-                                        *seed_first_index,
-                                        seeds,
-                                        dataset,
-                                    )?,
-                                    None,
-                                    None,
-                                    None,
+                                let (dataset, first, seeds) =
+                                    seeded_input.as_ref().expect("prepared seeds");
+                                ccm::hp::capture_run::RetainedCcmRun::seeded(
+                                    &params, &cfg, *first, seeds, dataset, cache,
                                 )
                             }
-                        };
+                        },
+                    )?;
+                    let hp_result = captured_run.primary;
+                    let mut measurements = Vec::new();
                     benchmark.record_seconds("toolkit_primary", hp_result.elapsed_seconds)?;
-
-                    if let Some(certificate) = &root_certificate {
-                        println!(
-                            "  certified root census: {} roots, indices {}..={}, scope=exact stored point source",
-                            certificate.selected_root_count,
-                            certificate.first_selected_positive_index.unwrap_or(0),
-                            certificate.last_selected_positive_index.unwrap_or(0)
-                        );
-                    }
 
                     // ε_N is displayed in HP — at λ² >= 100 it routinely
                     // underflows f64 (10^-308). All downstream display stays
@@ -990,6 +861,10 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                             xc_zeta::zeros::bundled_first_n_strings(reference_last)?;
                         let ref_strings = &all_ref_strings[reference_first - 1..reference_last];
                         let cmp_prec = hp_result.precision_bits * 2;
+                        let digit_limit = comparison_digit_limit(
+                            cmp_prec,
+                            xc_zeta::zeros::bundled_dataset_identity()?.decimal_digits,
+                        );
                         // Enough significant digits to display guard-space
                         // measurements such as 1019.0 at HP-1000.
                         let column_digits =
@@ -1091,12 +966,28 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                             } else {
                                 xc_numerics::fmt::display_hp(&abs_err, column_digits)
                             };
-                            let matching = if abs_err.is_zero() {
-                                format!(">={}", cmp_prec / 3)
+                            let observed_matching = (!abs_err.is_zero())
+                                .then(|| xc_numerics::fmt::matching_digits(&eig_hp, &ref_val));
+                            let limited =
+                                observed_matching.as_ref().is_none_or(|m| *m >= digit_limit);
+                            let matching = if limited {
+                                format!(">={digit_limit}")
                             } else {
-                                let m = xc_numerics::fmt::matching_digits(&eig_hp, &ref_val);
-                                xc_numerics::fmt::display_hp(&m, column_digits)
+                                xc_numerics::fmt::display_hp(
+                                    observed_matching.as_ref().expect("finite comparison"),
+                                    column_digits,
+                                )
                             };
+                            measurements.push(serde_json::json!({
+                                "reference_index": reference_index,
+                                "root_index": hp_result.first_positive_root_index + root_offset,
+                                "status": status,
+                                "absolute_error": abs_err.to_string(),
+                                "matching_digits": if limited { None } else { observed_matching.as_ref().map(ToString::to_string) },
+                                "matching_digits_lower_bound": limited.then_some(digit_limit),
+                                "observed_reference_matching_digits": observed_matching.as_ref().map(ToString::to_string),
+                                "comparison_digit_limit": digit_limit,
+                            }));
                             let eig_str = xc_numerics::fmt::display_hp(&eig_hp, display_digits);
                             println!(
                                 "{:>7}  {:>8}  {:>22}  {:>22}  {:>14}  {:>14}  {:>11}",
@@ -1111,28 +1002,15 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                         }
                     }
 
-                    if let (Some(evenness), Some(sectors), Some(sector_eigenpairs)) =
-                        (captured_evenness, captured_sectors, sector_eigenpairs)
-                    {
-                        println!("\n=== Supplemental research artifact capture ===");
-                        println!(
-                            "  natural-evenness evidence captured from validated parity sectors: deviation={}",
-                            xc_numerics::fmt::display_hp(
-                                &evenness.evenness_deviation,
-                                display_digits
-                            )
-                        );
-                        println!(
-                            "  even/odd sector spectra and GapLog captured: {} eigenpairs per sector, complete spectra={}, GapLog={}",
-                            sector_eigenpairs,
-                            if research_capture.includes_maximum() {
-                                "yes"
-                            } else {
-                                "no"
-                            },
-                            xc_numerics::fmt::display_hp(&sectors.gap_log, display_digits)
-                        );
-                    }
+                    capture::write_measurements(
+                        &captured_run.directory,
+                        &serde_json::json!({
+                            "schema_version":1,"command":"run","lambda_squared":lambda_sq,"n_modes":n_modes,
+                            "precision_digits":precision_digits,"parity_policy":cfg.effective_parity_policy().as_str(),
+                            "root_acquisition":format!("{root_acquisition:?}"),"epsilon_N":hp_result.weil_min_eigenvalue.to_string(),
+                            "roots":measurements,
+                        }),
+                    )?;
                     let claim_elapsed = run_started.elapsed();
                     benchmark.record_duration("claim_and_research_capture", claim_elapsed);
                     println!(
@@ -1208,6 +1086,14 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                 let toolkit_started = std::time::Instant::now();
                 let result = ccm::hp::measure_evenness(&params, &cfg)?;
                 benchmark.record_duration("toolkit_primary", toolkit_started.elapsed());
+                capture::write_evenness(
+                    &cli.capture_journal,
+                    &serde_json::json!({
+                        "schema_version":1,"command":"check-evenness","lambda_squared":lambda_sq,"n_modes":n_modes,
+                        "precision_digits":precision_digits,"evenness_deviation":result.evenness_deviation.to_string(),
+                        "natural_eigenvalue":result.natural_eigenvalue.to_string(),"even_eigenvalue":result.forced_eigenvalue.to_string(),
+                    }),
+                )?;
 
                 // Pure HP display — no f64 conversion.
                 use xc_numerics::fmt::{display_hp, relative_difference, sign_of, Sign};
@@ -1269,13 +1155,10 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                     capture_supplemental_research_artifacts(
                         &params,
                         &cfg,
-                        SupplementalResearchCaptureOptions::for_check_evenness(
-                            research_capture,
-                            research_sector_eigenpairs,
-                            n_modes,
-                            display_digits,
-                            root_acquisition,
-                        ),
+                        research_capture,
+                        research_sector_eigenpairs,
+                        root_acquisition,
+                        &cli.capture_journal,
                     )?;
                 }
                 benchmark.record_duration("claim_and_research_capture", claim_started.elapsed());
@@ -1740,6 +1623,14 @@ fn validate_research_capture(
     Ok(())
 }
 
+/// Conservative decimal comparison bound, capped by the retained reference.
+/// Two guard bits and one reference digit avoid overstating a rounded tie.
+#[cfg(any(feature = "hp", test))]
+fn comparison_digit_limit(bits: u32, reference_digits: u32) -> u32 {
+    let arithmetic = u64::from(bits.saturating_sub(2)) * 30_102 / 100_000;
+    (arithmetic as u32).min(reference_digits.saturating_sub(1))
+}
+
 #[cfg(any(feature = "hp", test))]
 fn explicit_ordinal_root_target(
     first_root_index: usize,
@@ -1782,7 +1673,7 @@ fn research_capture_label(capture: ResearchCapture, maximum_count: usize) -> Str
         ),
         ResearchCapture::Ultra => format!(
             "ultra (maximum with {maximum_count} eigenpairs per sector, plus deviation \
-             decomposition, prime-power response, and u-flow response; no certificate)"
+             decomposition, responses, full prefix moments, exports, and reduction checks; certificates explicit)"
         ),
     }
 }
@@ -1822,204 +1713,70 @@ fn bundled_reference_seed_window(
     Ok((dataset, first, seeds))
 }
 
-/// Fill the artifact families not already produced by the command that called
-/// this helper. Each toolkit API owns its ordinary managed-cache lifecycle, so
-/// author publication settings still apply without publication logic in this
-/// consumer repository.
-#[cfg(feature = "hp")]
-struct SupplementalResearchCaptureOptions {
-    capture_roots: bool,
-    capture_evenness: bool,
-    sector_eigenpairs: Option<usize>,
-    complete_sector_spectrum: bool,
-    capture_prime_power_response: bool,
-    capture_u_flow_response: bool,
-    display_digits: usize,
-    root_acquisition: RootAcquisitionMode,
-}
-
-#[cfg(feature = "hp")]
-impl SupplementalResearchCaptureOptions {
-    fn for_check_evenness(
-        capture: ResearchCapture,
-        requested_sector_eigenpairs: usize,
-        n_modes: usize,
-        display_digits: usize,
-        root_acquisition: RootAcquisitionMode,
-    ) -> Self {
-        Self {
-            capture_roots: true,
-            capture_evenness: false,
-            sector_eigenpairs: capture
-                .sector_eigenpairs(requested_sector_eigenpairs)
-                .map(|count| count.min(n_modes)),
-            complete_sector_spectrum: capture.includes_maximum(),
-            capture_prime_power_response: capture.includes_ultra(),
-            capture_u_flow_response: capture.includes_ultra(),
-            display_digits,
-            root_acquisition,
-        }
-    }
-}
-
+/// The evenness claim keeps its direct natural-state calculation. Its
+/// supplemental bounded root window uses the same complete receipt adapter.
 #[cfg(feature = "hp")]
 fn capture_supplemental_research_artifacts(
     params: &CcmParams,
     cfg: &ccm::hp::HighPrecConfig,
-    options: SupplementalResearchCaptureOptions,
+    level: ResearchCapture,
+    count: usize,
+    acquisition: RootAcquisitionMode,
+    journal: &capture::CaptureJournalArgs,
 ) -> Result<()> {
-    let SupplementalResearchCaptureOptions {
-        capture_roots,
-        capture_evenness,
-        sector_eigenpairs,
-        complete_sector_spectrum,
-        capture_prime_power_response,
-        capture_u_flow_response,
-        display_digits,
-        root_acquisition,
-    } = options;
-    let supplemental_started = std::time::Instant::now();
-    println!("\n=== Supplemental research artifact capture ===");
-
-    if capture_roots || capture_prime_power_response || capture_u_flow_response {
-        let roots_started = std::time::Instant::now();
-        let mut root_cfg = cfg.clone();
-        let supplemental_root_count = root_cfg.n_eigenvalues.min(params.n_modes).max(1);
-        root_cfg.n_eigenvalues = supplemental_root_count;
-        let target = ccm::window::ZeroTarget::FirstK {
-            count: supplemental_root_count,
-        };
-        let captures_responses = capture_prime_power_response || capture_u_flow_response;
-        let response_options = || ccm::hp::CcmResearchCaptureOptions {
-            capture_evenness: false,
-            sector_analysis: None,
-            sector_gap_certification: None,
-            root_certification: None,
-            distance_capture: None,
-            capture_prime_power_response,
-            capture_u_flow_response,
-        };
-        let roots = match root_acquisition {
-            RootAcquisitionMode::Independent if captures_responses => {
-                ccm::hp::run_independent_with_research_capture(
-                    params,
-                    &root_cfg,
-                    &target,
-                    response_options(),
-                )
-                .map(|captured| captured.primary)?
-            }
-            RootAcquisitionMode::Independent => {
-                ccm::hp::run_independent(params, &root_cfg, &target)?
-            }
+    let mut cfg = cfg.clone();
+    cfg.n_eigenvalues = cfg.n_eigenvalues.min(params.n_modes).max(1);
+    let target = ccm::window::ZeroTarget::FirstK {
+        count: cfg.n_eigenvalues,
+    };
+    let toolkit_level = match level {
+        ResearchCapture::Claim => ccm::capture::CcmCaptureLevel::Claim,
+        ResearchCapture::Research => ccm::capture::CcmCaptureLevel::Research,
+        ResearchCapture::Gap => ccm::capture::CcmCaptureLevel::Gap,
+        ResearchCapture::Maximum => ccm::capture::CcmCaptureLevel::Maximum,
+        ResearchCapture::Ultra => ccm::capture::CcmCaptureLevel::Ultra,
+    };
+    let options = ccm::capture::CcmCapturePlan::resolve(
+        toolkit_level,
+        count.min(params.n_modes),
+        params.n_modes + 1,
+    )?
+    .primary_options()?;
+    capture::execute(
+        params,
+        &cfg,
+        level,
+        count,
+        journal,
+        &options,
+        |cache| match acquisition {
+            RootAcquisitionMode::Independent => ccm::hp::capture_run::RetainedCcmRun::independent(
+                params,
+                &cfg,
+                &target,
+                ccm::hp::IndependentRootDiscoveryOptions::default(),
+                cache,
+            ),
             RootAcquisitionMode::Seeded => {
-                let (dataset, first, seed_strings) = bundled_reference_seed_window(&target)?;
-                let seeds = seed_strings
+                let (dataset, first, strings) = bundled_reference_seed_window(&target)?;
+                let seeds = strings
                     .iter()
-                    .map(|seed| {
-                        rug::Float::parse(seed)
-                            .map(|parsed| rug::Float::with_val(root_cfg.precision_bits, parsed))
-                            .map_err(|error| {
-                                anyhow::anyhow!(
-                                    "failed to parse bundled reference seed {seed:?}: {error}"
-                                )
-                            })
+                    .map(|s| {
+                        Ok(rug::Float::with_val(
+                            cfg.precision_bits,
+                            rug::Float::parse(s)?,
+                        ))
                     })
                     .collect::<Result<Vec<_>>>()?;
-                if captures_responses {
-                    ccm::hp::run_indexed_seeded_with_research_capture(
-                        params,
-                        &root_cfg,
-                        first,
-                        &seeds,
-                        &dataset,
-                        response_options(),
-                    )
-                    .map(|captured| captured.primary)?
-                } else {
-                    ccm::hp::run_indexed_seeded(params, &root_cfg, first, &seeds, &dataset)?
-                }
+                ccm::hp::capture_run::RetainedCcmRun::seeded(
+                    params, &cfg, first, &seeds, &dataset, cache,
+                )
             }
-        };
-        let counts = roots.eigenvalues_pos.iter().fold(
-            (0usize, 0usize, 0usize, 0usize),
-            |mut counts, root| {
-                match root {
-                    ccm::hp::EigenvalueResult::Converged(_) => counts.0 += 1,
-                    ccm::hp::EigenvalueResult::Stagnated(_) => counts.1 += 1,
-                    ccm::hp::EigenvalueResult::Approximate(_) => counts.2 += 1,
-                    ccm::hp::EigenvalueResult::Failed { .. } => counts.3 += 1,
-                }
-                counts
-            },
-        );
-        println!(
-            "  bounded first-{} root window captured via {:?}: {} converged, {} stagnated, {} approximate, {} failed; elapsed={:.3}s",
-            supplemental_root_count,
-            root_acquisition,
-            counts.0,
-            counts.1,
-            counts.2,
-            counts.3,
-            roots_started.elapsed().as_secs_f64()
-        );
-        if captures_responses {
-            println!(
-                "  ultra responses captured: prime-power={}, u-flow={}",
-                if capture_prime_power_response {
-                    "yes"
-                } else {
-                    "no"
-                },
-                if capture_u_flow_response { "yes" } else { "no" }
-            );
-        }
-    } else {
-        println!("  requested root window captured by the primary run");
-    }
-
-    if capture_evenness {
-        let evenness_started = std::time::Instant::now();
-        let evenness = ccm::hp::measure_evenness(params, cfg)?;
-        println!(
-            "  natural-evenness evidence captured: deviation={}, elapsed={:.3}s",
-            xc_numerics::fmt::display_hp(&evenness.evenness_deviation, display_digits),
-            evenness_started.elapsed().as_secs_f64()
-        );
-    } else {
-        println!("  natural-evenness evidence captured by the primary run");
-    }
-
-    if let Some(sector_eigenpairs) = sector_eigenpairs {
-        let sector_started = std::time::Instant::now();
-        let mut sector_cfg = cfg.clone();
-        sector_cfg.n_eigenvalues = 0;
-        sector_cfg.force_even = true;
-        let sector_options = if complete_sector_spectrum {
-            ccm::hp::CcmSectorAnalysisOptions::maximum(sector_eigenpairs)
-        } else {
-            ccm::hp::CcmSectorAnalysisOptions::selected(sector_eigenpairs)
-        };
-        let sectors =
-            ccm::hp::analyze_sector_gap_with_options(params, &sector_cfg, sector_options)?;
-        println!(
-            "  even/odd sector spectra and GapLog captured: {} eigenpairs per sector, complete spectra={}, GapLog={}, elapsed={:.3}s",
-            sector_eigenpairs,
-            if complete_sector_spectrum { "yes" } else { "no" },
-            xc_numerics::fmt::display_hp(&sectors.gap_log, display_digits),
-            sector_started.elapsed().as_secs_f64()
-        );
-    }
-    println!(
-        "  supplemental artifact capture complete: elapsed={:.3}s",
-        supplemental_started.elapsed().as_secs_f64()
-    );
+        },
+    )?;
     Ok(())
 }
 
-/// Print f64-tier results (used by --f64-only flag). Eigenvalues, abs error
-/// and rel error are all f64 — accurate to ~15 digits, sufficient for
-/// quick smoke-tests but not for publication-grade convergence claims.
 fn print_results_f64(result: &CcmResult, top: usize) -> Result<()> {
     println!(
         "  built and solved in {:.3}s, smallest Weil eigenvalue epsilon_N = {:.6e}",
@@ -2063,6 +1820,13 @@ fn print_results_f64(result: &CcmResult, top: usize) -> Result<()> {
 
 #[cfg(test)]
 mod cli_tests {
+    #[test]
+    fn comparison_limits_do_not_overstate_binary_or_reference_precision() {
+        assert_eq!(super::comparison_digit_limit(53, 2500), 15);
+        assert_eq!(super::comparison_digit_limit(6772, 2500), 2037);
+        assert_eq!(super::comparison_digit_limit(100_000, 2500), 2499);
+    }
+
     use super::*;
 
     #[test]
@@ -2199,37 +1963,6 @@ mod cli_tests {
     }
 
     #[test]
-    fn an_explicit_distance_request_alone_enters_the_capture_path() {
-        // Regression: the gate must honor a bare distance request. Before
-        // this fix it consulted only sector analysis and certification, so
-        // `run --capture-distance` under the default capture level parsed
-        // and then silently skipped the distance artifacts.
-        assert!(research_capture_requested(
-            false, false, true, false, false, false
-        ));
-        // Each individual research flag must engage the capture path on its
-        // own: an ignored flag silently produces no artifact.
-        for index in 0..3 {
-            let flags = [index == 0, index == 1, index == 2];
-            assert!(research_capture_requested(
-                false, false, false, flags[0], flags[1], flags[2]
-            ));
-        }
-        assert!(!research_capture_requested(
-            false, false, false, false, false, false
-        ));
-        assert!(research_capture_requested(
-            true, false, false, false, false, false
-        ));
-        assert!(research_capture_requested(
-            false, true, false, false, false, false
-        ));
-        assert!(research_capture_requested(
-            true, true, true, true, true, true
-        ));
-    }
-
-    #[test]
     fn target_distance_capture_is_opt_in() {
         // Absent by default: no paper claim depends on distance retention, and
         // every reported value is identical with or without it.
@@ -2276,10 +2009,10 @@ mod cli_tests {
 
     #[cfg(feature = "hp")]
     #[test]
-    fn maximum_distance_capture_includes_v0141_diagnostics() {
+    fn maximum_and_ultra_automatically_include_distance_diagnostics() {
         assert!(
             distance_capture_options(false, ResearchCapture::Maximum, 4_000, 1_000, false)
-                .is_none()
+                .is_some()
         );
 
         let ordinary = distance_capture_options(true, ResearchCapture::Claim, 4_000, 1_000, false)
@@ -2346,27 +2079,6 @@ mod cli_tests {
         };
         assert_eq!(research_capture, ResearchCapture::Ultra);
         assert!(!capture_sector_gap_certificate);
-
-        let evenness = SupplementalResearchCaptureOptions::for_check_evenness(
-            ResearchCapture::Ultra,
-            8,
-            120,
-            12,
-            RootAcquisitionMode::Seeded,
-        );
-        assert!(evenness.capture_prime_power_response);
-        assert!(evenness.capture_u_flow_response);
-        assert!(evenness.complete_sector_spectrum);
-
-        let maximum = SupplementalResearchCaptureOptions::for_check_evenness(
-            ResearchCapture::Maximum,
-            8,
-            120,
-            12,
-            RootAcquisitionMode::Seeded,
-        );
-        assert!(!maximum.capture_prime_power_response);
-        assert!(!maximum.capture_u_flow_response);
     }
 
     #[test]
@@ -2416,48 +2128,6 @@ mod cli_tests {
             };
             assert_eq!(parity_policy, expected);
         }
-    }
-
-    #[cfg(feature = "hp")]
-    #[test]
-    fn response_capture_rejects_non_even_routes_before_computation() {
-        for parity_policy in [ParityPolicy::Natural, ParityPolicy::AdaptiveEven] {
-            assert!(validate_response_capture_parity(
-                parity_policy,
-                ResearchCapture::Ultra,
-                false,
-                false,
-            )
-            .is_err());
-            assert!(validate_response_capture_parity(
-                parity_policy,
-                ResearchCapture::Maximum,
-                true,
-                false,
-            )
-            .is_err());
-            assert!(validate_response_capture_parity(
-                parity_policy,
-                ResearchCapture::Maximum,
-                false,
-                true,
-            )
-            .is_err());
-            assert!(validate_response_capture_parity(
-                parity_policy,
-                ResearchCapture::Maximum,
-                false,
-                false,
-            )
-            .is_ok());
-        }
-        assert!(validate_response_capture_parity(
-            ParityPolicy::EvenSector,
-            ResearchCapture::Ultra,
-            false,
-            false,
-        )
-        .is_ok());
     }
 
     #[test]
