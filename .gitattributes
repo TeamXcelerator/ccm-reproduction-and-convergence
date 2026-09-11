@@ -7,3 +7,19 @@
 *.toml text
 *.md text
 *.lock text
+
+# Keep manuscript validation inputs byte-stable on Windows and Linux.
+.gitattributes text eol=lf
+paper.tex text eol=lf
+README.md text eol=lf
+docs/VALIDATION.md text eol=lf
+docs/CLAIM1C_CAPTURE.md text eol=lf
+docs/RESEARCH_EVIDENCE.md text eol=lf
+docs/FINAL_VERIFICATION.md text eol=lf
+docs/research-evidence.json text eol=lf
+docs/validation/manuscript-v2.5.json text eol=lf
+research/** text eol=lf
+
+# This existing proof input is hashed verbatim by the root-transfer report.
+# Preserve its original serialization, including line endings.
+research/headline-root-certificates.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

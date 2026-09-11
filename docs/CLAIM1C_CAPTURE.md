@@ -7,7 +7,7 @@ The precision and numerical reproduction checks remain unchanged.
 
 Ultra requests every applicable diagnostic. At this fixed configuration the
 policy excludes eight unsupported requests **before computation**. Each
-exclusion and its reason appear in the terminal, private request journal,
+exclusion and its reason appear in the terminal, request journal,
 source-bound capture receipt, and final summary. They are not failed attempts
 or successful measurements. Completion means all five applicable requests
 completed, with eight documented exclusions.
@@ -39,5 +39,5 @@ Exclusions never turn a failed requested diagnostic into a pass.
 
 Earlier unrestricted journals, receipts, and numerical artifacts remain intact.
 A new run records this different request policy under a new receipt identity
-and reuses compatible supported artifacts. It publishes privately and does not
+and reuses compatible supported artifacts. It does not
 rewrite historical failures as exclusions.

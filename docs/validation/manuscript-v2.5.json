@@ -1,0 +1,203 @@
+{
+  "date": "2026-09-11",
+  "version": "2.5",
+  "toolkit_revision": "2bea90ec7cb23d4d615448c293c8af0f94e14119",
+  "scope": "Manuscript and independent scientific supplements; production harness unchanged.",
+  "checks": {
+    "latex_passes": 2,
+    "latex_warnings": 0,
+    "pdf_pages": 17,
+    "visual_review": "All 17 pages reviewed after the reproduction-wording update, with full-resolution inspection of the changed paragraphs",
+    "native_python": {
+      "passed": 14,
+      "skipped": 3
+    },
+    "wsl_python": {
+      "passed": 17,
+      "skipped": 0
+    },
+    "prior_scientific_controls": {
+      "critical_N_cases": 40,
+      "finite_matrix_certificates": 2,
+      "independent_finite_replays": 2,
+      "retained_first_root_intervals": 5
+    },
+    "final_scientific_controls": {
+      "analytic_finite_root_brackets": 11,
+      "independent_analytic_root_replays": 11,
+      "independent_integral_entries": 441,
+      "independent_integral_precisions": [
+        60,
+        90
+      ],
+      "full_and_parity_spectra": "PASS",
+      "fixed_matrix_entry_bit_precisions": [
+        24,
+        53,
+        64,
+        80,
+        96,
+        128,
+        192,
+        256,
+        384
+      ],
+      "prime_power_directions": 9,
+      "centered_steps_per_direction": 3,
+      "all_final_root_response_relative_differences_below": "1.1e-117",
+      "one_sided_prime13_matrix_derivative": "PASS",
+      "source_bound_response_channel_sums": "PASS"
+    },
+    "public_exporter_locked_offline_build": "PASS (previous qualification; source unchanged)",
+    "github_workflows_available": 0,
+    "github_actions_executed": false,
+    "vast_computations_started": false,
+    "documentation_links": "PASS",
+    "portable_verification_inputs": "Git preserves recorded bytes across Windows and Linux checkouts"
+  },
+  "dependencies": {
+    "python-flint": "0.8.0",
+    "sympy": "1.14.0",
+    "mpmath": "1.3.0",
+    "pypdf": "6.14.2"
+  },
+  "limits": [
+    "The four larger-cutoff headline roots retain serialized-source certification.",
+    "The N=120 calculation certifies a unique root near the first zeta zero, not a complete root census.",
+    "Independent integral, rounding, and response experiments are numerical checks, distinct from analytic interval certificates.",
+    "No continuum theorem or asymptotic convergence law is claimed.",
+    "Historical incomplete receipts and unsuccessful exact-rational timing trials remain unchanged."
+  ],
+  "files": [
+    {
+      "path": "paper.tex",
+      "sha256": "b60d449b421832129f10dd114289c22d1a3ed573cb27f05e773366c4e9995d6d",
+      "bytes": 63188
+    },
+    {
+      "path": "paper.pdf",
+      "sha256": "e235518d3d9150a942de6a4bc296993dfce85255d1d8ab3389824d05a06bf429",
+      "bytes": 407756
+    },
+    {
+      "path": "README.md",
+      "sha256": "eca6bf793a1a35fe92b473e463681252fe1a0f9e60345f2352d94661320e7555",
+      "bytes": 19543
+    },
+    {
+      "path": "docs/VALIDATION.md",
+      "sha256": "d2102a36b89be5b7b3d353e10b93ac4729804acfdd4a521aed8e22c3e63214a6",
+      "bytes": 8875
+    },
+    {
+      "path": "docs/RESEARCH_EVIDENCE.md",
+      "sha256": "e69e7f54eb9025030f5467ed16e7de1df05d467590a8e7091137aa8d3405950f",
+      "bytes": 7360
+    },
+    {
+      "path": "docs/FINAL_VERIFICATION.md",
+      "sha256": "7b83343efa0ecbf470193695ba976014d9a16cc3f906cb86c07ca99ea9502900",
+      "bytes": 5935
+    },
+    {
+      "path": "docs/research-evidence.json",
+      "sha256": "42342487cb750ad5b906a11326e190dccdf7ef4bd371357dd8a6df0110bb4156",
+      "bytes": 154951
+    },
+    {
+      "path": "research/certify_analytic_roots.py",
+      "sha256": "60d537cc6e1c8dfa5df9340ab98d9058cc35752a706bb62eff9a30ab700f46c6",
+      "bytes": 6766
+    },
+    {
+      "path": "research/check_assembly_integrals.py",
+      "sha256": "4ca39a63d551c5f0cb8a8a06e3d5f5950b04dc7be818628b20c9a2cc0e37bec4",
+      "bytes": 4309
+    },
+    {
+      "path": "research/check_fixed_matrix_precision.py",
+      "sha256": "54c9ee456b492322922d15bcf062e5ec1b3d721513e02cd7d58d3d43d1ad9a24",
+      "bytes": 3294
+    },
+    {
+      "path": "research/check_prime_response.py",
+      "sha256": "1386d71f41cd2190ee6d04c590031d000842613a625de5570390881527777bf9",
+      "bytes": 6066
+    },
+    {
+      "path": "research/check_response_decomposition.py",
+      "sha256": "72ea9f36a49e8c7ce921e886f6884397fb90746497ac2f81b9621724cf61cee2",
+      "bytes": 3300
+    },
+    {
+      "path": "research/finite_certification/certify.py",
+      "sha256": "fa6ec2f1b2fcec10bd1bed4b860b9616ff6af2fa63c2b1861e40ae5d9705b0ee",
+      "bytes": 5033
+    },
+    {
+      "path": "research/finite_certification/exporter/Cargo.lock",
+      "sha256": "1bfe002728e57b6d4b32c329db28603434047576a538d1d0331ae1596cec7e5c",
+      "bytes": 19969
+    },
+    {
+      "path": "research/finite_certification/exporter/Cargo.toml",
+      "sha256": "630d8ddaa3c64836a420f299f3da8c38e0cb16c1aab24f0b4c386402e2411359",
+      "bytes": 272
+    },
+    {
+      "path": "research/finite_certification/exporter/src/main.rs",
+      "sha256": "42ebfd8da5c6bfd4d1eba1862e6d2b0d92a96c4c1b70735010c271ec10f1a6e0",
+      "bytes": 1441
+    },
+    {
+      "path": "research/finite_certification/guides.json",
+      "sha256": "d7a3158ce0a222709117a28c9a913e841524ae8f5d7914eb7ab92d7f80916b90",
+      "bytes": 594
+    },
+    {
+      "path": "research/finite_certification/README.md",
+      "sha256": "2f07f716851386e20f9b73c68cb12e5ffa7647c1c8646abd840d6dd3a40a334c",
+      "bytes": 3047
+    },
+    {
+      "path": "research/finite_certification/verify.py",
+      "sha256": "9d09d4fb09c3c6a896156b51b62b396071850cda307d9bd40d3d92b50b4e4fe2",
+      "bytes": 3187
+    },
+    {
+      "path": "research/headline-root-certificates.json",
+      "sha256": "7b76387742e2c37755f8ccebc8290640667fec5020ba33f52dddeedb749afa66",
+      "bytes": 26986
+    },
+    {
+      "path": "research/small_root_census.py",
+      "sha256": "8c60c449ba57be9b2550b1c36136d7e8e4490de87bf4cf7268f9c9f616962bbd",
+      "bytes": 4677
+    },
+    {
+      "path": "research/verify_analytic_roots.py",
+      "sha256": "d35682526fdd3bf55091011d0ad9ccee15bd765d5da9f471790873fd3e453afd",
+      "bytes": 4384
+    },
+    {
+      "path": "research/verify_headline_roots.py",
+      "sha256": "302c7aefcce789836c224e8dc5fbf9314d6bfb958269fc46aa0823860d74ed8d",
+      "bytes": 2114
+    },
+    {
+      "path": "research/verify_small_roots.py",
+      "sha256": "f90ac0c7cc8cd160f4792be3bc3f64ce89697e9389e3478dc3f36be0a36f02f2",
+      "bytes": 2603
+    },
+    {
+      "path": ".gitattributes",
+      "sha256": "6eca2128a438f88cb4243159f9cb0668774e91fd5d575ebe328d2e46a06b0cae",
+      "bytes": 928
+    },
+    {
+      "path": "docs/CLAIM1C_CAPTURE.md",
+      "sha256": "81e61314796c0c896cae7ad54ec1249c4a7e2e2faa8a8331cf7f54a204b0c059",
+      "bytes": 3093
+    }
+  ]
+}

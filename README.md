@@ -15,20 +15,35 @@ results and diagnostic receipts, and end with numerical **PASS/FAIL** summaries.
 The exact toolkit commit is pinned in [Cargo.toml](Cargo.toml) and
 [Cargo.lock](Cargo.lock); every run journal preserves the build's lockfile.
 
-The pinned toolkit also supports reuse and additive publication of equivalent
-local, private and public artifact aliases. Existing numerical caches remain
-usable; publication errors still produce unsuccessful runs. See the
-[validation scope](docs/VALIDATION.md) for the checks on this build.
+The pinned toolkit reuses compatible cached artifacts and computes locally
+when a required artifact is unavailable. Existing numerical caches remain
+usable. See the [validation scope](docs/VALIDATION.md) for the checks on this build.
 
-The paper's tables remain the historical v2.4 measurements. Upgrading the
-harness does not establish that every published result has been reproduced on
-the new toolkit. New journals record each rerun separately.
+The v2.5 campaign completed all 14 individual claim scripts, with 53 capture
+journals and successful numerical and publication summaries. The revised paper
+incorporates the new measurements and additional local verification below.
+Claim 1c retains its declared applicability exclusions; Claim 8 has a separate
+successful review of applicable evidence, preserving the original receipts.
+
+## Read the paper and evidence
+
+- [Paper (PDF)](paper.pdf): the v2.5 manuscript, with revised measurements and proofs.
+- [Research evidence](docs/RESEARCH_EVIDENCE.md): campaign coverage, Critical-N
+  measurements, spectral indexing, and source provenance.
+- [Finite root certification and numerical controls](docs/FINAL_VERIFICATION.md):
+  analytic root transfer, independent matrix assembly, precision, and prime response.
+- [Validation](docs/VALIDATION.md): software checks and manuscript qualification.
+- [Aggregate results](docs/research-evidence.json): numerical reports and source hashes.
 
 ## Headline Results
 
 | Finding | Value |
 |---|---|
-| First Riemann zero accuracy (λ²=1000, N=800, HP-1000) | **1019.0 measured matching digits** |
+| First Riemann zero accuracy (λ²=1200, N=970, HP-2000) | **1495.14 matching digits**, with a retained-source interval check |
+| Paired precision at λ²=1000, N=800 | **1019.0 → 1260.36 digits**, HP-1000 → HP-2000 |
+| Finite ground-state certificates (λ²=13, N=10 and 120) | **Positive definite; simple, even ground state**, independently verified |
+| Analytic finite-source root certificates (λ²=13) | **All ten N=10 movable roots; a unique N=120 root matching the first zeta zero to 55.76356 digits**, with eigenstate error included |
+| First-zero Critical N at λ²=13 | **50 digits at N=40; 55 digits at N=56**, adjacent-integer brackets at two precisions |
 | First Riemann zero accuracy (λ²=100, N=500, HP-1000)  | 460.09 matching digits |
 | Smallest useful matrix (λ²=13, N=10) | 21×21 → **21.585 digits** |
 | ε_N decay rate (above-floor, N/√λ²≈28) | **~437–613 decimal orders per doubling of prime count** across the measured range |
@@ -53,10 +68,10 @@ refinement, the even-sector primary state, and Ultra capture. Large claims can
 run for hours and retain substantial matrix and publication data. Run the
 individual claim you need; the combined claim wrappers have been removed.
 
-For target-dependent Ultra measurements, supply your private target specification:
+For target-dependent Ultra measurements, supply your target specification as a file:
 
 ```bash
-export XC_TARGET_SPEC_FILE=/private/path/runtime-target.private.json
+export XC_TARGET_SPEC_FILE=/path/to/runtime-target.json
 bash scripts/claim1a_lambda13.sh
 ```
 
@@ -72,7 +87,7 @@ target or discard the primary result.
 | `claim1c_lambda1000.sh` | Headline: 1000, N=800, HP-1000 |
 | `claim2a_hp200.sh` | Lambda sweep at N=120, HP-200 |
 | `claim2b_hp1000.sh` | Lambda sweep at N=120, HP-1000 |
-| `claim3_critical_n.sh` | Four critical-N points at HP-1000 |
+| `claim3_critical_n.sh` | Four large-N accuracy points for the Critical-N section, HP-1000 |
 | `claim4a_lambda13.sh` | Natural evenness at 13, N=120 |
 | `claim4b_lambda100.sh` | Natural evenness at 100, N=500 |
 | `claim4c_lambda1000.sh` | Natural evenness at 1000, N=800/890, HP-2000 |
@@ -116,7 +131,10 @@ The acceptance rules are explicit in [scripts/claim_summary.py](scripts/claim_su
 - Lambda and N sweeps compare the tabulated matching digits within 0.05 digit.
   The N sweep also checks agreement between HP-200 and HP-1000.
 - Critical-N checks require the reported first/fifth-root accuracy and increasing
-  accuracy across each N pair.
+  accuracy across each N pair. They do not locate exact minimum basis sizes.
+  Claim 7 supplies the coarse N sweep. Separate adjacent-integer controls
+  refine Section 4.7's 50- and 55-digit first-root crossings at lambda-squared
+  13 to N=40 and N=56; see the [Critical-N evidence](docs/RESEARCH_EVIDENCE.md#what-was-additionally-verified).
 - Epsilon-N checks require positive values within 5e-5 relative error of the
   rounded table values and decreasing epsilon across the series. Decimal
   arithmetic preserves values below the ordinary floating-point range.
@@ -225,7 +243,7 @@ payloads and is not disguised as successful validation.
 
 ## Journals, caching, and historical evidence
 
-Each invocation writes a unique private directory below
+Each invocation writes a unique local directory below
 `.xcelerator-cache/claim-runs/` containing:
 
 - `request.json` and `build.json`: resolved policies and the exact dependency lockfile.
@@ -240,8 +258,8 @@ Evenness claims also save the direct natural/even measurement before supplementa
 capture. Shell logs, per-process status, toolkit performance traces, and final
 summary JSON live under `.xcelerator-cache/claim-logs/`; set `CLAIM_LOG_ROOT` to
 change that location. Interrupted runs retain their primary file and completed
-artifact writes; a missing final status is never success. Journals and private
-runtime target specifications must not be committed to this public repository.
+artifact writes; a missing final status is never success. Run journals and
+runtime target specifications should remain outside version control.
 
 Compatible historical parents are reused under their exact identities. Changed
 sector/distance identities are recomputed under new identities; old objects are
@@ -250,17 +268,15 @@ changed identity is not evidence of corruption, and old certificates are not
 silently promoted to the current semantics. See the toolkit's
 [numerical compatibility guidance](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/main/docs/NUMERICAL_COMPATIBILITY.md).
 
-Remote lookup is controlled by `XC_CACHE_REMOTE`: `public` (default), `private`,
-`private_public`, or `none`. Authors with private access can reuse both lanes:
+`XC_CACHE_ROOT` selects the managed cache root. To use only local cache lookup
+and local computation, disable remote lookup:
 
 ```bash
-XC_CACHE_REMOTE=private_public bash scripts/claim1a_lambda13.sh
+XC_CACHE_REMOTE=none bash scripts/claim1a_lambda13.sh
 ```
 
-`XC_CACHE_ROOT` selects the managed cache root. Publication remains opt-in through
-toolkit configuration; credentials alone do not publish. Full receipts and
-private target-derived evidence follow the toolkit's private publication policy.
-No artifact is moved between public and private lanes by this harness.
+The same numerical checks apply whether an artifact is reused or computed
+locally. Publication is optional and configured separately in the toolkit.
 
 `--verify-cache` recomputes into the toolkit's isolated verification workflow and
 compares artifacts with the **same semantic identity**. It does not test equality
@@ -318,12 +334,17 @@ finite computations; guard precision, approximation errors, and unresolved
 precision floors remain part of their interpretation. The toolkit supplies the
 content-bound reference-zero dataset and common numerical implementation.
 
+Section 4.7 retains **Critical N at Fixed Working Precision** and distinguishes
+root resolution, target accuracy, and saturation. Forty additional local runs
+resolve the 50- and 55-digit crossings on integer brackets at both HP-200 and
+HP-1000. These thresholds describe the tested ladder.
+
 ```bibtex
 @misc{andrews2026ccm,
   author = {Andrews, Ronnie Jr.},
   title = {Independent Reproduction and Convergence Analysis of the CCM Zeta Spectral Triple},
   year = {2026},
-  note = {Research harness v2.5; historical tables and rerun journals identified separately},
+  note = {Version 2.5; revised measurements and independent finite verification},
   url = {https://github.com/TeamXcelerator/ccm-reproduction-and-convergence}
 }
 ```
