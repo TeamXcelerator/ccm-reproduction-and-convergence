@@ -63,6 +63,30 @@ class ClaimSummaryTests(unittest.TestCase):
         self.assertEqual(len(review), 2)
         self.assertIn('did not meet tolerance', review[0])
 
+    def test_ultra_v6_requires_new_diagnostics_on_natural_route(self):
+        names = summary.CLAIM8_NATURAL_REQUESTS | summary.ULTRA_V6_ADDITIONS
+        policy = {'policy':'claim8-natural', 'requested_diagnostics':sorted(names),
+                  'excluded_diagnostics':{name:'requires even primary' for name in
+                      ('prefix_checkpoint_121','prime_power_response','u_flow_response')}}
+        request = {'toolkit_release':'0.15.1', 'lambda_squared':13, 'n_modes':120,
+                   'precision_bits':3386,'parity_policy':'natural',
+                   'capture':{'level':'ultra','prefix_checkpoint_dimensions':[121]}, 'applicability':policy}
+        outcomes = {name:{'status':'completed'} for name in names}
+        record = {'resolved_plan':{'applicability':policy}, 'receipt':{'outcomes':outcomes}}
+        summary.validate_applicability({'applicability':policy}, request, record, outcomes)
+        outcomes.pop('transform_enclosure')
+        policy['requested_diagnostics'].remove('transform_enclosure')
+        with self.assertRaises(ValueError):
+            summary.validate_applicability({'applicability':policy}, request, record, outcomes)
+
+    def test_numerical_coverage_preserves_unresolved_rows_and_rejects_conflicts(self):
+        coverage = {'outcome':'partial_unresolved', 'resolved_rows':1, 'qualified_rows':2,
+                    'unresolved_rows':3, 'retained_rows':6, 'expected_rows':8}
+        record = {'numerical_coverage':{'transform_enclosure':coverage}}
+        self.assertEqual(summary.numerical_coverage([record])['transform_enclosure'], coverage)
+        with self.assertRaises(ValueError):
+            summary.numerical_coverage([record, {'numerical_coverage':{'transform_enclosure':{'outcome':'point_measurement'}}}])
+
     def test_wrong_or_missing_configuration_does_not_pass_a_claim(self):
         point = {'lambda_squared': 100, 'n_modes': 500}
         self.assertFalse(summary.assess_series('claim1a_lambda13', [point])[0][1])

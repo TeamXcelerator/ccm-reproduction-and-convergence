@@ -452,7 +452,7 @@ fn run_with_runtime_policy(
     {
         let _ = (cli, benchmark);
         anyhow::bail!(
-            "GL root parallelism requires a v0.15.0 build with --features hp,experimental-gl-root-parallel"
+            "GL root parallelism requires a build with --features hp,experimental-gl-root-parallel"
         );
     }
 }
@@ -647,8 +647,13 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                         allow_root_oversubscription,
                     );
                     println!("  precision: {} decimal digits", precision_digits);
-                    let mut cfg = ccm::hp::HighPrecConfig::for_decimal_digits(precision_digits);
+                    let mut cfg = ccm::hp::HighPrecConfig::for_decimal_digits(precision_digits)
+                        .with_adaptive_root_precision();
                     cfg.n_eigenvalues = top;
+                    println!(
+                        "  root arithmetic: adaptive (up to {} extra bits; directed confirmation); source precision unchanged",
+                        cfg.root_maximum_extra_precision_bits
+                    );
                     let parity_policy = if no_force_even {
                         if parity_policy != ParityPolicy::EvenSector {
                             anyhow::bail!(
@@ -1007,6 +1012,9 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                         &serde_json::json!({
                             "schema_version":1,"command":"run","lambda_squared":lambda_sq,"n_modes":n_modes,
                             "precision_digits":precision_digits,"parity_policy":cfg.effective_parity_policy().as_str(),
+                            "root_precision_policy":cfg.root_precision_policy,
+                            "root_maximum_extra_precision_bits":cfg.root_maximum_extra_precision_bits,
+                            "root_verification_precision_bits":cfg.root_verification_precision_bits,
                             "root_acquisition":format!("{root_acquisition:?}"),"epsilon_N":hp_result.weil_min_eigenvalue.to_string(),
                             "roots":measurements,
                         }),
@@ -1673,7 +1681,7 @@ fn research_capture_label(capture: ResearchCapture, maximum_count: usize) -> Str
         ),
         ResearchCapture::Ultra => format!(
             "ultra (maximum with {maximum_count} eigenpairs per sector, plus deviation \
-             decomposition, responses, full prefix moments, exports, and reduction checks; certificates explicit)"
+             decomposition, responses, prefixes, transforms, energy, clusters, band/tail and coverage diagnostics; input-dependent groups require sources)"
         ),
     }
 }
@@ -1724,7 +1732,7 @@ fn capture_supplemental_research_artifacts(
     acquisition: RootAcquisitionMode,
     journal: &capture::CaptureJournalArgs,
 ) -> Result<()> {
-    let mut cfg = cfg.clone();
+    let mut cfg = cfg.clone().with_adaptive_root_precision();
     cfg.n_eigenvalues = cfg.n_eigenvalues.min(params.n_modes).max(1);
     let target = ccm::window::ZeroTarget::FirstK {
         count: cfg.n_eigenvalues,
@@ -1779,7 +1787,7 @@ fn capture_supplemental_research_artifacts(
 
 fn print_results_f64(result: &CcmResult, top: usize) -> Result<()> {
     println!(
-        "  built and solved in {:.3}s, smallest Weil eigenvalue epsilon_N = {:.6e}",
+        "  built and solved in {:.3}s, lowest computed even-sector Ritz value = {:.6e}",
         result.elapsed_seconds, result.weil_min_eigenvalue
     );
     let zero_strings = xc_zeta::zeros::bundled_first_n_strings(top.max(50))?;
@@ -1791,28 +1799,31 @@ fn print_results_f64(result: &CcmResult, top: usize) -> Result<()> {
             })
         })
         .collect::<Result<Vec<_>>>()?;
+    println!("  f64 sign-change discovery is incomplete; candidate numbers are not certified zero ordinals.");
+    println!("  Reference matches below are comparisons within the loaded table, not inputs to root discovery.");
     println!(
-        "\n{:>4}  {:>20}  {:>20}  {:>14}  {:>10}",
-        "k", "computed eigenvalue", "Riemann zero t_k", "abs error", "rel error"
+        "\n{:>9}  {:>20}  {:>5}  {:>20}  {:>14}",
+        "candidate", "computed root", "ref k", "nearest loaded zero", "abs difference"
     );
     println!("{}", "-".repeat(78));
-    let n_show = top.min(result.eigenvalues_pos.len()).min(zeros.len());
-    for (k, (&computed, &truth)) in result
-        .eigenvalues_pos
-        .iter()
-        .zip(&zeros)
-        .take(n_show)
-        .enumerate()
-    {
+    for (candidate, &computed) in result.eigenvalues_pos.iter().take(top).enumerate() {
+        let (reference_index, &truth) = zeros
+            .iter()
+            .enumerate()
+            .min_by(|(_, left), (_, right)| {
+                (computed - **left)
+                    .abs()
+                    .total_cmp(&(computed - **right).abs())
+            })
+            .ok_or_else(|| anyhow::anyhow!("reference table is empty"))?;
         let abs_err = (computed - truth).abs();
-        let rel_err = abs_err / truth.abs();
         println!(
-            "{:>4}  {:>20.10}  {:>20.10}  {:>14.4e}  {:>10.4e}",
-            k + 1,
+            "{:>9}  {:>20.10}  {:>5}  {:>20.10}  {:>14.4e}",
+            candidate + 1,
             computed,
+            reference_index + 1,
             truth,
-            abs_err,
-            rel_err
+            abs_err
         );
     }
     Ok(())

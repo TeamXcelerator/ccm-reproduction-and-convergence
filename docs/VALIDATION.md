@@ -1,6 +1,80 @@
 # v2.5 validation
 
-The harness pins Xcelerator Toolkit v0.15.0 at
+## Current software: Toolkit v0.15.1
+
+HP root acquisition now opts into adaptive arithmetic, with up to 4,096 extra
+bits and directed confirmation at a wider precision. The request and measurement
+journals record the policy and limits. This applies to seeded and independent
+roots and supplemental evenness capture. It preserves the requested matrix and
+eigenstate precision; it does not certify those inputs, root existence or zeta
+accuracy. Outcomes that cannot meet the target remain explicitly unresolved.
+
+The mathematical-audit amendment pins repaired Toolkit kernels, intervals,
+f64 even-sector selection and cache validation. Candidate ordinals in f64
+output are separate from reference zero ordinals. Local native and HP tests,
+strict lints and orchestration checks pass. The mathematical audit is still
+open; these software checks do not revalidate the manuscript or replace a
+fresh Claim 1a run. Earlier amendments below retain their historical scope.
+
+The cache-provenance amendment binds this release to exact-parent publication
+and quarantine enforcement fixes. Native and HP tests, strict lints, and
+orchestration checks pass locally. This amendment changes no numerical formula
+and does not count as a fresh Vast Claim 1a run.
+
+The origin-limit amendment updates the exact Toolkit dependency and repeats
+native/HP tests, strict lints, and orchestration checks. It corrects a f64
+guard reachable at fractional cutoffs near 1; integer-cutoff Claim 1a and HP
+matrix formulas are unaffected. Earlier smoke records retain their source
+and scope.
+
+The current application pins Toolkit v0.15.1 at
+`ec0f09cb1a0a133dfb62c7bceceff2c1669a429c`. See the
+[software upgrade record](validation/v2.5-toolkit-v0.15.1.json) and
+[Ultra rerun guide](ULTRA_RERUN.md). This is a software and capture update;
+`paper.tex`, `paper.pdf`, scientific acceptance thresholds and historical
+evidence remain unchanged. The first new Claim 1a attempt passed numerical
+and publication checks but exposed capture defects; repaired Vast recovery and
+the remaining claims are pending.
+
+Local qualification passed 28 native Rust tests, 35 Linux HP/Arb Rust tests,
+strict Clippy on both tiers, 23 Python and shell-orchestration tests, shell
+syntax checks, and the Arb release build. The published-source capture repair
+repeats the native/HP tests and Clippy against the new exact pin. The earlier
+adoption qualification also included a bounded C=13, N=16, HP-40
+software-fixture run recorded all 38 Ultra outcomes: 33 completed and five
+missing declared atom/model/cohort inputs. Projection and finite-transform
+enclosure artifacts were captured; unresolved enclosure rows remained explicit.
+Local staging was checked for both destinations with remote execution disabled.
+A missing-input run verified that independent diagnostics continue and strict
+capture mode fails only after preserving the primary and receipts.
+
+The run-derived capture amendment repeats these checks against the current pin.
+A separate C=13, N=16, HP-40 software fixture enables automatic preparation
+without explicit research input files; an N=8 fixture supplies its comparison.
+It records 38 completed Ultra groups and zero failed groups. Atom, tail-model,
+model-band, energy, signed-transform and projection inputs are derived locally.
+Completion retains numerical qualifications; it is not a continuum certificate.
+The full repaired Vast Claim 1a is still for the user to run.
+
+The near-carrier amendment repeats local native/HP tests, strict lints,
+orchestration checks and the automatic 38-group software smoke. It adds
+stable carrier enclosures and explicit disclosure of loose energy allowances.
+The existing numerical qualifications and full-claim rerun status remain.
+
+The runtime-target integration also checks exact cutoff/precision file selection,
+missing-input failure before execution, and ambiguous file/directory rejection.
+The updated Toolkit accepts externally evaluated targets with matching cutoff,
+arithmetic precision, and authorized executable digest while preserving existing
+Gaussian target identities.
+
+## Historical v2.5 qualification
+
+The records below describe their recorded source snapshots, not the current
+README or updated application files. The last manuscript release snapshot is
+`ecb31a7688f5b3bbb0c33ed77fbdb32bbefc1743`; its paper source and PDF still match
+this checkout byte for byte. Historical records have not been rewritten.
+
+The original qualification used Xcelerator Toolkit v0.15.0 at
 `2bea90ec7cb23d4d615448c293c8af0f94e14119`. The
 [machine-readable record](validation/v2.5.json) binds the checked source files
 and records the test configurations.
@@ -142,3 +216,18 @@ Use an isolated `XC_CACHE_ROOT`, `XC_CACHE_REMOTE=none`, and
 `XC_PUBLISH_TARGET=none` for a local qualification. Use a real target
 specification for target-dependent application measurements. Credentials or
 synthetic test fixtures are not substitutes for that input.
+
+The latest audit amendment adopts the stable u-flow v4 calculation identity and
+finite-range generic binary64 root fixes. Complete Toolkit qualification and
+fresh local Paper native/HP, orchestration and bounded CLI checks pass. These
+checks do not validate the full Claim 1a campaign or historical research.
+
+The latest audit amendment adopts capability-bound transform-enclosure and band
+requests, with compatible schemas and qualified current/legacy input coverage. Complete Toolkit qualification and
+fresh local Paper native/HP, orchestration and bounded CLI checks pass. These
+checks do not validate the full Claim 1a campaign or historical research.
+
+The target-series audit amendment adopts remaining-tail bounds, exhaustion
+errors and corrected evaluation identities. Complete Toolkit qualification and
+fresh Paper native/HP, orchestration and bounded CLI checks pass. Full Claim 1a
+and historical research revalidation remain open.

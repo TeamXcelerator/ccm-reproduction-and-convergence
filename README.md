@@ -7,7 +7,7 @@ at arbitrary precision.
 **Author:** Ronnie Andrews, Jr.  
 **ORCID:** [0009-0003-9724-3104](https://orcid.org/0009-0003-9724-3104)  
 **Contact:** randrewsmath@gmail.com  
-**Release:** v2.5 (Xcelerator Toolkit v0.15.0)
+**Release:** v2.5 (Xcelerator Toolkit v0.15.1)
 
 Version 2.5 upgrades the research harness to the toolkit's shared capture recipe.
 Individual claim scripts default to **Ultra**, retain machine-readable primary
@@ -16,14 +16,21 @@ The exact toolkit commit is pinned in [Cargo.toml](Cargo.toml) and
 [Cargo.lock](Cargo.lock); every run journal preserves the build's lockfile.
 
 The pinned toolkit reuses compatible cached artifacts and computes locally
-when a required artifact is unavailable. Existing numerical caches remain
-usable. See the [validation scope](docs/VALIDATION.md) for the checks on this build.
+when a required artifact is unavailable. Compatible numerical caches remain
+usable. New research semantics select new children, without deleting old data. See the [validation scope](docs/VALIDATION.md) for the checks on this build.
 
-The v2.5 campaign completed all 14 individual claim scripts, with 53 capture
-journals and successful numerical and publication summaries. The revised paper
-incorporates the new measurements and additional local verification below.
+The original v2.5 campaign (Toolkit v0.15.0) completed all 14 individual claim scripts, with 53 capture
+journals and successful numerical and publication summaries. The published paper
+incorporates those measurements and additional local verification below.
 Claim 1c retains its declared applicability exclusions; Claim 8 has a separate
 successful review of applicable evidence, preserving the original receipts.
+
+The current software update adopts Toolkit v0.15.1 and Ultra v6 for a new
+artifact-enrichment campaign. The manuscript and its numerical claims are
+unchanged. The first Claim 1a attempt passed the numerical and publication
+checks but exposed capture defects in published-source reuse. The pinned repair
+preserves those source artifacts; a recovery run is still pending. See [Ultra reruns](docs/ULTRA_RERUN.md)
+for input preparation, coverage reporting, and preservation of historical data.
 
 ## Read the paper and evidence
 
@@ -57,8 +64,8 @@ Use Linux or WSL2 for the high-precision tier. Install Rust stable (minimum
 1.98), Python 3, and the MPFR/GMP build prerequisites:
 
 ```bash
-sudo apt-get install build-essential m4 libgmp-dev libmpfr-dev libmpc-dev
-cargo build --release --features hp --locked
+sudo apt-get install build-essential m4 libgmp-dev libmpfr-dev libmpc-dev libflint-dev
+cargo build --release --features root-certification --locked
 bash scripts/claim1a_lambda13.sh
 ```
 
@@ -74,6 +81,10 @@ For target-dependent Ultra measurements, supply your target specification as a f
 export XC_TARGET_SPEC_FILE=/path/to/runtime-target.json
 bash scripts/claim1a_lambda13.sh
 ```
+
+For cutoff-dependent targets, use `XC_TARGET_SPEC_DIR` instead, containing
+`cC-dDIGITS.json` for each configuration. The scripts select the matching file
+before every invocation. See [target selection and qualification](docs/ULTRA_RERUN.md#supply-the-data-that-defines-a-measurement).
 
 If that specification is unavailable, Ultra still captures the eigenfunction
 profile, source diagnostics, and other applicable measurements. Its receipt marks
@@ -171,7 +182,7 @@ primary parity, root acquisition, convergence criteria, or publication policy.
 | `research` | Explicit root window and native research artifacts |
 | `gap` | Research plus evenness, GapLog, and low eigenpairs in both sectors |
 | `maximum` | Complete sector eigenvalues, selected vectors, root conditioning, eigenfunction profile, target distance, Q/2Q/4Q evidence, and target residual analysis |
-| `ultra` | Maximum plus deviation decomposition, prime-power/u-flow responses, full prefix diagnostics, checked checkpoint exports, and budgeted retained-reduction checks |
+| `ultra` | Maximum plus responses and prefixes; state geometry, signed/indexed/complex transforms, operator energy, root transport, clusters, finite-section transfer, reference projection, band/tail models, consistency, numerical coverage, and Arb finite-transform enclosures. Input-dependent fields require their declared sources. |
 
 Ultra retains first, second, and third inverse moments; pivot and innovation
 cancellation; moment bounds and two-mode diagnostics; the full-source checkpoint
@@ -181,8 +192,8 @@ Ultra is intentionally more expensive than primary-only reproduction.
 
 **Claim 1c has a documented applicability policy.** At its fixed HP-1000
 configuration, target comparisons, isolated-state responses, and prefix
-ladder/checkpoint exports are excluded before computation. Five supported
-diagnostics remain enabled. The request journal, receipt, and summary list all
+ladder/checkpoint exports are excluded before computation. The other 30 Ultra v6 requests remain enabled; new measurements keep their
+source-resolution qualifications. The request journal, receipt, and summary list all
 eight exclusions and their reasons. See [Claim 1c capture applicability](docs/CLAIM1C_CAPTURE.md).
 Other claims and the toolkit's general Ultra recipe are unchanged.
 
@@ -209,22 +220,23 @@ Natural and adaptive-even primary states remain intact. Inapplicable even-state
 responses are **blocked**; an even-state checkpoint is **missing**. Distance
 measurements explicitly describe the canonical even ground state. The frozen
 [Claim 8 comparison](docs/CLAIM8_CAPTURE.md) selects `claim8-natural` before
-execution: its natural branch retains ten Ultra diagnostics, including the
+execution: its natural branch requests 35 Ultra v6 diagnostics, including the
 prefix ladder and innovation export, and excludes the two even-state responses
-and the even-eigenstate checkpoint. The paired even branch retains all thirteen
+and the even-eigenstate checkpoint. The paired even branch retains all 38
 requests. Unsupported exports are counted separately; unexpected failures still
 produce incomplete capture. Historical full-policy journals can be assessed
 without recomputation using the read-only review command in that document.
 
-Certificates remain explicit because they require a different assurance route:
+Ultra scripts build with Arb for finite transform enclosures. This does not
+request new root or sector-gap certificates; those remain explicit:
 
 ```bash
 bash scripts/claim1a_lambda13.sh --root-validation certified
 bash scripts/claim1a_lambda13.sh --capture-sector-gap-certificate
 ```
 
-The scripts enable `root-certification` for these requests; install the toolkit's
-FLINT/Arb prerequisites. Additional quadrature verification, frozen-hypothesis
+The `root-certification` build feature supplies Arb for Ultra and these explicit
+requests; install FLINT 3 (Ubuntu 24.04 provides `libflint-dev`). Additional quadrature verification, frozen-hypothesis
 scoring, and cross-run nesting/stabilization studies require their own inputs
 and explicit requests. No hypothesis or alternative mathematical source is
 invented by Ultra.
@@ -246,10 +258,10 @@ payloads and is not disguised as successful validation.
 Each invocation writes a unique local directory below
 `.xcelerator-cache/claim-runs/` containing:
 
-- `request.json` and `build.json`: resolved policies and the exact dependency lockfile.
+- `request.json` and `build.json`: resolved policies, supplied-input digests, Arb availability, and the exact dependency lockfile.
 - `primary.json` and `primary-sources.json`: lossless HP values, roots, coefficients, exact source manifests, and stopping evidence,
   saved before supplemental work.
-- `capture.json`: the shared recipe's outcomes, measurement values, and source dependencies.
+- `capture.json`: the shared recipe's outcomes, measurement values, source dependencies, and per-diagnostic numerical coverage.
 - `capture-explicit.json`, when needed: additional flag/certificate outcomes.
 - `events.jsonl`, `status.json`, and `claim-measurements.json`: progress, final
   capture status, and machine-readable numerical comparisons.
@@ -285,11 +297,11 @@ across deliberately changed identities or repair historical records by relabelin
 ## Direct CLI and performance
 
 ```bash
-cargo run --release --features hp --locked -- run \
+cargo run --release --features root-certification --locked -- run \
   --lambda-sq 13 --n-modes 120 --precision-digits 1000 --top 25 \
   --root-acquisition seeded --research-capture ultra
 
-cargo run --release --features hp --locked -- check-evenness \
+cargo run --release --features root-certification --locked -- check-evenness \
   --lambda-sq 13 --n-modes 120 --precision-digits 1000 \
   --research-capture ultra --root-acquisition seeded
 ```
@@ -308,8 +320,8 @@ unsupported on WSL; ordinary builds keep it off.
 
 ```bash
 cargo test --locked
-cargo test --features hp --locked
-cargo clippy --all-targets --features hp --locked -- -D warnings
+cargo test --features root-certification --locked
+cargo clippy --all-targets --features root-certification --locked -- -D warnings
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 

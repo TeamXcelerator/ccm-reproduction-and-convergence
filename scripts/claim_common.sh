@@ -39,6 +39,15 @@ while (($# > 0)); do
       JOURNAL_ARGS+=("$1" "$2")
       shift 2
       ;;
+    --research-reference-dir|--research-inputs-dir)
+      if (($# < 2)); then echo "$1 requires a directory" >&2; exit 2; fi
+      if [[ "$1" == "--research-reference-dir" ]]; then
+        export XC_RESEARCH_REFERENCE_DIR=$2
+      else
+        export XC_RESEARCH_INPUTS_DIR=$2
+      fi
+      shift 2
+      ;;
     --require-complete-capture)
       JOURNAL_ARGS+=("$1")
       shift
@@ -169,6 +178,9 @@ while (($# > 0)); do
       echo "  JOURNALS: --capture-output DIR, --capture-prefix-checkpoints k,...,"
       echo "            --capture-working-precision-bits BITS, --capture-reduction-max-dimension N"
       echo "  COMPLETENESS: --require-complete-capture fails after preserving partial evidence"
+      echo "  RESEARCH INPUTS: --research-reference-dir DIR, --research-inputs-dir DIR"
+      echo "                   select cC-nN-dDIGITS-PARITY.json for each invocation; reference"
+      echo "                   preparation may fall back to cC.json. See docs/ULTRA_RERUN.md."
       echo "  EXPLICIT: --capture-deviation-decomposition, --capture-prime-power-response,"
       echo "            --capture-u-flow-response, --capture-sector-gap-certificate (run commands)"
       echo "  CACHE VALIDATION: --verify-cache recomputes and compares claim artifacts; disabled by default"
@@ -226,7 +238,7 @@ if [[ -z "${BIN+x}" ]]; then
   # built from an older toolkit lockfile, without HP, or in an externally
   # overridden CARGO_TARGET_DIR from being mistaken for the current binary.
   CLAIM_FEATURES=hp
-  if [[ "$ROOT_VALIDATION_LEVEL" == "certified" || " ${EXPLICIT_CAPTURE_ARGS[*]} " == *" --capture-sector-gap-certificate "* ]]; then
+  if [[ "$RESEARCH_CAPTURE_LEVEL" == "ultra" || "$ROOT_VALIDATION_LEVEL" == "certified" || " ${EXPLICIT_CAPTURE_ARGS[*]} " == *" --capture-sector-gap-certificate "* ]]; then
     CLAIM_FEATURES=$CLAIM_FEATURES,root-certification
   fi
   if [[ "$GL_ROOT_PARALLEL_ENABLED" == "true" ]]; then
@@ -387,7 +399,7 @@ run_research_claim() {
   CLAIM_LOGS+=("$log")
   echo "Claim log: $log"
   local -a statuses
-  if XC_PERF_REPORT="${XC_PERF_REPORT:-${log%.log}.performance.json}" "${command[@]}" 2>&1 | tee "$log"; then
+  if XC_PERF_REPORT="${XC_PERF_REPORT:-${log%.log}.performance.json}" python3 "$CLAIM_REPO_ROOT/scripts/claim_inputs.py" "${command[@]}" 2>&1 | tee "$log"; then
     statuses=("${PIPESTATUS[@]}")
   else
     statuses=("${PIPESTATUS[@]}")

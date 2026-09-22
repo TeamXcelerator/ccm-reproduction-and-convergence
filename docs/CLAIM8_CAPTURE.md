@@ -5,9 +5,9 @@ primary at `(lambda-squared,N)=(13,120)` and `(100,500)`, HP-1000 (3386 bits).
 Both routes request Ultra and preserve their own eigenstates and roots.
 
 The individual script selects `--capture-policy claim8-natural` on the natural
-route before computing. The request and source-bound receipt record **ten
-applicable diagnostics and three exclusions**. The paired even-sector route
-keeps all thirteen Ultra requests.
+route before computing. The request and source-bound receipt record **35 requested diagnostic groups and three exclusions** under Ultra v6.
+The paired even-sector route keeps all 38 requests. Optional references and
+other external inputs must still be supplied for their dependent measurements.
 
 | Natural-route exclusion | Reason | Evidence retained |
 |---|---|---|
@@ -15,11 +15,15 @@ keeps all thirteen Ultra requests.
 | `u_flow_response` | Requires an isolated even-sector primary eigenstate | Response on the paired even route; natural primary and roots |
 | `prefix_checkpoint_121` or `prefix_checkpoint_501` | Requires an exact even-sector eigenstate source; the natural primary is not projected or substituted | Full prefix ladder and innovation export; eigenstate checkpoint on the paired even route |
 
-The ten natural requests retain sector spectra/eigenvectors, evenness, root
+The original ten natural requests retain sector spectra/eigenvectors, evenness, root
 conditioning, prefix ladder, retained reduction, raw profile and all four
 target-comparison diagnostics. The canonical even-state distance convention
 remains recorded separately from the natural primary. These complementary
 measurements are not evidence that the two primary states are bit-identical.
+
+The 25 added Ultra v6 requests describe the actual retained primary and keep
+their own source and numerical qualifications. No natural state is relabeled
+as an even-sector state to satisfy them.
 
 An innovation export with status
 `innovation_export_passed_eigenpair_not_supplied` is acceptable under this

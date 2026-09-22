@@ -1,0 +1,1452 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-23",
+  "software_release": "v2.5",
+  "toolkit_version": "0.15.1",
+  "toolkit_revision": "ec0f09cb1a0a133dfb62c7bceceff2c1669a429c",
+  "scope": "Application adoption and bounded synthetic integration qualification; no full claim campaign or remote artifact publication. Manuscript unchanged. Frozen finite-certification exporter retains its historical pin for proof replay.",
+  "prior_manuscript_commit": "ecb31a7688f5b3bbb0c33ed77fbdb32bbefc1743",
+  "manuscript_raw_sha256": {
+    "paper.tex": "b60d449b421832129f10dd114289c22d1a3ed573cb27f05e773366c4e9995d6d",
+    "paper.pdf": "e235518d3d9150a942de6a4bc296993dfce85255d1d8ab3389824d05a06bf429"
+  },
+  "application_source_digest_policy": "SHA-256 of UTF-8 file bytes with CRLF normalized to LF; manuscript uses exact raw bytes",
+  "application_source_sha256": {
+    "Cargo.toml": "491a94f708b7464ba8701269d2a14417451d40003fe13e3fc7fb3008b81fab11",
+    "Cargo.lock": "07b625bca434874405f50ab22f506955c57387101b5732638312bfcc57248693",
+    "src/benchmark.rs": "418173d28edc773dbcd4118c7577228768836115c8d54abd0a4b9f778c2fb60b",
+    "src/capture.rs": "f29ce8aad4af09e4986ff4fb78c7c726c86365469f9af6040fba48a82ce8349e",
+    "src/main.rs": "149f84787f535f9d51313fb3eec9502cbf6ce3aaaca33f0bd454774ec1074573",
+    "scripts/claim1a_lambda13.sh": "aa9fbb33f797b2ed1b06d55ba49ad96c6cf756e2abc0b9086e98ccc2f1836851",
+    "scripts/claim1b_lambda100.sh": "2c52e3955f446c303a1bdc28465c4b81000c25fd65fa2f35b5857de76c8de2e2",
+    "scripts/claim1c_lambda1000.sh": "36b7f3e448c1fd85574695cfa3b576e35a3087265e642d17c111feee4ccdd937",
+    "scripts/claim2a_hp200.sh": "8b6f2c0922991f87551cfa787094f5643385ee42e9a24c0496cfbd9b77c8be21",
+    "scripts/claim2b_hp1000.sh": "88c4db5574a3df9cfd472350b1ad8ec772995af7a306231dc6f094caedf36eba",
+    "scripts/claim3_critical_n.sh": "d4ed2ae2f0dff0bad7a82e50aed8d1f59d5750949c136088b4e7f8617250945d",
+    "scripts/claim4a_lambda13.sh": "baf05f097a77f9eb21e10b205ec12494ee58dc7a1fc793d329ebf6fede1eb018",
+    "scripts/claim4b_lambda100.sh": "a865d426cd963755b1493f7050a8f937c1f69be50b0282d0e17854b844910693",
+    "scripts/claim4c_lambda1000.sh": "3d332b2b5d2ca68d60e60db8b456fc0840a8c916502d54531e3d6e6a943a084a",
+    "scripts/claim4d_lambda1200.sh": "912d93c5d915237f14b32a27bafc020bbe741e83b6082cb0f671ad2c2820d1bf",
+    "scripts/claim6b_eps_n_abovefloor.sh": "cb42928363ea9e3e3061a2bc9b6ec154b1db178c2222c4492e65679d41c2acd7",
+    "scripts/claim6_eps_n.sh": "03614f72172d5be318fcba0605bb3282773d679c55b961a43aadc0fca8d8091e",
+    "scripts/claim7_convergence_n.sh": "0c650328a79801ccdf480ddf70112dcab3a164322e1e863d9f9659728f671705",
+    "scripts/claim8_natural_eigenvector.sh": "0ffe360574e7f42c0ccf7c36a4ee87ced63d102379c2110bf51560901cfa8f19",
+    "scripts/claim_common.sh": "88791c3b314127dddb9139adb4c178719dbc559aea812f850d8dc7bfacc173d7",
+    "scripts/claim_inputs.py": "5f37591930f053b1fa5f3ca08aa3ce4a6db31fd747658ae5742e0a4c0df6902c",
+    "scripts/claim_summary.py": "32d4b906e043cee7bb545e3ea83de39fa040a20912ca724f00abbf64234f933d",
+    "scripts/review_claim8_capture.py": "b1e5bd7f1fe799dc81b29c325b2ff3e6886247f3ea760aa7ba490b1c3c1de755",
+    "tests/integration.rs": "b569876c1a8008a506dcce5f228ea3c5d953e0742cf0e0fc89b770dd46bcb864",
+    "tests/test_claim8_review.py": "64c122340a4b36c73b1c8a02c89bbc3cf2fdbf0bb3bf2c737ded85f9b320b44d",
+    "tests/test_claim_inputs.py": "2d9f75d219d7de14efd450bbe690dd2adceb856ccb3ad9ce11ff487be3ee0da5",
+    "tests/test_claim_scripts.py": "b7a662d2b005d8f6c06d2e8aea5fba7e0c93df7ed46078d97787f6872714f831",
+    "tests/test_claim_summary.py": "b0f7ae6da92c7fdb98382d443ecdae1c6849a23e7276509c45069bd06702df47"
+  },
+  "checks": {
+    "native_rust": {
+      "passed": 28,
+      "failed": 0
+    },
+    "linux_hp_arb_rust": {
+      "passed": 35,
+      "failed": 0
+    },
+    "native_strict_clippy": "passed",
+    "linux_hp_arb_strict_clippy": "passed",
+    "linux_python_and_shell_orchestration": {
+      "passed": 23,
+      "failed": 0
+    },
+    "individual_shell_syntax": "passed",
+    "linux_arb_release_build": "passed"
+  },
+  "smoke": {
+    "configuration": {
+      "C": 13,
+      "N": 16,
+      "decimal_precision": 40,
+      "roots": 2,
+      "grid": 32,
+      "software_fixture_only": true
+    },
+    "requested_groups": 38,
+    "completed_groups": 33,
+    "missing_groups": {
+      "band_reconstruction": "signed weighted atoms, band degree, coordinate and tail coverage required",
+      "configuration_comparison": "comparison snapshots or a verified retained-source cohort required",
+      "energy_allowance": "declared block bounds and their hypothesis record required",
+      "tail_operator": "fixed-basis zero/lattice/tail forms required; model and omitted-tail formula are not inferred from a state",
+      "weighted_tail": "explicit weighted atoms, coordinate and coverage required"
+    },
+    "failed_groups": 0,
+    "reference_projection_completed": true,
+    "transform_enclosure_record_completed": true,
+    "transform_enclosure_all_rows_resolved": false,
+    "coverage_records": 38,
+    "publication_inventory_finalized_locally": true,
+    "dual_destination_staging_verified": true,
+    "strict_missing_input_exit": 1,
+    "strict_failure_preserves_primary_and_receipt": true,
+    "remote_publication_executed": false
+  },
+  "campaign_status": "Qualified locally with explicit adaptive root policy. Full Claim 1a rerun and mathematical revalidation of manuscript claims remain pending.",
+  "historical_artifacts": "preserved; compatible parents reused and new children get new identities",
+  "runtime_target_integration": {
+    "cutoff_and_precision_file_selection": "cC-dDIGITS.json",
+    "missing_file_stops_before_child": true,
+    "ambiguous_file_and_directory_rejected": true,
+    "manuscript_unchanged": true,
+    "legacy_schema_1_and_external_schema_3_supported": true,
+    "external_provider_authorization_and_digest_required": true,
+    "bounded_ultra_old_new_coexistence_and_primary_reuse": true,
+    "provider_protocol_version": 1,
+    "correlated_reply_required": true,
+    "declared_precision_required": true,
+    "old_uncorrelated_provider_identities_not_reused": true
+  },
+  "external_provider_amendment_checks": {
+    "native_tests": 28,
+    "hp_arb_release_tests": 35,
+    "python_and_shell_tests": 23,
+    "strict_clippy_both_tiers": true,
+    "protocol_version": 1,
+    "scope": "bounded software capture/reuse checks; no full campaign or remote artifact publication",
+    "logs": {
+      "paper-native.log": "c47610ea27873cf21e8124e6fd0e5d90d0351b15f86279f108694e46b5c51df7",
+      "paper-hp.log": "ebbe4ba449078e6e0bea65511cde7c257c6a7012a0b4789c2b475487209f48e0",
+      "paper-native-clippy.log": "24ea655adbe626b93dca869c4a39412b7785cc13361895339dd84d0c76c9c261",
+      "paper-hp-clippy.log": "335b999094b0db2aec36301584908f5f6ef43271f401a47ae03603cc4886089b",
+      "paper-build.log": "765f1396d07f30f3a451cd3f9d9cad4e83c92c8e0aecf955ffc09061a6cf1e02",
+      "paper-python.log": "ded0dea3f572b15c09e86732c802c16aa577ca4845b5b7c32a8ae5713e9a8283"
+    }
+  },
+  "provider_diagnostics_amendment": {
+    "per_point_errors_preserved": true,
+    "target_identity_unchanged": true,
+    "native_tests": 28,
+    "hp_arb_release_tests": 35,
+    "python_and_shell_tests": 23,
+    "strict_clippy_both_tiers": true,
+    "scope": "bounded software fixtures; no full claim or remote publication",
+    "capture_outcomes": [
+      {
+        "label": "old",
+        "completed": 30,
+        "missing": 8,
+        "failed": 0
+      },
+      {
+        "label": "new",
+        "completed": 30,
+        "missing": 8,
+        "failed": 0
+      },
+      {
+        "label": "warm",
+        "completed": 30,
+        "missing": 8,
+        "failed": 0
+      }
+    ],
+    "logs": {
+      "paper-native.log": "ab28c0ad7913fc3dfb4227dbd38cabf377aba538db67d0ebcf21552bd526162a",
+      "paper-hp.log": "74a4379519de80cb886b7f6df32bca8888bdd0c5b9b431e00fe69e882ccad213",
+      "paper-native-clippy.log": "e8b30ffefa0aeffb1b07fed9dd80fda8819d5bf270a9b5d474fc3b4e71305697",
+      "paper-hp-clippy.log": "bfebe672aedc2cfe8e95084ff5fbbf2981598f7a82fc8fb26316357aad0b8795",
+      "paper-build.log": "765f1396d07f30f3a451cd3f9d9cad4e83c92c8e0aecf955ffc09061a6cf1e02",
+      "paper-python.log": "a6f3e2265a2c2ca5d59e9cd25f2a707351201fd9d17e4dbd933d460a4d705470"
+    }
+  },
+  "published_source_capture_amendment": {
+    "previous_toolkit_revision": "c2f13f91971f93c768f6f9008eef4fb5db48aba1",
+    "toolkit_revision": "0f71b7b9700ab89cafd23147749a3d845777dd47",
+    "scope": "Published canonical ancestry, larger retained-root window observation, and bounded checkpoint labels; primary numerical bytes and manuscript unchanged. Earlier bounded smoke results retain their original scope.",
+    "native_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked"
+        ],
+        "exit_code": 0,
+        "seconds": 25.861,
+        "log_sha256": "161c14eca20d4bac6a6e6aa85b6a19b42d9684fbbcd52177a6de930cec4b82c9",
+        "tests": {
+          "passed": 28,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 12.995,
+        "log_sha256": "9239b8cb527416576f100276cb924e1cb94e208809e255f9777a7f103a562fd6"
+      }
+    ],
+    "repair_vast_rerun_performed": false,
+    "hp_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "--release",
+          "--features",
+          "root-certification"
+        ],
+        "exit_code": 0,
+        "seconds": 82.513,
+        "log_sha256": "d16fc6d115cb3182c69b9a947a85c7e009640540f114c1d10fedfccba4ce9bb3",
+        "tests": {
+          "passed": 35,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--features",
+          "root-certification",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 33.068,
+        "log_sha256": "83dbe9f10e752a2d47b342e22d1fb870335c40366a3871e61aa049e8f5a49ab7"
+      },
+      {
+        "check": "orchestration",
+        "command": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tests",
+          "-p",
+          "test_*.py"
+        ],
+        "exit_code": 0,
+        "seconds": 0.869,
+        "log_sha256": "b397420e63ba979b5f3565b1734cb053dae21d46fe98b4008bd9d68ae61128cd"
+      }
+    ]
+  },
+  "run_derived_capture_amendment": {
+    "previous_toolkit_revision": "0f71b7b9700ab89cafd23147749a3d845777dd47",
+    "toolkit_revision": "40129414aa85ba98bfc51bb785b96aed9f54b88e",
+    "native_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked"
+        ],
+        "exit_code": 0,
+        "seconds": 22.17,
+        "log_sha256": "8cab9c3621d925f4b409de7df9fc1b304ff66034ab62ff1c23d7379d7e846942",
+        "tests": {
+          "passed": 28,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 12.13,
+        "log_sha256": "c95b6252a908a6b3315d537b621ad9534fe8c9c3ab22c2d9e3f77ab955be38a4"
+      }
+    ],
+    "hp_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "--release",
+          "--features",
+          "root-certification"
+        ],
+        "exit_code": 0,
+        "seconds": 78.781,
+        "log_sha256": "9919284a703b3b0b24205840e0fb7026b87de0b0c3a447b7487e7587f3b012ea",
+        "tests": {
+          "passed": 35,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--features",
+          "root-certification",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 29.188,
+        "log_sha256": "520468b7b6de94232c268b3956d979c7c737851a1d770e915ffd7482f7d050f9"
+      },
+      {
+        "check": "orchestration",
+        "command": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tests",
+          "-p",
+          "test_*.py"
+        ],
+        "exit_code": 0,
+        "seconds": 0.991,
+        "log_sha256": "d7209e7dfc1e6d0a4ae0eaf46b38dc69ccc3344cb9d92c60cfcc5dd35c376270"
+      }
+    ],
+    "automatic_preparation_smoke": {
+      "software_fixture_only": true,
+      "C": 13,
+      "N": 16,
+      "precision_digits": 40,
+      "comparison_N": 8,
+      "explicit_research_files": false,
+      "requested": 38,
+      "status_counts": {
+        "completed": 38,
+        "failed": 0,
+        "missing": 0,
+        "blocked": 0
+      },
+      "summary_sha256": "1a4a2e9918d1611089ab8e25a58219a7eb1a839913af1722c68aca07e5629af0",
+      "remote_publication_executed": false
+    },
+    "historical_records": "Earlier smoke and campaign entries retain their original source and scope.",
+    "scope": "Source-bound automatic finite inputs, quiet checkpoint I/O, canonical cohort discovery and finite contour enclosures. Finite bounds/model qualifications remain explicit.",
+    "vast_rerun_performed": false,
+    "github_actions_executed": false
+  },
+  "near_carrier_amendment": {
+    "previous_toolkit_revision": "40129414aa85ba98bfc51bb785b96aed9f54b88e",
+    "toolkit_revision": "827a72dcd2fbd72996cd15d72755799bc774ca8f",
+    "native_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked"
+        ],
+        "exit_code": 0,
+        "seconds": 26.966,
+        "log_sha256": "057042b42069d026b7c67b271913eb7e38626c60c0cd82ac266c22171f9c0f6c",
+        "tests": {
+          "passed": 28,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 13.228,
+        "log_sha256": "7e0282989179d2a06c105c7111a5a1c7263953662a3e3117646cffa06848befc"
+      }
+    ],
+    "hp_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "--release",
+          "--features",
+          "root-certification"
+        ],
+        "exit_code": 0,
+        "seconds": 79.063,
+        "log_sha256": "5131d6c2d33618e9b770414ba1cfd89acbd5be69c282c89ccc99d93032c18a33",
+        "tests": {
+          "passed": 35,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--features",
+          "root-certification",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 26.377,
+        "log_sha256": "e4e9ca625a11ad0a21a377b5ff63d67bef3673013ed866d64c426b166555dc65"
+      },
+      {
+        "check": "orchestration",
+        "command": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tests",
+          "-p",
+          "test_*.py"
+        ],
+        "exit_code": 0,
+        "seconds": 1.026,
+        "log_sha256": "fa68628e5907c17552aea66c9e78287b05581c4ae373b0395cf830173eb12ff6"
+      }
+    ],
+    "qualification_source": "Exact local Toolkit Git commit, fetched through a process-local local-file Git URL override; publication pending at validation time",
+    "scope": "Stable near-carrier finite enclosures and explicit conditional allowance scale interpretation",
+    "automatic_software_smoke": {
+      "C": 13,
+      "N": 16,
+      "comparison_N": 8,
+      "precision_digits": 40,
+      "requested": 38,
+      "completed": 38,
+      "failed": 0,
+      "missing": 0,
+      "blocked": 0,
+      "summary_sha256": "222ebe1dc1b6af48a610910d4da25a2c3399bc3ac25fa20e69fb8b73ea81a45f",
+      "meaning": "capture completeness with qualified numeric outcomes, not mathematical accuracy certification"
+    },
+    "vast_rerun_performed": false,
+    "github_actions_executed": false
+  },
+  "origin_limit_amendment": {
+    "previous_toolkit_revision": "827a72dcd2fbd72996cd15d72755799bc774ca8f",
+    "toolkit_revision": "61b3a385f07087d888e8e30706c2e49c9135ebd3",
+    "native_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked"
+        ],
+        "exit_code": 0,
+        "seconds": 33.952,
+        "log_sha256": "b1ba7fbd60e6c3017d410bee7dbf016ae1694e204a790701f2325f1e1cc060bc",
+        "tests": {
+          "passed": 28,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 14.826,
+        "log_sha256": "46709f3ec0133ccff8d224c3206cf62a7c273a8ee1c9f12382b19e0c22009401"
+      }
+    ],
+    "hp_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "--release",
+          "--features",
+          "root-certification"
+        ],
+        "exit_code": 0,
+        "seconds": 92.093,
+        "log_sha256": "7bfd419c2ebd7ab8f40b71048650b9dc4e2e1821bb47f1828c9e5dc4a9e46150",
+        "tests": {
+          "passed": 35,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--features",
+          "root-certification",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 36.013,
+        "log_sha256": "b697cfa0382b21a21cc12fa6a4f9421a02228a77ed300406a91d16fdef4f4f8e"
+      },
+      {
+        "check": "orchestration",
+        "command": [
+          "/usr/bin/python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tests",
+          "-p",
+          "test_*.py"
+        ],
+        "exit_code": 0,
+        "seconds": 0.952,
+        "log_sha256": "e235c0590a87db10f302838516165be27030db263e0a82d87a5588bacd16295d"
+      }
+    ],
+    "qualification_source": "Exact local Toolkit Git commit fetched through a process-local local-file URL override",
+    "scope": "f64 origin-limit correction; integer-cutoff Claim 1a and HP matrix formulas unaffected",
+    "prior_smoke_records_retained_as_historical": true,
+    "github_actions_executed": false,
+    "vast_rerun_performed": false
+  },
+  "cache_provenance_amendment": {
+    "previous_toolkit_revision": "61b3a385f07087d888e8e30706c2e49c9135ebd3",
+    "toolkit_revision": "c19a554be77adfd4ef2afd0b211b9809ae168e56",
+    "native_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked"
+        ],
+        "exit_code": 0,
+        "seconds": 42.566,
+        "log_sha256": "e740fe449ab995c310906d529a2c9efa835ca40c05b241036155e8a16e4b3cfe",
+        "tests": {
+          "passed": 28,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 25.985,
+        "log_sha256": "d3eb50a8b55401d00621f036ea7d88aff26013f1b9e6c7d896fd8f8c22bf311b"
+      }
+    ],
+    "hp_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "--release",
+          "--features",
+          "root-certification"
+        ],
+        "exit_code": 0,
+        "seconds": 115.859,
+        "log_sha256": "bbb9f5ee7c42766b00da22d6135f135560f620df18892fd3577614b3531026cb",
+        "tests": {
+          "passed": 35,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--features",
+          "root-certification",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 36.942,
+        "log_sha256": "9c58cb558b4d1b0ebd0464898294bd82b7b4159993b9ebfba1ae0e50791904e0"
+      },
+      {
+        "check": "orchestration",
+        "command": [
+          "/usr/bin/python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tests",
+          "-p",
+          "test_*.py"
+        ],
+        "exit_code": 0,
+        "seconds": 0.942,
+        "log_sha256": "eeb139c13cee2bad390b6bf12746930f772a9b963762b19df92855a2c531922b"
+      }
+    ],
+    "scope": "Exact parent publication and quarantine enforcement; numerical formulas unchanged.",
+    "qualification_source": "Exact local Toolkit commit fetched with a process-local local-file URL override",
+    "github_actions_executed": false,
+    "vast_rerun_performed": false
+  },
+  "full_mathematics_audit_amendment": {
+    "previous_toolkit_revision": "c19a554be77adfd4ef2afd0b211b9809ae168e56",
+    "toolkit_revision": "95a42bd627c2aeb8e96962585f91d40f3fee0be5",
+    "native_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked"
+        ],
+        "exit_code": 0,
+        "seconds": 40.37,
+        "log_sha256": "190173db5977bcb423eb7410d9a5619dd6ce27eace1454802935b595499f666f",
+        "tests": {
+          "passed": 28,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 17.968,
+        "log_sha256": "c0f9d3c704bf5da215bc54ad02f26b818177db64f62347aa5fb7faf5a25bd42c"
+      }
+    ],
+    "hp_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "--release",
+          "--features",
+          "root-certification"
+        ],
+        "exit_code": 0,
+        "seconds": 99.358,
+        "log_sha256": "c67b95b96c26127468a830ceb7cb777a18f2ad5ac969efb531bab645ca011261",
+        "tests": {
+          "passed": 35,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--features",
+          "root-certification",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 39.972,
+        "log_sha256": "7edb0d9bbe21710f9a885fba5bbd0f339551c41b8c685db84910ae56fd3e5156"
+      },
+      {
+        "check": "orchestration",
+        "command": [
+          "/usr/bin/python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tests",
+          "-p",
+          "test_*.py"
+        ],
+        "exit_code": 0,
+        "seconds": 0.964,
+        "log_sha256": "87343cfc2375434819caa9f72134f36317480bce76fd34da3cd458f2a7bddd74"
+      }
+    ],
+    "scope": "Directed integer interval conversion; finite bisection validation; f64 mode-dependent quadrature and even-sector Ritz solve; stable f64/HP CCM kernels and cutoff domains; canonical source-edge and offline adoption validation. Full mathematical and historical-corpus revalidation remains open.",
+    "paper_output_change": "f64 candidate ordinals are separate from known zero ordinals; nearest-reference comparisons are explicitly limited to the loaded table.",
+    "qualification_source": "Exact local Toolkit commit fetched with process-local local-file URL override",
+    "github_actions_executed": false,
+    "vast_rerun_performed": false
+  },
+  "root_and_revocation_audit_amendment": {
+    "qualified_at_utc": "2026-09-24T06:38:23.251021+00:00",
+    "toolkit_revision": "affbc168250c4992ecf16641cd7a2f7d1eb05a41",
+    "native_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked"
+        ],
+        "exit_code": 0,
+        "seconds": 26.143,
+        "log_sha256": "269e1bac9257bb0479d5814d6d7a72ee4360cee6ea75e7a95cd9daaa040f9395",
+        "tests": {
+          "passed": 28,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 14.452,
+        "log_sha256": "f1501dd1e3abd9bddeaf32837089d2e81e0956883314b753865c2f3fa411c2b2"
+      }
+    ],
+    "hp_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "--release",
+          "--features",
+          "root-certification"
+        ],
+        "exit_code": 0,
+        "seconds": 84.935,
+        "log_sha256": "768aa1113f3946c8ac2fde9ee86359c7afb6f1d890f9bdd628a2c0b10ac03829",
+        "tests": {
+          "passed": 35,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--features",
+          "root-certification",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 30.918,
+        "log_sha256": "02c5182e4abbf91c500cd19b42898e670ebf07fa471be1323d6309e6c4e856e0"
+      },
+      {
+        "check": "orchestration",
+        "command": [
+          "/usr/bin/python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tests",
+          "-p",
+          "test_*.py"
+        ],
+        "exit_code": 0,
+        "seconds": 0.918,
+        "log_sha256": "de734ad1736a923f4701bce409d342b26545377f19c3f7ea014b2fd673dc6999"
+      }
+    ],
+    "bounded_cli_smoke": {
+      "status": "PASS",
+      "scope": "Bounded local C13 N16 HP40 CLI and provenance smoke; not Claim 1a or source accuracy certification",
+      "cases": [
+        {
+          "case": "seeded",
+          "exit_code": 0,
+          "seconds": 3.9227391990002616,
+          "expected_exit_code": 0,
+          "outcome": "accepted",
+          "request_sha256": "2d8efe683803ee0bf598fe3a46eeb7fb787a219361186712bbff12633eadb76a",
+          "journal": "results/paper-adaptive-smoke-v3/seeded/c13-n16-p197-1790231772331808460-28971",
+          "root_precision_policy": "adaptive",
+          "source_precision_bits": 197
+        },
+        {
+          "case": "independent",
+          "exit_code": 0,
+          "seconds": 2.675882298000033,
+          "expected_exit_code": 0,
+          "outcome": "accepted",
+          "request_sha256": "2d8efe683803ee0bf598fe3a46eeb7fb787a219361186712bbff12633eadb76a",
+          "journal": "results/paper-adaptive-smoke-v3/independent/c13-n16-p197-1790231776184494320-28976",
+          "root_precision_policy": "adaptive",
+          "source_precision_bits": 197
+        },
+        {
+          "case": "evenness",
+          "exit_code": 1,
+          "seconds": 1.728251279000233,
+          "expected_exit_code": 1,
+          "outcome": "unresolved supplemental window explicitly rejected; evenness measurement retained",
+          "request_sha256": "c759c0174567583eb8629d659b63e64b63823bfc30f64d075a077525f98963ee",
+          "journal": "results/paper-adaptive-smoke-v3/evenness/c13-n16-p197-1790231779304350399-28981",
+          "root_precision_policy": "adaptive",
+          "source_precision_bits": 197
+        }
+      ]
+    },
+    "scope": "Exact repaired Toolkit dependency; adaptive root arithmetic for primary and supplemental paths; policy recorded in journals. Matrix/eigenstate precision is unchanged. Full historical and mathematical audit remains open.",
+    "github_actions_executed": false,
+    "vast_rerun_performed": false
+  },
+  "nonfinite_eigenpair_audit_amendment": {
+    "qualified_at_utc": "2026-09-24T07:22:26.524520+00:00",
+    "toolkit_revision": "b1366abdf2df77e178b79c5fdc0d9e7b30fe3f39",
+    "native_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked"
+        ],
+        "exit_code": 0,
+        "seconds": 24.719,
+        "log_sha256": "3df2694c82a3123950b6b3865920fc48521b14db6eae531ca1d4f5b2fd5cf9c8",
+        "tests": {
+          "passed": 28,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 13.003,
+        "log_sha256": "f29e7ad09acddb8c90945d8b472c95791fcc4c12a9bab381bb2e7e58b25f98f3"
+      }
+    ],
+    "hp_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "--release",
+          "--features",
+          "root-certification"
+        ],
+        "exit_code": 0,
+        "seconds": 76.957,
+        "log_sha256": "f024ec94d83bd8b743d1792b98b1176dc294729612b330b9ddc87902608b64b8",
+        "tests": {
+          "passed": 35,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--features",
+          "root-certification",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 25.744,
+        "log_sha256": "523154bd3e57c70025ed53eb1c2170d9ccfd45361939496b160ce08a13f4f372"
+      },
+      {
+        "check": "orchestration",
+        "command": [
+          "/usr/bin/python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tests",
+          "-p",
+          "test_*.py"
+        ],
+        "exit_code": 0,
+        "seconds": 0.835,
+        "log_sha256": "9bf453c27f422dba90a8d271a676bfda94bf08abb74d65d624944d0fb8f22b03"
+      }
+    ],
+    "bounded_cli_smoke": {
+      "status": "PASS",
+      "scope": "Bounded local C13 N16 HP40 CLI and provenance smoke; not Claim 1a or source accuracy certification",
+      "cases": [
+        {
+          "case": "seeded",
+          "exit_code": 0,
+          "seconds": 4.124889307000558,
+          "expected_exit_code": 0,
+          "outcome": "accepted",
+          "request_sha256": "2d8efe683803ee0bf598fe3a46eeb7fb787a219361186712bbff12633eadb76a",
+          "journal": "results/paper-adaptive-smoke-v5-retry1/seeded/c13-n16-p197-1790234483031812478-44668",
+          "root_precision_policy": "adaptive",
+          "source_precision_bits": 197
+        },
+        {
+          "case": "independent",
+          "exit_code": 0,
+          "seconds": 2.7324956499996915,
+          "expected_exit_code": 0,
+          "outcome": "accepted",
+          "request_sha256": "2d8efe683803ee0bf598fe3a46eeb7fb787a219361186712bbff12633eadb76a",
+          "journal": "results/paper-adaptive-smoke-v5-retry1/independent/c13-n16-p197-1790234487069311010-44673",
+          "root_precision_policy": "adaptive",
+          "source_precision_bits": 197
+        },
+        {
+          "case": "evenness",
+          "exit_code": 1,
+          "seconds": 1.643472976999874,
+          "expected_exit_code": 1,
+          "outcome": "unresolved supplemental window explicitly rejected; evenness measurement retained",
+          "request_sha256": "c759c0174567583eb8629d659b63e64b63823bfc30f64d075a077525f98963ee",
+          "journal": "results/paper-adaptive-smoke-v5-retry1/evenness/c13-n16-p197-1790234489592996467-44678",
+          "root_precision_policy": "adaptive",
+          "source_precision_bits": 197
+        }
+      ]
+    },
+    "scope": "Adopt exact Toolkit nonfinite-eigenpair residual repair; existing adaptive root paths and policy provenance pass fresh local checks. Full Claim 1a and manuscript audit remain pending.",
+    "github_actions_executed": false,
+    "vast_rerun_performed": false
+  },
+  "stable_u_flow_and_generic_root_audit_amendment": {
+    "qualified_at_utc": "2026-09-24T11:38:31.957289+00:00",
+    "toolkit_revision": "4efb2d546703977fbe5c1f2fcd7dd368895e9879",
+    "native_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked"
+        ],
+        "exit_code": 0,
+        "seconds": 33.378,
+        "log_sha256": "42b587ec46a78f393c6287aa1894a994d3dfbd5e0743b75c9f3ae189f5677c97",
+        "tests": {
+          "passed": 28,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 15.087,
+        "log_sha256": "035b1bfdf4d65f4c64a2fe0507e07e5a23b9bad3267f774e0659dd2945dec1cb"
+      }
+    ],
+    "hp_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "--release",
+          "--features",
+          "root-certification"
+        ],
+        "exit_code": 0,
+        "seconds": 95.829,
+        "log_sha256": "7a3afe8de62d118e8666233be74842d313bf2ecf96b41518264cf897f7eba5e2",
+        "tests": {
+          "passed": 35,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--features",
+          "root-certification",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 28.48,
+        "log_sha256": "3644427fb5265ce407dc7d60287d237929a72fcb1f466886bdfaea06b77a6395"
+      },
+      {
+        "check": "orchestration",
+        "command": [
+          "/usr/bin/python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tests",
+          "-p",
+          "test_*.py"
+        ],
+        "exit_code": 0,
+        "seconds": 1.065,
+        "log_sha256": "5fd0247f79759ca439136e2d2c90634baf3aab91a41b29ee4e916b3e60677940"
+      }
+    ],
+    "bounded_cli_smoke": {
+      "status": "PASS",
+      "scope": "Bounded local C13 N16 HP40 CLI and provenance smoke; not Claim 1a or source accuracy certification",
+      "cases": [
+        {
+          "case": "seeded",
+          "exit_code": 0,
+          "seconds": 6.630337160999261,
+          "expected_exit_code": 0,
+          "outcome": "accepted",
+          "request_sha256": "2d8efe683803ee0bf598fe3a46eeb7fb787a219361186712bbff12633eadb76a",
+          "journal": "results/paper-adaptive-smoke-v7/seeded/c13-n16-p197-1790249859793451068-54999",
+          "root_precision_policy": "adaptive",
+          "source_precision_bits": 197
+        },
+        {
+          "case": "independent",
+          "exit_code": 0,
+          "seconds": 4.7390025470012915,
+          "expected_exit_code": 0,
+          "outcome": "accepted",
+          "request_sha256": "2d8efe683803ee0bf598fe3a46eeb7fb787a219361186712bbff12633eadb76a",
+          "journal": "results/paper-adaptive-smoke-v7/independent/c13-n16-p197-1790249866236258427-55004",
+          "root_precision_policy": "adaptive",
+          "source_precision_bits": 197
+        },
+        {
+          "case": "evenness",
+          "exit_code": 1,
+          "seconds": 2.8171930240005167,
+          "expected_exit_code": 1,
+          "outcome": "unresolved supplemental window explicitly rejected; evenness measurement retained",
+          "request_sha256": "c759c0174567583eb8629d659b63e64b63823bfc30f64d075a077525f98963ee",
+          "journal": "results/paper-adaptive-smoke-v7/evenness/c13-n16-p197-1790249871756479304-55009",
+          "root_precision_policy": "adaptive",
+          "source_precision_bits": 197
+        }
+      ]
+    },
+    "scope": "Adopt exact Toolkit stable u-flow identity and finite generic binary64 root repairs; adaptive root paths, policy provenance and bounded CLI checks pass locally. Full Claim 1a and manuscript audit remain pending.",
+    "github_actions_executed": false,
+    "vast_rerun_performed": false
+  },
+  "historical_validation_documentation_correction": {
+    "toolkit_revision": "a4da9fad756be173e77993e7c7e3a8dadec927e1",
+    "previous_qualified_revision": "4efb2d546703977fbe5c1f2fcd7dd368895e9879",
+    "source_digest_unchanged": "5e574c47c71f5b26113c21ec5b9fa2ea517727922444ce6e5b2fc0b4c9f13624",
+    "scope": "Restore the v0.15.0 historical native count to its preserved 533; no qualified Toolkit source bytes change. Consumer changes are exact revision substitutions only."
+  },
+  "capability_identity_audit_amendment": {
+    "qualified_at_utc": "2026-09-24T13:38:27.162575+00:00",
+    "toolkit_revision": "61e00c3cb3f30f0bb46862c1f2b42e9ed8425710",
+    "native_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked"
+        ],
+        "exit_code": 0,
+        "seconds": 32.164,
+        "log_sha256": "da7fee1f4698ab1b6d70acd2832cec0cc4f3c820047480a793ac9aa772cc1902",
+        "tests": {
+          "passed": 28,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 15.256,
+        "log_sha256": "77479f0490f950a8ba7b6bcd46fc0a43a9e23d3acc254aef6465c3927b16cd9a"
+      }
+    ],
+    "hp_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "--release",
+          "--features",
+          "root-certification"
+        ],
+        "exit_code": 0,
+        "seconds": 111.99,
+        "log_sha256": "ddcc1856a497f8dff2e77971f31c3224f3e54eba2aac1733c6f71848d36bef5a",
+        "tests": {
+          "passed": 35,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--features",
+          "root-certification",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 33.212,
+        "log_sha256": "2c19dfbd4767d483db26cf296ede9e2c1ecadcd49978df97d61b08e700a559be"
+      },
+      {
+        "check": "orchestration",
+        "command": [
+          "/usr/bin/python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tests",
+          "-p",
+          "test_*.py"
+        ],
+        "exit_code": 0,
+        "seconds": 1.266,
+        "log_sha256": "a9e23ebc36bfb64d50f64db518ce19aec25747e3f57ef4e938d3fb7a39f252ba"
+      }
+    ],
+    "bounded_cli_smoke": {
+      "status": "PASS",
+      "scope": "Bounded local C13 N16 HP40 CLI and provenance smoke; not Claim 1a or source accuracy certification",
+      "cases": [
+        {
+          "case": "seeded",
+          "exit_code": 0,
+          "seconds": 4.699477420999756,
+          "expected_exit_code": 0,
+          "outcome": "accepted",
+          "request_sha256": "2d8efe683803ee0bf598fe3a46eeb7fb787a219361186712bbff12633eadb76a",
+          "journal": "results/paper-adaptive-smoke-v8/seeded/c13-n16-p197-1790256971944933000-85203",
+          "root_precision_policy": "adaptive",
+          "source_precision_bits": 197
+        },
+        {
+          "case": "independent",
+          "exit_code": 0,
+          "seconds": 3.1809785879995616,
+          "expected_exit_code": 0,
+          "outcome": "accepted",
+          "request_sha256": "2d8efe683803ee0bf598fe3a46eeb7fb787a219361186712bbff12633eadb76a",
+          "journal": "results/paper-adaptive-smoke-v8/independent/c13-n16-p197-1790256976535357046-85208",
+          "root_precision_policy": "adaptive",
+          "source_precision_bits": 197
+        },
+        {
+          "case": "evenness",
+          "exit_code": 1,
+          "seconds": 1.8988062139978865,
+          "expected_exit_code": 1,
+          "outcome": "unresolved supplemental window explicitly rejected; evenness measurement retained",
+          "request_sha256": "c759c0174567583eb8629d659b63e64b63823bfc30f64d075a077525f98963ee",
+          "journal": "results/paper-adaptive-smoke-v8/evenness/c13-n16-p197-1790256980247948968-85213",
+          "root_precision_policy": "adaptive",
+          "source_precision_bits": 197
+        }
+      ]
+    },
+    "scope": "Adopt the qualified Toolkit capability-bound diagnostic requests and schema coverage; adaptive root paths, policy provenance and bounded CLI checks pass locally. Full Claim 1a and manuscript audit remain pending.",
+    "github_actions_executed": false,
+    "vast_rerun_performed": false
+  },
+  "target_series_audit_amendment": {
+    "qualified_at_utc": "2026-09-24T14:54:53.902654+00:00",
+    "toolkit_revision": "ec0f09cb1a0a133dfb62c7bceceff2c1669a429c",
+    "native_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked"
+        ],
+        "exit_code": 0,
+        "seconds": 31.367,
+        "log_sha256": "8d98874122f673678eb946017bf19348ff6788d59e53c731aa2f1f0d78a1d8ab",
+        "tests": {
+          "passed": 28,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 15.345,
+        "log_sha256": "770864b786e90bb47240f39d4f0c500046d4750f220b1c3284917417a5a80430"
+      }
+    ],
+    "hp_checks": [
+      {
+        "check": "tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "--release",
+          "--features",
+          "root-certification"
+        ],
+        "exit_code": 0,
+        "seconds": 92.748,
+        "log_sha256": "4018a36a70c5b6b484ba57fc93604f2151c0c84c8d09542136a1777619a8aba9",
+        "tests": {
+          "passed": 35,
+          "failed": 0,
+          "ignored": 0
+        }
+      },
+      {
+        "check": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--all-targets",
+          "--locked",
+          "--offline",
+          "--features",
+          "root-certification",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "seconds": 30.016,
+        "log_sha256": "e1143d2dffe077531a76496779bada8f8660365d1e0b151df8beff3ca4a9fc3b"
+      },
+      {
+        "check": "orchestration",
+        "command": [
+          "/usr/bin/python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tests",
+          "-p",
+          "test_*.py"
+        ],
+        "exit_code": 0,
+        "seconds": 1.078,
+        "log_sha256": "961b3a0600370a72b002ef8ec01653b89788e6f13cd53f24c3487ba40189476d"
+      }
+    ],
+    "bounded_cli_smoke": {
+      "status": "PASS",
+      "scope": "Bounded local C13 N16 HP40 CLI and provenance smoke; not Claim 1a or source accuracy certification",
+      "cases": [
+        {
+          "case": "seeded",
+          "exit_code": 0,
+          "seconds": 5.022394945000997,
+          "expected_exit_code": 0,
+          "outcome": "accepted",
+          "request_sha256": "2d8efe683803ee0bf598fe3a46eeb7fb787a219361186712bbff12633eadb76a",
+          "journal": "results/paper-adaptive-smoke-v9/seeded/c13-n16-p197-1790261533943465010-103791",
+          "root_precision_policy": "adaptive",
+          "source_precision_bits": 197
+        },
+        {
+          "case": "independent",
+          "exit_code": 0,
+          "seconds": 3.3878487949987175,
+          "expected_exit_code": 0,
+          "outcome": "accepted",
+          "request_sha256": "2d8efe683803ee0bf598fe3a46eeb7fb787a219361186712bbff12633eadb76a",
+          "journal": "results/paper-adaptive-smoke-v9/independent/c13-n16-p197-1790261538863547213-103796",
+          "root_precision_policy": "adaptive",
+          "source_precision_bits": 197
+        },
+        {
+          "case": "evenness",
+          "exit_code": 1,
+          "seconds": 2.0174992459978967,
+          "expected_exit_code": 1,
+          "outcome": "unresolved supplemental window explicitly rejected; evenness measurement retained",
+          "request_sha256": "c759c0174567583eb8629d659b63e64b63823bfc30f64d075a077525f98963ee",
+          "journal": "results/paper-adaptive-smoke-v9/evenness/c13-n16-p197-1790261542830394179-103801",
+          "root_precision_policy": "adaptive",
+          "source_precision_bits": 197
+        }
+      ]
+    },
+    "scope": "Adopt the qualified Toolkit Gaussian target tail bounds, exhaustion checks and corrected evaluation identities, together with the prior mathematical and cache fixes. Native/HP tests, orchestration and bounded CLI checks pass. Full Claim 1a and manuscript audit remain pending.",
+    "github_actions_executed": false,
+    "vast_rerun_performed": false
+  }
+}

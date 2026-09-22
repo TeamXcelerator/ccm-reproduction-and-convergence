@@ -216,6 +216,34 @@ mod hp {
         Ok(plan)
     }
 
+    fn research_input_inventory() -> serde_json::Value {
+        let mut inputs = serde_json::Map::new();
+        inputs.insert("runtime_target_reference_preparation".into(), serde_json::json!({
+            "enabled": std::env::var("XC_RESEARCH_PREPARE_TARGET_REFERENCE").is_ok_and(|v| v == "1"),
+            "scope": "runtime target samples and finite Fourier jets; run-derived weighted atoms, arithmetic tail model, polynomial band and interval block bounds; finite retained-source scope"
+        }));
+        for name in [
+            "XC_RESEARCH_REFERENCE_FILE",
+            "XC_RESEARCH_INPUTS_FILE",
+            "XC_TARGET_SPEC_FILE",
+        ] {
+            let value = match std::env::var_os(name) {
+                None => serde_json::json!({"status":"not_supplied"}),
+                Some(path) if fs::metadata(&path).is_ok_and(|m| m.len() > 64 * 1024 * 1024) => {
+                    serde_json::json!({"status":"exceeds_64_mib_input_limit"})
+                }
+                Some(path) => match fs::read(Path::new(&path)) {
+                    Ok(bytes) => {
+                        serde_json::json!({"status":"supplied", "bytes":bytes.len(), "sha256":xc_cache::ContentDigest::sha256(&bytes)})
+                    }
+                    Err(_) => serde_json::json!({"status":"unreadable"}),
+                },
+            };
+            inputs.insert(name.into(), value);
+        }
+        inputs.into()
+    }
+
     /// Primary failure remains fatal. Supplemental failures are persisted and
     /// never turn an unavailable measurement into a positive scientific result.
     #[allow(clippy::too_many_arguments)]
@@ -288,7 +316,7 @@ mod hp {
         for (id, reason) in &excluded {
             println!("  [EXCLUDED] {id}: {reason}");
         }
-        let resolved = serde_json::json!({"schema_version":1,"paper_version":env!("CARGO_PKG_VERSION"),"toolkit_release":"0.15.0","capture":plan,"applicability":applicability,"retained_reduction":reduction,"lambda_squared":params.lambda_sq_int(),"n_modes":params.n_modes,"precision_bits":cfg.precision_bits,"parity_policy":cfg.effective_parity_policy().as_str(),"distance":options.distance_capture.as_ref().map(|d|serde_json::json!({"alpha":d.alpha,"rules":d.rules.iter().map(|r|serde_json::json!({"family":r.family(),"rule":r.rule(),"variable":r.variable().as_str(),"resolution":r.resolution()})).collect::<Vec<_>>(),"profile_steps":d.profile_steps})),"source_policy":"resolve compatible identities; preserve historical artifacts","assurance":"capture completeness is separate from numerical acceptance"});
+        let resolved = serde_json::json!({"schema_version":1,"paper_version":env!("CARGO_PKG_VERSION"),"toolkit_release":"0.15.1","arb_enabled":cfg!(feature="root-certification"),"research_inputs":research_input_inventory(),"capture":plan,"applicability":applicability,"retained_reduction":reduction,"lambda_squared":params.lambda_sq_int(),"n_modes":params.n_modes,"precision_bits":cfg.precision_bits,"root_precision_policy":cfg.root_precision_policy,"root_maximum_extra_precision_bits":cfg.root_maximum_extra_precision_bits,"root_verification_precision_bits":cfg.root_verification_precision_bits,"parity_policy":cfg.effective_parity_policy().as_str(),"distance":options.distance_capture.as_ref().map(|d|serde_json::json!({"alpha":d.alpha,"rules":d.rules.iter().map(|r|serde_json::json!({"family":r.family(),"rule":r.rule(),"variable":r.variable().as_str(),"resolution":r.resolution()})).collect::<Vec<_>>(),"profile_steps":d.profile_steps})),"source_policy":"resolve compatible identities; preserve historical artifacts","assurance":"capture completeness is separate from numerical acceptance"});
         save(&directory.join("request.json"), &resolved)?;
         // Preserve the exact dependency lockfile with each run, including the
         // qualified Git commit after a release tag has been amended.
@@ -372,8 +400,7 @@ mod hp {
                     reason: target_missing.clone().expect("missing target"),
                 })
             } else {
-                run.capture_diagnostic(id, options, &cache)
-                    .map_err(CaptureFailure::failed)
+                run.capture_diagnostic_outcome(id, options, &cache)
             };
             let status = match &result {
                 Ok(_) => "completed",
@@ -638,16 +665,15 @@ mod hp {
             )
             .unwrap();
             let requested = requested_diagnostics(&plan, true, &excluded).unwrap();
+            let full = requested_diagnostics(&plan, true, &Default::default()).unwrap();
             assert_eq!(
                 requested,
-                [
-                    "distance_profile",
-                    "evenness",
-                    "retained_reduction",
-                    "root_conditioning",
-                    "sector_analysis"
-                ]
+                full.into_iter()
+                    .filter(|id| !excluded.contains_key(id))
+                    .collect::<Vec<_>>()
             );
+            assert!(requested.contains(&"transform_enclosure".into()));
+            assert!(requested.contains(&"operator_energy".into()));
             assert_eq!(excluded.len(), 8);
             let resolved = serde_json::json!({"excluded_diagnostics":excluded, "requested_diagnostics":requested});
             for fail in [false, true] {
@@ -664,7 +690,7 @@ mod hp {
                 .unwrap();
                 assert_eq!(executed, requested);
                 assert_eq!(record.receipt.is_complete(), !fail);
-                assert_eq!(record.receipt.outcomes().len(), 5);
+                assert_eq!(record.receipt.outcomes().len(), requested.len());
             }
         }
 
@@ -684,7 +710,7 @@ mod hp {
                 requested_diagnostics(&CcmCapturePlan::ultra(8, 801).unwrap(), true, &excluded)
                     .unwrap()
                     .len(),
-                13
+                38
             );
         }
 
@@ -708,7 +734,7 @@ mod hp {
                 let requested = requested_diagnostics(&plan, true, &excluded).unwrap();
                 assert_eq!(excluded.len(), 3);
                 assert!(excluded.contains_key(&format!("prefix_checkpoint_{}", n + 1)));
-                assert_eq!(requested.len(), 10);
+                assert_eq!(requested.len(), 35);
                 assert!(requested.contains(&"prefix_ladder".into()));
                 assert!(requested.contains(&"retained_reduction".into()));
                 for fail in [false, true] {
@@ -729,7 +755,7 @@ mod hp {
                     )
                     .unwrap();
                     assert_eq!(record.receipt.is_complete(), !fail);
-                    assert_eq!(record.receipt.outcomes().len(), 10);
+                    assert_eq!(record.receipt.outcomes().len(), 35);
                 }
             }
             for (c, n, digits, level, natural, checkpoint, bits) in [

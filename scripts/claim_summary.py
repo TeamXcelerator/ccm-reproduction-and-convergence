@@ -136,6 +136,18 @@ CLAIM8_NATURAL_REQUESTS = {
     'target_distance', 'target_residual_analysis',
 }
 
+# Preserve the historical request set for retrospective journal review.
+ULTRA_V6_ADDITIONS = {
+    'state_geometry', 'indexed_transform', 'operator_energy', 'root_band',
+    'reference_projection', 'compactness', 'weighted_reference_projection',
+    'signed_transform', 'arithmetic_energy_full', 'directional_response_full',
+    'weighted_tail', 'spectral_cluster_full', 'resolution_budget',
+    'energy_allowance', 'complex_transform', 'root_transport', 'operator_cluster',
+    'finite_section_transfer', 'tail_operator', 'observable_budget',
+    'capture_preflight', 'consistency', 'configuration_comparison',
+    'band_reconstruction', 'transform_enclosure',
+}
+
 
 def claim8_natural_checkpoint(request):
     """Frozen applicability, derived from the request rather than a failed outcome."""
@@ -163,9 +175,12 @@ def validate_applicability(state, request, record, outcomes):
             raise ValueError('capture applicability does not match the retained request and receipt')
     if applicability.get('policy') == 'claim8-natural':
         checkpoint = claim8_natural_checkpoint(request)
+        expected = CLAIM8_NATURAL_REQUESTS
+        if request.get('toolkit_release') == '0.15.1':
+            expected = expected | ULTRA_V6_ADDITIONS
         if (set(excluded) != {checkpoint, 'prime_power_response', 'u_flow_response'}
-                or set(requested) != CLAIM8_NATURAL_REQUESTS):
-            raise ValueError('claim8-natural must retain all ten applicable diagnostics')
+                or set(requested) != expected):
+            raise ValueError('claim8-natural must retain every applicable diagnostic for its toolkit version')
     return applicability
 
 
@@ -203,6 +218,17 @@ def numerical_review(record, applicability=None):
     return review
 
 
+def numerical_coverage(records):
+    """Keep the Toolkit assessment intact; missing rows never become successes."""
+    result = {}
+    for record in records:
+        for name, coverage in record.get('numerical_coverage', {}).items():
+            if name in result and result[name] != coverage:
+                raise ValueError(f'conflicting numerical coverage for {name}')
+            result[name] = coverage
+    return result
+
+
 def summarize(claim, logs):
     checks, points, captures = [], [], []
     for log in logs:
@@ -232,7 +258,8 @@ def summarize(claim, logs):
                 excluded = applicability.get('excluded_diagnostics', {})
                 complete = state.get('capture_complete',False) and bool(outcomes) and all(o['status']=='completed' for o in outcomes.values())
                 captures.append({'directory':str(directory),'complete':complete,'outcomes':outcomes,'numerical_review':review,
-                                 'policy':applicability.get('policy','full'),'excluded_diagnostics':excluded})
+                                 'policy':applicability.get('policy','full'),'excluded_diagnostics':excluded,
+                                 'numerical_coverage':numerical_coverage(records)})
         except (OSError, ValueError, KeyError, IndexError, ArithmeticError) as error:
             checks.append((f'{log.name}: missing/unassessed evidence: {error}',False))
     try:
@@ -267,6 +294,12 @@ def main():
             print(f'  {item}')
         for item in capture['numerical_review']:
             print(f'[DATA REVIEW] {item}')
+        for name, coverage in capture['numerical_coverage'].items():
+            print(f'[COVERAGE] {name}: {coverage["outcome"]}; '
+                  f'{coverage["resolved_rows"]} resolved, {coverage["qualified_rows"]} qualified, '
+                  f'{coverage["unresolved_rows"]} unresolved of {coverage["retained_rows"]} retained rows')
+            if coverage.get('reason'):
+                print(f'  {coverage["reason"]}')
     print(f'Overall numerical checks: {"PASS" if result["passed"] else "FAIL"}')
     print('These are finite numerical reproduction checks; certificates and capture completeness are separate.')
     args.output.write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')

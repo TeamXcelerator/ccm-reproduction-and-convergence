@@ -9,8 +9,10 @@ Ultra requests every applicable diagnostic. At this fixed configuration the
 policy excludes eight unsupported requests **before computation**. Each
 exclusion and its reason appear in the terminal, request journal,
 source-bound capture receipt, and final summary. They are not failed attempts
-or successful measurements. Completion means all five applicable requests
-completed, with eight documented exclusions.
+or successful measurements. Ultra v6 adds 25 requests to the original five, for 30 requested groups and
+eight documented exclusions. Input absence and numerical resolution are
+reported separately; requesting a group does not establish that its result
+is resolved.
 
 | Excluded requests | Why they are outside this reproduction |
 |---|---|
@@ -18,7 +20,7 @@ completed, with eight documented exclusions.
 | `prime_power_response`, `u_flow_response` | The two lowest sector eigenvalues cannot be isolated at 3386 bits. Their Sturm endpoint counts span the same unresolved cluster; isolated-state response derivatives are unsupported. |
 | `prefix_ladder`, `prefix_checkpoint_801` | The retained HP-1000 ladder encounters a computed nonpositive pivot at dimension 593, leaving the full dimension-801 checkpoint unresolved. This is not a proof of mathematical indefiniteness. |
 
-The five retained diagnostics are the raw eigenfunction profile
+The original five retained diagnostics are the raw eigenfunction profile
 (`distance_profile`), sector evenness measurement (`evenness`), full sector
 analysis (`sector_analysis`), root conditioning (`root_conditioning`), and
 stored-matrix reduction consistency (`retained_reduction`). Primary roots,
@@ -28,8 +30,8 @@ them does not establish an accurately isolated ground state or a target distance
 
 The policy applies only to Ultra at the exact configuration above. A different
 precision, basis size, cutoff, parity, or explicit prefix override is rejected
-before numerical work. Other individual claims keep their existing capture
-recipes. The toolkit's general Ultra recipe is unchanged. Separate research
+before numerical work. All claims now use Ultra v6; these eight established exclusions remain
+confined to the configuration above. The toolkit's general Ultra recipe is unchanged. Separate research
 commands can use the default `--capture-policy full`; they retain ordinary
 failure and numerical-review reporting and do not replace this reproduction.
 
