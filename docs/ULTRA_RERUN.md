@@ -1,30 +1,25 @@
-# Ultra capture with Toolkit v0.15.1
+# Ultra capture runs
 
-HP root acquisition now opts into adaptive arithmetic, with up to 4,096 extra
+This guide describes Ultra capture with the current release, which pins
+Xcelerator Toolkit v0.16.0. The paper's measurements were produced with
+release v2.5 and Toolkit 0.15.0; see [Validation](VALIDATION.md).
+Toolkit 0.16.0 does not reuse artifacts produced by earlier toolkit releases,
+so a run computes its artifacts under 0.16.0 identities.
+
+HP root acquisition opts into adaptive arithmetic, with up to 4,096 extra
 bits and directed confirmation at a wider precision. The request and measurement
 journals record the policy and limits. This applies to seeded and independent
 roots and supplemental evenness capture. It preserves the requested matrix and
 eigenstate precision; it does not certify those inputs, root existence or zeta
 accuracy. Outcomes that cannot meet the target remain explicitly unresolved.
 
-The first new Claim 1a attempt passed its numerical thresholds and publication
-verification but left Ultra capture incomplete. The current Toolkit amendment
-repairs canonical ancestry checks for published sources, retained-root capture
-when a larger window is reused, and oversized checkpoint progress labels. The
-current amendment makes checkpoint I/O quiet by default, tightens finite contour
-enclosures, and derives the atom, arithmetic-tail, model-band and energy inputs
-from the current retained run and bundled reference ordinates.
-Preserve the original cache, journals, and staging directory. Recovery creates
-a new journal and reuses compatible sources; it does not rewrite the earlier
-receipt. Set `XC_RESEARCH_PREPARE_TARGET_REFERENCE=1` to prepare these inputs
-alongside configured-target samples, a finite Fourier projection and its signed
-jets. Separate certificates and cross-configuration comparison states retain
-their own availability and scope. A new Vast result has not yet been recorded.
-
-This software update keeps manuscript version 2.5, its configurations and its
-numerical acceptance checks. It pins Toolkit v0.15.1 at
-`ec0f09cb1a0a133dfb62c7bceceff2c1669a429c`. The earlier completed campaign
-used v0.15.0; its results do not constitute a rerun with this build.
+The Toolkit derives the atom, arithmetic-tail, model-band and energy inputs
+from the current retained run and bundled reference ordinates. Ultra claim
+scripts enable `XC_RESEARCH_PREPARE_TARGET_REFERENCE=1` when a target file or
+directory is supplied, preparing these inputs alongside
+configured-target samples, a finite Fourier projection and its signed jets.
+Separate certificates and cross-configuration comparison states retain their
+own availability and scope.
 
 ## Run an individual claim
 
@@ -40,30 +35,34 @@ bash scripts/claim1a_lambda13.sh --research-capture ultra
 
 The [README claim table](../README.md#run-one-claim) lists the
 individual scripts. Each defaults to Ultra, builds the current locked source
-with Arb, retains a journal, and prints a numerical PASS/FAIL summary. Root and
-sector-gap certification remain explicit requests; enabling Arb also supports
-the new finite-transform enclosures without requesting those extra proofs.
+with Arb, retains a journal, and prints a numerical PASS/FAIL summary. Run claims
+also request certified root enclosures and a sector-gap certificate by default
+(`--no-certification` turns both off); Arb supports these certificates and the
+finite-transform enclosures.
 If `BIN` is supplied, its build and features are the caller's responsibility.
 
-## What is added
+## What Ultra captures
 
-The shared Ultra v6 plan requests 38 diagnostic groups, including the established
-prefix and response measurements. New fields cover state geometry and
-normalization; indexed, signed and complex transforms; arithmetic energy and
-independent component checks; root transport; spectral clusters and finite-section
-transfer; finite transform enclosures; projection, weighted-tail and band models;
-and row-by-row resolution and conditional error budgets.
+The shared Ultra plan (capture-plan v8 in Toolkit v0.16.0) requests 52
+diagnostic groups, including the established prefix and response measurements.
+Fields cover state geometry and normalization; indexed, signed and complex
+transforms; arithmetic energy and independent component checks; root transport;
+spectral clusters and finite-section transfer; finite transform enclosures;
+projection, weighted-tail and band models; row-by-row resolution and conditional
+error budgets; exact-form assembly error bounds with eigenvalue enclosures; and
+checkpoint low-spectrum enclosures. See the Toolkit's
+[capture levels](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.16.0/docs/CAPTURE_LEVELS.md).
 
 One invocation reuses compatible primary artifacts and computes missing children.
 It does not acquire extra primary states, an unlimited root window, a new target,
 or an infinite ordinate table. The claim's original root window is unchanged.
-[Claim 1c](CLAIM1C_CAPTURE.md) requests 30 groups after its eight established
-exclusions; the [Claim 8 natural route](CLAIM8_CAPTURE.md) requests 35 after its
-three exclusions. New fields retain their own numerical qualifications.
+[Claim 1c](CLAIM1C_CAPTURE.md) requests 44 groups after its eight established
+exclusions; the [Claim 8 natural route](CLAIM8_CAPTURE.md) requests 49 after its
+three exclusions. Fields retain their own numerical qualifications.
 
 ## Supply the data that defines a measurement
 
-The runtime target file used for distance measurements is separate from the new
+The runtime target file used for distance measurements is separate from the
 research input files. Providing it alone does not define an infinite target's
 transform jets, a theta basis, signed atoms, tail forms or a model's hypotheses.
 
@@ -75,10 +74,8 @@ also rejects an external target whose cutoff or available arithmetic
 precision does not match the calculation. Schema 3 additionally requires
 `XC_TARGET_PROVIDER_EXECUTABLE` to authorize an independently supplied evaluator;
 its executable digest must match the target file. See its
-[runtime target guide](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.15.1/docs/RUNTIME_TARGETS.md).
-External providers must use the versioned request/reply protocol described there;
-older uncorrelated-provider distances have separate identities. Existing primary
-artifacts remain reusable.
+[runtime target guide](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.16.0/docs/RUNTIME_TARGETS.md).
+External providers must use the versioned request/reply protocol described there.
 Target preparation and its numerical qualification precede the claim run.
 Changing this reference produces new target-dependent research artifacts without
 changing the manuscript's numerical claim thresholds or the primary CCM solve.
@@ -90,8 +87,8 @@ changing the manuscript's numerical claim thresholds or the primary CCM solve.
 - `XC_RESEARCH_COHORT_DIR`: optional authenticated retained states for comparisons;
   otherwise the Toolkit discovers compatible states in the local cache.
 
-See the Toolkit's [input preparation and completeness guide](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.15.1/docs/ULTRA_COMPLETENESS.md)
-and [atom input guide](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.15.1/docs/ATOM_RESEARCH.md).
+See the Toolkit's [input preparation and completeness guide](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.16.0/docs/ULTRA_COMPLETENESS.md)
+and [atom input guide](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.16.0/docs/ATOM_RESEARCH.md).
 Their synthetic examples test software; they are not research target definitions.
 
 For scripts that sweep several configurations, select inputs from directories:
@@ -130,15 +127,18 @@ the predeclared applicability rules, not retrospective exclusions.
 
 ## Reuse, publication and resources
 
-Keep the existing cache. Historical objects, receipts and journals remain intact;
-new semantics or new input definitions create new child identities. A prior
-Windows reference table may have a different byte digest even though all 1,000
-ordinate values are unchanged. Do not relabel or flush those artifacts.
+Within Toolkit 0.16.0, compatible artifacts are reused under their exact
+identities; new semantics or new input definitions create new child identities.
+Existing objects, receipts and journals are never relabeled or rewritten.
 
 Managed publication publishes the new children and their exact dependency
-closures when the caller enables it. Local computation and remote reuse use the
-same claims. Publication settings and destination eligibility are inherited from
-the configured Toolkit session. A capture receipt alone does not prove that an
+closures when the caller enables it with `--publish` (or plans it with
+`--publish-plan`). Claim 1a publishes to the public and private caches; every
+other claim publishes to the private caches only. Runtime-target artifacts are
+private-only in the Toolkit and never reach a public cache. Running
+without `--publish` or `--publish-plan` disables publication, even if the parent
+shell has managed-publication settings. Local computation
+and remote reuse use the same claims. A capture receipt alone does not prove that an
 upload succeeded; retain the publication report as well.
 
 The Toolkit writes progress heartbeats, recoverable local checkpoints, performance
@@ -150,6 +150,4 @@ Missing children can later be added from retained sources with corrected inputs
 or larger budgets without repeating a primary solve.
 
 Provider failures during distance, crossing or residual evaluation retain their
-original diagnosis. This software amendment preserves target identities and
-successful numerical values. No cache deletion or full claim rerun is required
-for the diagnostic correction.
+original diagnosis.

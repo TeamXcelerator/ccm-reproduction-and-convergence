@@ -30,6 +30,9 @@ use benchmark::{BenchmarkComparisonMode, BenchmarkOptions, BenchmarkRecorder};
     version
 )]
 struct Cli {
+    /// Validate primary source admission without acquiring inputs or artifacts.
+    #[arg(long, global = true, hide = true)]
+    preflight_only: bool,
     #[command(flatten)]
     capture_journal: capture::CaptureJournalArgs,
     /// Recompute claim artifacts and compare them with the current reference cache.
@@ -167,6 +170,20 @@ impl ResearchCapture {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    #[cfg(feature = "hp")]
+    #[command(hide = true)]
+    ReplayFinite {
+        #[arg(long)]
+        journal: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(
+            long,
+            value_delimiter = ',',
+            default_value = "constrained_l1_fit,directional_error_bound,finite_tail_bound,dimension_precision_budget,continuous_l1_bound,spectral_cluster_bound"
+        )]
+        diagnostics: Vec<String>,
+    },
     /// Run the CCM construction at given (lambda^2, N) and report eigenvalues
     /// vs Riemann zeros.
     Run {
@@ -278,7 +295,7 @@ enum Command {
         root_enclosure_digits: Option<u32>,
     },
     /// Measure the natural evenness of the smallest Weil eigenvector
-    /// (Claim 4: symmetry breakdown at large lambda).
+    /// (Claim 4: natural evenness of the ground state).
     CheckEvenness {
         /// lambda^2 value (e.g. 13, 100, 1000, 1200).
         #[arg(long, default_value_t = 13_u64)]
@@ -364,6 +381,28 @@ fn distance_capture_options(
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    if cli.preflight_only {
+        if !matches!(
+            &cli.command,
+            Command::Run { .. } | Command::CheckEvenness { .. }
+        ) {
+            anyhow::bail!("preflight-only supports run and check-evenness claims");
+        }
+        // Bypass runtime sessions, benchmark output, target preparation and
+        // output-validation finalization. The ordinary command parser and
+        // source configuration below remain shared with the real invocation.
+        let mut benchmark = BenchmarkRecorder::new(
+            BenchmarkOptions {
+                report_path: None,
+                baseline_path: None,
+                label: None,
+                parallel_gl_roots: false,
+                comparison_mode: BenchmarkComparisonMode::default(),
+            },
+            String::new(),
+        )?;
+        return run(cli, &mut benchmark);
+    }
     let process_started = std::time::Instant::now();
     let parallel_gl_roots = resolve_parallel_gl_roots(cli.parallel_gl_roots)?;
     let benchmark_options = BenchmarkOptions {
@@ -460,6 +499,12 @@ fn run_with_runtime_policy(
 fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
     print_runtime_parallelism();
     match cli.command {
+        #[cfg(feature = "hp")]
+        Command::ReplayFinite {
+            journal,
+            output,
+            diagnostics,
+        } => capture::replay_finite(&journal, &output, &diagnostics)?,
         Command::Run {
             lambda_sq,
             n_modes,
@@ -621,6 +666,9 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
             );
 
             if f64_only {
+                if cli.preflight_only {
+                    anyhow::bail!("preflight-only requires the HP tier");
+                }
                 if first_root_index != 1 {
                     anyhow::bail!("indexed root windows require the HP independent-discovery tier");
                 }
@@ -786,6 +834,26 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                         capture_u_flow_response: capture_u_flow_response
                             || research_capture.includes_ultra(),
                     };
+                    if cli.preflight_only {
+                        capture::validate_configuration(
+                            &params,
+                            &cfg,
+                            research_capture,
+                            research_sector_eigenpairs,
+                            &cli.capture_journal,
+                        )?;
+                        cfg.validate_source_admission(&params)?;
+                        println!(
+                            "SOURCE_ADMISSION {}",
+                            serde_json::json!({
+                                "status":"admitted", "lambda_squared":lambda_sq,
+                                "n_modes":n_modes,"precision_bits":cfg.precision_bits,
+                                "parity":cfg.effective_parity_policy().as_str(),
+                                "scope":"primary source admission; actual input ranges, solver convergence and optional diagnostics remain runtime checks"
+                            })
+                        );
+                        return Ok(());
+                    }
                     let captured_run = capture::execute(
                         &params,
                         &cfg,
@@ -1085,6 +1153,29 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                 validate_research_capture(n_modes, research_capture, research_sector_eigenpairs)?;
                 let params = CcmParams::from_lambda_sq_integer(lambda_sq, n_modes);
                 let cfg = ccm::hp::HighPrecConfig::for_decimal_digits(precision_digits);
+                if cli.preflight_only {
+                    capture::validate_configuration(
+                        &params,
+                        &cfg,
+                        research_capture,
+                        research_sector_eigenpairs,
+                        &cli.capture_journal,
+                    )?;
+                    let mut natural = cfg.clone();
+                    natural.set_parity_policy(ccm::hp::CcmParityPolicy::Natural);
+                    natural.validate_source_admission(&params)?;
+                    cfg.validate_source_admission(&params)?;
+                    println!(
+                        "SOURCE_ADMISSION {}",
+                        serde_json::json!({
+                            "status":"admitted", "lambda_squared":lambda_sq,
+                            "n_modes":n_modes,"precision_bits":cfg.precision_bits,
+                            "parity":"natural_and_even_sector",
+                            "scope":"primary source admission; actual input ranges, solver convergence and optional diagnostics remain runtime checks"
+                        })
+                    );
+                    return Ok(());
+                }
                 println!(
                     "Measuring evenness: lambda^2={}, N={}, precision={} digits",
                     lambda_sq, n_modes, precision_digits

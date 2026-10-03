@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Claim 1b: lambda^2=100, N=500 at HP-1000 (intermediate ceiling).
 #
-# Second of the three Claim 1 configs (1001x1001 matrix). Designed to run independently on its
-# own server so all three Claim 1 configs can run in parallel.
+# Second of the three Claim 1 configs (1001x1001 matrix).
+# Can run independently on a separate machine.
 set -euo pipefail
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"

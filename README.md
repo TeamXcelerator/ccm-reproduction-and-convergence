@@ -7,17 +7,22 @@ at arbitrary precision.
 **Author:** Ronnie Andrews, Jr.  
 **ORCID:** [0009-0003-9724-3104](https://orcid.org/0009-0003-9724-3104)  
 **Contact:** randrewsmath@gmail.com  
-**Release:** v2.5 (Xcelerator Toolkit v0.15.1)
+**Release:** v2.6 (Xcelerator Toolkit v0.16.0)
 
-Version 2.5 upgrades the research harness to the toolkit's shared capture recipe.
+The paper's computations were produced with release v2.5 (tag `v2.5`) and
+Toolkit 0.15.0; v2.6 updates the software to Toolkit v0.16.0.
+The research harness uses the toolkit's shared capture recipe.
 Individual claim scripts default to **Ultra**, retain machine-readable primary
 results and diagnostic receipts, and end with numerical **PASS/FAIL** summaries.
-The exact toolkit commit is pinned in [Cargo.toml](Cargo.toml) and
-[Cargo.lock](Cargo.lock); every run journal preserves the build's lockfile.
+The toolkit release tag is pinned in [Cargo.toml](Cargo.toml) and its exact
+commit in [Cargo.lock](Cargo.lock); every run journal preserves the build's lockfile.
 
 The pinned toolkit reuses compatible cached artifacts and computes locally
-when a required artifact is unavailable. Compatible numerical caches remain
-usable. New research semantics select new children, without deleting old data. See the [validation scope](docs/VALIDATION.md) for the checks on this build.
+when a required artifact is unavailable. Toolkit 0.16.0 does not reuse
+artifacts produced by earlier toolkit releases; it recomputes them under
+0.16.0 identities without deleting old data (see its
+[numerical compatibility guidance](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.16.0/docs/NUMERICAL_COMPATIBILITY.md#v0160-clean-slate)).
+See [Validation](docs/VALIDATION.md) for the checks on this build.
 
 The original v2.5 campaign (Toolkit v0.15.0) completed all 14 individual claim scripts, with 53 capture
 journals and successful numerical and publication summaries. The published paper
@@ -25,12 +30,8 @@ incorporates those measurements and additional local verification below.
 Claim 1c retains its declared applicability exclusions; Claim 8 has a separate
 successful review of applicable evidence, preserving the original receipts.
 
-The current software update adopts Toolkit v0.15.1 and Ultra v6 for a new
-artifact-enrichment campaign. The manuscript and its numerical claims are
-unchanged. The first Claim 1a attempt passed the numerical and publication
-checks but exposed capture defects in published-source reuse. The pinned repair
-preserves those source artifacts; a recovery run is still pending. See [Ultra reruns](docs/ULTRA_RERUN.md)
-for input preparation, coverage reporting, and preservation of historical data.
+See [Ultra capture runs](docs/ULTRA_RERUN.md) for input preparation, coverage
+reporting, and preservation of historical data.
 
 ## Read the paper and evidence
 
@@ -39,7 +40,7 @@ for input preparation, coverage reporting, and preservation of historical data.
   measurements, spectral indexing, and source provenance.
 - [Finite root certification and numerical controls](docs/FINAL_VERIFICATION.md):
   analytic root transfer, independent matrix assembly, precision, and prime response.
-- [Validation](docs/VALIDATION.md): software checks and manuscript qualification.
+- [Validation](docs/VALIDATION.md): test suites and toolkit pins by release.
 - [Aggregate results](docs/research-evidence.json): numerical reports and source hashes.
 
 ## Headline Results
@@ -166,13 +167,6 @@ needed for the published check and therefore fail its summary.
 
 ## Ultra coverage and limits
 
-The v2.5 toolkit pin includes the v0.15.0 root-response normalization correction.
-Prime-power and cutoff-flow root velocities use the L2 state and tangent;
-earlier response artifacts can lose accuracy when CCM normalization is ill
-conditioned. New response identities and receipts preserve historical records.
-This change does not replace their source matrices, eigenstates, roots or prefix
-moments. See [toolkit compatibility](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.15.0/docs/NUMERICAL_COMPATIBILITY.md#root-response-normalization).
-
 Capture controls data retention. It never changes the requested precision,
 primary parity, root acquisition, convergence criteria, or publication policy.
 
@@ -182,7 +176,7 @@ primary parity, root acquisition, convergence criteria, or publication policy.
 | `research` | Explicit root window and native research artifacts |
 | `gap` | Research plus evenness, GapLog, and low eigenpairs in both sectors |
 | `maximum` | Complete sector eigenvalues, selected vectors, root conditioning, eigenfunction profile, target distance, Q/2Q/4Q evidence, and target residual analysis |
-| `ultra` | Maximum plus responses and prefixes; state geometry, signed/indexed/complex transforms, operator energy, root transport, clusters, finite-section transfer, reference projection, band/tail models, consistency, numerical coverage, and Arb finite-transform enclosures. Input-dependent fields require their declared sources. |
+| `ultra` | Maximum plus responses and prefixes; state geometry, signed/indexed/complex transforms, operator energy, root transport, clusters, finite-section transfer, reference projection, band/tail models, consistency, numerical coverage, Arb finite-transform enclosures, exact-form assembly error bounds, and checkpoint low-spectrum enclosures. Input-dependent fields require their declared sources. |
 
 Ultra retains first, second, and third inverse moments; pivot and innovation
 cancellation; moment bounds and two-mode diagnostics; the full-source checkpoint
@@ -192,7 +186,7 @@ Ultra is intentionally more expensive than primary-only reproduction.
 
 **Claim 1c has a documented applicability policy.** At its fixed HP-1000
 configuration, target comparisons, isolated-state responses, and prefix
-ladder/checkpoint exports are excluded before computation. The other 30 Ultra v6 requests remain enabled; new measurements keep their
+ladder/checkpoint exports are excluded before computation. The other 44 Ultra requests remain enabled; new measurements keep their
 source-resolution qualifications. The request journal, receipt, and summary list all
 eight exclusions and their reasons. See [Claim 1c capture applicability](docs/CLAIM1C_CAPTURE.md).
 Other claims and the toolkit's general Ultra recipe are unchanged.
@@ -220,23 +214,25 @@ Natural and adaptive-even primary states remain intact. Inapplicable even-state
 responses are **blocked**; an even-state checkpoint is **missing**. Distance
 measurements explicitly describe the canonical even ground state. The frozen
 [Claim 8 comparison](docs/CLAIM8_CAPTURE.md) selects `claim8-natural` before
-execution: its natural branch requests 35 Ultra v6 diagnostics, including the
+execution: its natural branch requests 49 Ultra diagnostics, including the
 prefix ladder and innovation export, and excludes the two even-state responses
-and the even-eigenstate checkpoint. The paired even branch retains all 38
+and the even-eigenstate checkpoint. The paired even branch retains all 52
 requests. Unsupported exports are counted separately; unexpected failures still
 produce incomplete capture. Historical full-policy journals can be assessed
 without recomputation using the read-only review command in that document.
 
-Ultra scripts build with Arb for finite transform enclosures. This does not
-request new root or sector-gap certificates; those remain explicit:
+Every `run` claim requests certification by default: certified root
+enclosures (`--root-validation certified`) and a sector-gap certificate. Each is
+retained as its own certificate artifact, and a certificate that cannot complete
+records its reason instead of discarding computed data. The evenness claims
+(4a-4d) compute no roots and request no certificates. To run without
+certification:
 
 ```bash
-bash scripts/claim1a_lambda13.sh --root-validation certified
-bash scripts/claim1a_lambda13.sh --capture-sector-gap-certificate
+bash scripts/claim1a_lambda13.sh --no-certification
 ```
 
-The `root-certification` build feature supplies Arb for Ultra and these explicit
-requests; install FLINT 3 (Ubuntu 24.04 provides `libflint-dev`). Additional quadrature verification, frozen-hypothesis
+The `root-certification` build feature supplies Arb for Ultra and certification; install FLINT 3 (Ubuntu 24.04 provides `libflint-dev`). Additional quadrature verification, frozen-hypothesis
 scoring, and cross-run nesting/stabilization studies require their own inputs
 and explicit requests. No hypothesis or alternative mathematical source is
 invented by Ultra.
@@ -261,8 +257,9 @@ Each invocation writes a unique local directory below
 - `request.json` and `build.json`: resolved policies, supplied-input digests, Arb availability, and the exact dependency lockfile.
 - `primary.json` and `primary-sources.json`: lossless HP values, roots, coefficients, exact source manifests, and stopping evidence,
   saved before supplemental work.
-- `capture.json`: the shared recipe's outcomes, measurement values, source dependencies, and per-diagnostic numerical coverage.
+- `capture.json`: the shared recipe's outcomes, measurement values or references to the retained artifacts that hold them, source dependencies, and per-diagnostic numerical coverage.
 - `capture-explicit.json`, when needed: additional flag/certificate outcomes.
+- `capture-values.json` and `capture-explicit-values.json`: the referenced values that the claim summary reviews, reconstructed and digest-checked by the toolkit.
 - `events.jsonl`, `status.json`, and `claim-measurements.json`: progress, final
   capture status, and machine-readable numerical comparisons.
 
@@ -273,12 +270,13 @@ change that location. Interrupted runs retain their primary file and completed
 artifact writes; a missing final status is never success. Run journals and
 runtime target specifications should remain outside version control.
 
-Compatible historical parents are reused under their exact identities. Changed
-sector/distance identities are recomputed under new identities; old objects are
-preserved as historical evidence. Missing Ultra children are backfilled. A
-changed identity is not evidence of corruption, and old certificates are not
-silently promoted to the current semantics. See the toolkit's
-[numerical compatibility guidance](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/main/docs/NUMERICAL_COMPATIBILITY.md).
+Within a toolkit release, compatible parents are reused under their exact
+identities. Changed sector/distance identities are recomputed under new
+identities; old objects are preserved as historical evidence. Missing Ultra
+children are backfilled. Artifacts produced by toolkit releases before 0.16.0
+are not reused. A changed identity is not evidence of corruption, and old
+certificates are not silently promoted to the current semantics. See the toolkit's
+[numerical compatibility guidance](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.16.0/docs/NUMERICAL_COMPATIBILITY.md).
 
 `XC_CACHE_ROOT` selects the managed cache root. To use only local cache lookup
 and local computation, disable remote lookup:
@@ -288,7 +286,24 @@ XC_CACHE_REMOTE=none bash scripts/claim1a_lambda13.sh
 ```
 
 The same numerical checks apply whether an artifact is reused or computed
-locally. Publication is optional and configured separately in the toolkit.
+locally.
+
+Validating the paper's results needs no credentials: by default a claim script
+computes and checks everything locally and publishes nothing.
+
+Publication is off by default. Authors with cache credentials can publish a
+claim's artifacts with `--publish` (requires `XC_PUBLISH_AUTHOR_EMAIL`), or
+stage and plan the same publication without pushing with `--publish-plan`.
+Destinations are fixed per claim: Claim 1a publishes to the public and private
+caches, and every other claim publishes to the private caches only. Artifacts
+derived from a runtime target function (target distance, distance resolution,
+target residual, deviation decomposition and target comparison) are private-only
+in the toolkit, so Claim 1a's target work also goes only to the private caches.
+
+```bash
+bash scripts/claim1a_lambda13.sh --publish-plan
+bash scripts/claim1a_lambda13.sh --publish
+```
 
 `--verify-cache` recomputes into the toolkit's isolated verification workflow and
 compares artifacts with the **same semantic identity**. It does not test equality
@@ -328,16 +343,12 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 The shell orchestration tests run on Linux/WSL. They verify that a failed case
 cannot skip subsequent cases, and that missing evidence cannot produce PASS.
 
-See the [v2.5 validation record](docs/VALIDATION.md) for test counts and scope.
+See [Validation](docs/VALIDATION.md) for the test suites and toolkit pins.
 
-Historical response diagnostics can be corrected from their retained eigenstates
-and tangents with the toolkit's [response repair tool](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.15.0/docs/CCM_RESPONSE_REPAIR.md),
-without repeating claim runs. Preserve original artifacts and use the newly
-identified corrections and capture receipts for subsequent analysis.
-
-The pinned toolkit also validates published receipt reuse through the canonical
-source graph. Its receipt-reader correction preserves existing artifact bytes
-and identities; no cache flush or further numerical run is needed to apply it.
+Retained response diagnostics can be corrected from their eigenstates and
+tangents with the toolkit's [response repair tool](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.16.0/docs/CCM_RESPONSE_REPAIR.md),
+without repeating claim runs. Corrections are separate artifacts; the original
+artifacts and receipts are preserved.
 
 ## Paper and citation
 

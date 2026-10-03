@@ -5,7 +5,7 @@
 # Claim 1b can be reused. Ultra captures the direct evenness comparison,
 # supplemental roots, both parity-sector spectra, and retained diagnostics.
 #
-# Designed to run independently on its own server.
+# Can run independently on a separate machine.
 set -euo pipefail
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"

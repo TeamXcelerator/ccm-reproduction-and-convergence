@@ -9,8 +9,7 @@
 # reference point for the evenness study. Supplemental roots, when requested,
 # use the same acquisition policy as the claim invocation.
 #
-# Designed to run independently on its own server so all four Claim 4
-# configs can run in parallel.
+# Can run independently on a separate machine.
 set -euo pipefail
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"

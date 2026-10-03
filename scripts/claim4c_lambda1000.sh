@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Claim 4c: λ²=1000 at HP-2000 — refutation of apparent mixed-symmetry.
+# Claim 4c: λ²=1000 at HP-2000 — natural evenness above the precision floor.
 #
 # Runs the evenness check at λ²=1000 at HP-2000 working precision, at
 # BOTH the published basis size N=800 and the sweep-consistent N=890
@@ -21,15 +21,15 @@
 # Compatible artifacts are resolved from the configured managed cache layers;
 # the natural full-space and reduced even-sector eigenstate solves on the
 # 1601² / 1781² matrices still dominate wall-clock — budget several
-# hours per N on a many-core box. Run the two N on separate servers to
-# parallelize.
+# hours per N on a many-core box. Each N can run independently on a
+# separate machine.
 set -euo pipefail
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
 PREC=${PREC:-2000}
 DISPLAY_DIGITS=${DISPLAY_DIGITS:-12}
 
-echo "=== Claim 4c: λ²=1000 at HP-${PREC} (mixed-symmetry refutation) ==="
+echo "=== Claim 4c: λ²=1000 at HP-${PREC} (evenness above the precision floor) ==="
 echo
 
 for N in 800 890; do

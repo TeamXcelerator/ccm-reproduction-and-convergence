@@ -5,8 +5,8 @@ primary at `(lambda-squared,N)=(13,120)` and `(100,500)`, HP-1000 (3386 bits).
 Both routes request Ultra and preserve their own eigenstates and roots.
 
 The individual script selects `--capture-policy claim8-natural` on the natural
-route before computing. The request and source-bound receipt record **35 requested diagnostic groups and three exclusions** under Ultra v6.
-The paired even-sector route keeps all 38 requests. Optional references and
+route before computing. The request and source-bound receipt record **49 requested diagnostic groups and three exclusions** under the Toolkit v0.16.0
+Ultra plan (capture-plan v8). The paired even-sector route keeps all 52 requests. Optional references and
 other external inputs must still be supplied for their dependent measurements.
 
 | Natural-route exclusion | Reason | Evidence retained |
@@ -21,7 +21,7 @@ target-comparison diagnostics. The canonical even-state distance convention
 remains recorded separately from the natural primary. These complementary
 measurements are not evidence that the two primary states are bit-identical.
 
-The 25 added Ultra v6 requests describe the actual retained primary and keep
+The 39 requests added by later Ultra plans describe the actual retained primary and keep
 their own source and numerical qualifications. No natural state is relabeled
 as an even-sector state to satisfy them.
 
@@ -40,14 +40,7 @@ full-policy behavior for that level; it is not a complete Ultra reproduction.
 
 ## Already completed full-policy runs
 
-Earlier versions requested all thirteen exports on both routes. Their natural
-receipts correctly report two blocked responses and one missing checkpoint,
-even when numerical comparisons, other measurements and publication passed.
-Those historical receipts remain incomplete under their original requests.
-This is an application applicability error, not evidence of corrupted numerical
-payloads. No cache flush or primary recomputation follows from these outcomes.
-
-To check the retained journals without computing, publishing, or changing them:
+Earlier full-policy journals can be reviewed without recomputation:
 
 ```bash
 python3 scripts/review_claim8_capture.py \
@@ -64,7 +57,6 @@ creates a new assessment outside the original run directory. It does not turn
 the original receipt into a successful receipt or reverify remote publication.
 An existing assessment file is never overwritten.
 
-Future executions use the corrected policy automatically through
-`scripts/claim8_natural_eigenvector.sh`. Compatible numerical artifacts are
-reused; a corrected source-bound receipt has a distinct applicability identity.
-All prior artifacts remain available.
+Executions use this policy automatically through
+`scripts/claim8_natural_eigenvector.sh`; its source-bound receipt has a distinct
+applicability identity.

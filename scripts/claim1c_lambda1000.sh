@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Claim 1c: λ²=1000, N=800 at HP-1000 (1019.0 measured-digit extension).
 #
-# Largest of the three Claim 1 configs (1601×1601 matrix). Run independently on its own server
-# so all three Claim 1 configs can run in parallel.
+# Largest of the three Claim 1 configs (1601×1601 matrix).
+# Can run independently on a separate machine.
 #
 # This config produces the headline 1019.0 measured matching-digit result.
 # HP-1000 remains the requested target; 64 internal guard bits provide

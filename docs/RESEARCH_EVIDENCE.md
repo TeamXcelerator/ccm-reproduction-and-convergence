@@ -2,8 +2,8 @@
 
 The [aggregate record](research-evidence.json) records the configurations,
 source digests, numerical results, and proof scopes used in the revised paper.
-The production harness remains pinned to Toolkit v0.15.0 at
-`2bea90ec7cb23d4d615448c293c8af0f94e14119`.
+The v2.5 campaign used Toolkit v0.15.0 at
+`2bea90ec7cb23d4d615448c293c8af0f94e14119`; the current release pins Toolkit v0.16.0.
 Here C denotes the cutoff parameter lambda-squared, and the full matrix has
 dimension 2N+1. See the [manuscript](../paper.pdf) for definitions and proofs.
 

@@ -36,13 +36,18 @@ fn bundled_reference_zeros_loadable() {
     assert!((zeros[0] - 14.134725).abs() < 0.001);
 }
 
-/// f64 tier should run without panicking at small N.
+/// f64 tier should run without panicking at small N. When binary64 cannot
+/// resolve the even ground state it must refuse and direct callers to HP.
 #[test]
 fn f64_tier_runs() {
     let params = CcmParams::from_lambda_sq_integer(13, 5);
-    let result = xc_spectral::ccm::run_f64(&params).unwrap();
-    assert!(!result.eigenvalues_pos.is_empty());
-    assert!(result.elapsed_seconds > 0.0);
+    match xc_spectral::ccm::run_f64(&params) {
+        Ok(result) => {
+            assert!(!result.eigenvalues_pos.is_empty());
+            assert!(result.elapsed_seconds > 0.0);
+        }
+        Err(error) => assert!(error.to_string().contains("use the HP route"), "{error}"),
+    }
 }
 
 /// The paper harness binds the finalized reference-free and sector APIs

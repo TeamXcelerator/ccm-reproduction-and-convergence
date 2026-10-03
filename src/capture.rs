@@ -39,7 +39,7 @@ pub struct CaptureJournalArgs {
 }
 
 #[cfg(feature = "hp")]
-pub use hp::{execute, write_evenness, write_measurements};
+pub use hp::{execute, replay_finite, validate_configuration, write_evenness, write_measurements};
 
 #[cfg(feature = "hp")]
 mod hp {
@@ -63,7 +63,7 @@ mod hp {
         CcmParams,
     };
 
-    /// These exclusions belong to the frozen Paper 1 reproduction, not to the
+    /// These exclusions belong to the frozen paper reproduction, not to the
     /// toolkit's general Ultra recipe. Never infer them from a failed attempt.
     fn exclusions(
         policy: CapturePolicy,
@@ -156,9 +156,165 @@ mod hp {
         Ok(())
     }
 
+    /// Measurements that `scripts/claim_summary.py` reviews numerically.
+    const REVIEWED_MEASUREMENTS: [&str; 3] =
+        ["distance_resolution", "prefix_ladder", "retained_reduction"];
+
+    /// Toolkit 0.16.0 records a measurement whose value is exactly a retained
+    /// artifact payload by reference. Save the reviewed values, reconstructed
+    /// and digest-checked by the toolkit, beside the receipt so the summary can
+    /// assess them. An unresolved reference fails the export rather than
+    /// silently omitting requested evidence.
+    fn save_reviewed_values(
+        path: &Path,
+        record: &xc_cache::CaptureArtifact,
+        cache: &xc_cache::ArtifactCacheContext<'_>,
+    ) -> Result<()> {
+        let mut values = serde_json::Map::new();
+        for name in REVIEWED_MEASUREMENTS.into_iter().chain(
+            xc_spectral::ccm::capture::FINITE_DIAGNOSTICS
+                .iter()
+                .copied(),
+        ) {
+            let Some(measurement) = record.measurements.get(name) else {
+                continue;
+            };
+            if measurement.value_reference.is_none() {
+                continue;
+            }
+            let resolver = cache
+                .resolver
+                .context("capture export requires a cache resolver")?;
+            let policy = cache
+                .acceptance
+                .context("capture export requires a cache acceptance policy")?;
+            match xc_cache::measurement_value(measurement, resolver, policy) {
+                Ok(value) => {
+                    values.insert(name.to_owned(), value);
+                }
+                Err(error) => {
+                    anyhow::bail!("{name}: referenced capture value not resolved: {error}")
+                }
+            }
+        }
+        save(path, &values)
+    }
+
     pub struct CapturedRun {
         pub primary: HighPrecResult,
         pub directory: PathBuf,
+    }
+
+    /// Supplemental acquisition reads named retained artifacts only. Missing
+    /// sources fail; there is no path to a new primary solve in this function.
+    pub fn replay_finite(journal: &Path, output: &Path, diagnostics: &[String]) -> Result<()> {
+        use xc_spectral::ccm::convergence_capture::finite_capture::RetainedFiniteSources;
+        let managed = local_replay_session()?;
+        anyhow::ensure!(
+            !diagnostics.is_empty()
+                && diagnostics
+                    .iter()
+                    .all(|id| xc_spectral::ccm::capture::FINITE_DIAGNOSTICS.contains(&id.as_str())),
+            "unknown or empty supplemental diagnostic request"
+        );
+        let unique: std::collections::BTreeSet<_> = diagnostics.iter().collect();
+        anyhow::ensure!(
+            unique.len() == diagnostics.len(),
+            "duplicate supplemental diagnostic"
+        );
+        let source_path = journal.join("primary-sources.json");
+        anyhow::ensure!(
+            fs::metadata(&source_path)?.len() <= 64 * 1024 * 1024,
+            "retained manifest inventory exceeds admission budget"
+        );
+        let bytes = fs::read(source_path)?;
+        let manifests: Vec<xc_cache::ArtifactManifest> = serde_json::from_slice(&bytes)?;
+        let cache = managed.context();
+        let need_matrix = diagnostics.iter().any(|id| {
+            matches!(
+                id.as_str(),
+                "trial_vector_energy"
+                    | "trial_vector_parity"
+                    | "directional_error_bound"
+                    | "finite_tail_bound"
+                    | "spectral_cluster_bound"
+            )
+        });
+        let sources = RetainedFiniteSources::from_manifests(&manifests, need_matrix, &cache)?;
+        let research_path = journal.join("research-sources.json");
+        let research_sources: Vec<xc_cache::ArtifactManifest> = if research_path.exists() {
+            anyhow::ensure!(
+                fs::metadata(&research_path)?.len() <= 64 * 1024 * 1024,
+                "retained research manifest inventory exceeds admission budget"
+            );
+            serde_json::from_slice(&fs::read(research_path)?)?
+        } else {
+            Vec::new()
+        };
+        let input_path = journal.join("external-research-inputs.json");
+        let input = if input_path.exists() {
+            Some(
+                xc_spectral::ccm::extended_research::ExternalResearchInputs::from_file(
+                    &input_path,
+                )?,
+            )
+        } else {
+            None
+        };
+        // Never replace or mutate the primary journal or an earlier replay.
+        fs::create_dir(output)?;
+        let request = serde_json::json!({"schema_version":1,"phase":"supplemental_retained_analysis",
+            "primary_sources_sha256":xc_cache::ContentDigest::sha256(&bytes),"sources":manifests,
+            "diagnostics":diagnostics,"research_sources":research_sources,"input_sha256":input.as_ref().map(|i|serde_json::to_vec(i).map(|b|xc_cache::ContentDigest::sha256(&b))).transpose()?,
+            "primary_recomputation":false,"cargo_lock":include_str!("../Cargo.lock")});
+        save(&output.join("request.json"), &request)?;
+        save(
+            &output.join("convergence-observation.json"),
+            &sources.observation()?,
+        )?;
+        let record = xc_cache::capture_and_persist(
+            &request,
+            diagnostics.to_vec(),
+            |id| {
+                sources
+                    .capture(id, input.as_ref(), &research_sources, &cache)
+                    .and_then(|r| Ok(xc_cache::CapturedDiagnostic::from_cached(r)?))
+                    .map_err(CaptureFailure::failed)
+            },
+            &cache,
+        )?;
+        save(&output.join("capture.json"), &record.value)?;
+        save_reviewed_values(&output.join("capture-values.json"), &record.value, &cache)?;
+        let complete = record.value.receipt.is_complete();
+        save(
+            &output.join("status.json"),
+            &serde_json::json!({"capture_complete":complete,"primary_recomputed":false,
+            "numerical_coverage":record.value.numerical_coverage,"assurance":"supplemental finite analysis; original claim verdict unchanged"}),
+        )?;
+        managed.finalize_publication_inventory()?;
+        println!("Supplemental journal: {}", output.display());
+        anyhow::ensure!(
+            complete,
+            "supplemental acquisition incomplete; retained receipts explain each failure"
+        );
+        Ok(())
+    }
+
+    fn local_replay_session() -> Result<xc_cache::ManagedArtifactCacheSession> {
+        let mut config = xc_cache::ManagedArtifactCacheConfig::from_environment()?
+            .context("managed retained cache required")?;
+        anyhow::ensure!(
+            config.publication_target == xc_core::PublicationTarget::None
+                && !config.execute_remote_mutations && !config.replace_existing_publication,
+            "supplemental replay refuses publication; clear XC_PUBLISH_TARGET, XC_PUBLISH_EXECUTE and XC_PUBLISH_REPLACE"
+        );
+        // An inherited author staging queue must not be finalized by replay.
+        // Supplemental writes belong only to the local analysis cache.
+        config.staging_root = None;
+        config.remote_cache_mode = xc_cache::ManagedRemoteCacheMode::None;
+        config.output_validation = None;
+        config.cache_mode = xc_cache::ArtifactExecutionCacheMode::PreferReuse;
+        xc_cache::ManagedArtifactCacheSession::new(config).map_err(Into::into)
     }
 
     pub fn write_measurements(directory: &Path, value: &impl Serialize) -> Result<()> {
@@ -244,6 +400,212 @@ mod hp {
         inputs.into()
     }
 
+    // An explicitly configured private adapter runs only after primary sources
+    // exist. The executable and recipe stay outside the public paper repository.
+    // Its output is data and must pass the Toolkit's authenticated source join.
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct InputPreparer {
+        argv: Vec<String>,
+        timeout_seconds: u64,
+    }
+
+    #[derive(Debug)]
+    struct PreparedInputs {
+        input: xc_spectral::ccm::extended_research::ExternalResearchInputs,
+        digest: xc_cache::ContentDigest,
+    }
+
+    struct PreparerProcess(std::process::Child);
+    impl Drop for PreparerProcess {
+        fn drop(&mut self) {
+            // Every descendant that retains the child's process group is
+            // stopped on success, failure and timeout, before reading output.
+            #[cfg(unix)]
+            {
+                let _ = std::process::Command::new("/bin/kill")
+                    .args(["-KILL", "--", &format!("-{}", self.0.id())])
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status();
+            }
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    fn invoke_preparer(
+        directory: &Path,
+        request: &serde_json::Value,
+        configuration: &str,
+    ) -> Result<PreparedInputs> {
+        use std::process::{Command, Stdio};
+        anyhow::ensure!(
+            cfg!(unix),
+            "private input preparation requires Unix process-group supervision"
+        );
+        #[cfg(unix)]
+        anyhow::ensure!(
+            Path::new("/bin/kill").is_file(),
+            "process-group cleanup executable unavailable"
+        );
+        let preparer: InputPreparer = serde_json::from_str(configuration)?;
+        anyhow::ensure!(
+            !preparer.argv.is_empty()
+                && preparer.argv.len() <= 16
+                && preparer
+                    .argv
+                    .iter()
+                    .all(|a| !a.is_empty() && a.len() <= 32768)
+                && (1..=7200).contains(&preparer.timeout_seconds),
+            "invalid private input preparation command or time limit"
+        );
+        let directory = directory.canonicalize()?;
+        let request_path = directory.join("input-preparation-request.json");
+        let output_path = directory.join("prepared-research-inputs.json");
+        save(&request_path, request)?;
+        let stdout = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(directory.join("input-preparation.stdout.log"))?;
+        let stderr = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(directory.join("input-preparation.stderr.log"))?;
+        let mut command = Command::new(&preparer.argv[0]);
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+        let mut child = PreparerProcess(
+            command
+                .args(&preparer.argv[1..])
+                .arg("--request")
+                .arg(&request_path)
+                .arg("--output")
+                .arg(&output_path)
+                .stdin(Stdio::null())
+                .stdout(stdout)
+                .stderr(stderr)
+                .spawn()
+                .context("starting private input preparer")?,
+        );
+        let started = Instant::now();
+        let status = loop {
+            if let Some(status) = child.0.try_wait()? {
+                break status;
+            }
+            let excessive = [
+                "input-preparation.stdout.log",
+                "input-preparation.stderr.log",
+                "prepared-research-inputs.json",
+            ]
+            .iter()
+            .any(|name| {
+                fs::metadata(directory.join(name)).is_ok_and(|m| {
+                    m.len() > xc_spectral::ccm::capture_runtime::RESEARCH_INPUT_MAXIMUM_BYTES
+                })
+            });
+            if excessive {
+                anyhow::bail!("private input preparer exceeded its output budget");
+            }
+            if started.elapsed().as_secs() >= preparer.timeout_seconds {
+                anyhow::bail!("private input preparation exceeded its time limit");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        };
+        drop(child);
+        anyhow::ensure!(
+            status.success(),
+            "private input preparer exited with {status}"
+        );
+        anyhow::ensure!(
+            [
+                "input-preparation.stdout.log",
+                "input-preparation.stderr.log"
+            ]
+            .iter()
+            .all(|name| fs::metadata(directory.join(name))
+                .is_ok_and(|m| m.len() <= 64 * 1024 * 1024)),
+            "private input preparer log exceeds 64 MiB"
+        );
+        anyhow::ensure!(
+            fs::metadata(&output_path)?.len()
+                <= xc_spectral::ccm::capture_runtime::RESEARCH_INPUT_MAXIMUM_BYTES,
+            "private prepared input exceeds the research input byte limit"
+        );
+        // Read once: validation, loading and the recorded digest use identical
+        // admitted bytes. A changed retained file will fail summary verification.
+        use std::io::Read;
+        let mut bytes = Vec::new();
+        fs::File::open(&output_path)?
+            .take(xc_spectral::ccm::capture_runtime::RESEARCH_INPUT_MAXIMUM_BYTES + 1)
+            .read_to_end(&mut bytes)?;
+        let input = xc_spectral::ccm::extended_research::ExternalResearchInputs::from_bytes(
+            &output_path,
+            &bytes,
+        )?;
+        Ok(PreparedInputs {
+            input,
+            digest: xc_cache::ContentDigest::sha256(&bytes),
+        })
+    }
+
+    fn prepare_after_acquisition(
+        run: &mut RetainedCcmRun,
+        directory: &Path,
+        resolved: &serde_json::Value,
+        configuration: &str,
+        cache: &ArtifactCacheContext<'_>,
+    ) -> Result<serde_json::Value> {
+        let base = run.prepare_extended_research_inputs()?;
+        let request = serde_json::json!({"schema_version":1,
+            "configuration":resolved,"primary_sources":run.primary_sources(),
+            "base_inputs":base,"target_spec_file":std::env::var("XC_TARGET_SPEC_FILE").ok(),
+            "output_visibility":"private_only","primary_recomputation":false});
+        let prepared = invoke_preparer(directory, &request, configuration)?;
+        run.set_extended_research_inputs(prepared.input)?;
+        let component_status = match run.prepare_retained_trial_components(
+            320,
+            xc_spectral::ccm::capture_runtime::RESEARCH_INPUT_MAXIMUM_BYTES,
+            cache,
+        ) {
+            Ok(true) => "retained_independent_components_prepared",
+            Ok(false) => "resource_blocked",
+            Err(error) => {
+                save(
+                    &directory.join("component-preparation-status.json"),
+                    &serde_json::json!({"status":"unavailable","reason":format!("{error:#}")}),
+                )?;
+                "unavailable"
+            }
+        };
+        Ok(
+            serde_json::json!({"status":"prepared","phase":"after_primary_acquisition",
+            "input_sha256":prepared.digest,
+            "command_configuration_sha256":xc_cache::ContentDigest::sha256(configuration.as_bytes()),
+            "source_join_validated":true,"primary_recomputed":false,
+            "component_preparation":component_status,
+            "scope":"private prepared inputs; scientific qualification remains in each diagnostic"}),
+        )
+    }
+
+    /// Validate the same recipe and fixed applicability contract without a journal.
+    pub fn validate_configuration(
+        params: &CcmParams,
+        cfg: &HighPrecConfig,
+        level: ResearchCapture,
+        count: usize,
+        args: &CaptureJournalArgs,
+    ) -> Result<()> {
+        let plan = recipe(level, count, params.n_modes + 1, args, cfg.precision_bits)?;
+        let excluded = exclusions(args.capture_policy, level, params, cfg, args)?;
+        requested_diagnostics(&plan, level == ResearchCapture::Ultra, &excluded)?;
+        Ok(())
+    }
+
     /// Primary failure remains fatal. Supplemental failures are persisted and
     /// never turn an unavailable measurement into a positive scientific result.
     #[allow(clippy::too_many_arguments)]
@@ -316,13 +678,28 @@ mod hp {
         for (id, reason) in &excluded {
             println!("  [EXCLUDED] {id}: {reason}");
         }
-        let resolved = serde_json::json!({"schema_version":1,"paper_version":env!("CARGO_PKG_VERSION"),"toolkit_release":"0.15.1","arb_enabled":cfg!(feature="root-certification"),"research_inputs":research_input_inventory(),"capture":plan,"applicability":applicability,"retained_reduction":reduction,"lambda_squared":params.lambda_sq_int(),"n_modes":params.n_modes,"precision_bits":cfg.precision_bits,"root_precision_policy":cfg.root_precision_policy,"root_maximum_extra_precision_bits":cfg.root_maximum_extra_precision_bits,"root_verification_precision_bits":cfg.root_verification_precision_bits,"parity_policy":cfg.effective_parity_policy().as_str(),"distance":options.distance_capture.as_ref().map(|d|serde_json::json!({"alpha":d.alpha,"rules":d.rules.iter().map(|r|serde_json::json!({"family":r.family(),"rule":r.rule(),"variable":r.variable().as_str(),"resolution":r.resolution()})).collect::<Vec<_>>(),"profile_steps":d.profile_steps})),"source_policy":"resolve compatible identities; preserve historical artifacts","assurance":"capture completeness is separate from numerical acceptance"});
+        let resolved = serde_json::json!({"schema_version":1,"paper_version":env!("CARGO_PKG_VERSION"),"toolkit_release":"0.16.0","arb_enabled":cfg!(feature="root-certification"),"research_inputs":research_input_inventory(),"capture":plan,"applicability":applicability,"retained_reduction":reduction,"lambda_squared":params.lambda_sq_int(),"n_modes":params.n_modes,"precision_bits":cfg.precision_bits,"root_precision_policy":cfg.root_precision_policy,"root_maximum_extra_precision_bits":cfg.root_maximum_extra_precision_bits,"root_verification_precision_bits":cfg.root_verification_precision_bits,"parity_policy":cfg.effective_parity_policy().as_str(),"distance":options.distance_capture.as_ref().map(|d|serde_json::json!({"alpha":d.alpha,"rules":d.rules.iter().map(|r|serde_json::json!({"family":r.family(),"rule":r.rule(),"variable":r.variable().as_str(),"resolution":r.resolution()})).collect::<Vec<_>>(),"profile_steps":d.profile_steps})),"source_policy":"resolve compatible identities; preserve historical artifacts","assurance":"capture completeness is separate from numerical acceptance"});
+        let mut resolved = resolved;
+        resolved["assembly_policy"] = serde_json::json!({
+            "recipe":"paper_default_mode_length_precision_quadrature",
+            "quadrature_base_points":cfg.quad_points,
+            "effective_orders":"mode, cutoff and precision dependent; base points are a floor"});
+        resolved["convergence_dependency_policy"] = serde_json::json!({
+            "semantics":"retained_then_cohort_v1","single_run":"derive after primary acquisition",
+            "comparisons":"after compatible independently computed configurations exist",
+            "analytic_bounds":"open obligations remain explicit; never inferred from refinement differences"});
+        resolved["private_input_preparation"] = serde_json::json!({
+            "semantics":"retained_private_input_preparation_v1",
+            "configured":std::env::var_os("XC_RESEARCH_PREPARER").is_some(),
+            "phase":"after_primary_acquisition","visibility":"private_only"});
         save(&directory.join("request.json"), &resolved)?;
         // Preserve the exact dependency lockfile with each run, including the
         // qualified Git commit after a release tag has been amended.
         save(
             &directory.join("build.json"),
-            &serde_json::json!({"cargo_lock":include_str!("../Cargo.lock")}),
+            &serde_json::json!({"cargo_lock":include_str!("../Cargo.lock"),
+                "toolkit_working_source_digest":option_env!("XC_TOOLKIT_SOURCE_DIGEST"),
+                "local_qualification":option_env!("XC_TOOLKIT_SOURCE_DIGEST").is_some()}),
         )?;
         let managed = xc_cache::ManagedArtifactCacheSession::from_environment()?
             .context("managed cache required")?;
@@ -341,6 +718,8 @@ mod hp {
                 return Err(error);
             }
         };
+        // Only requested diagnostics may be computed ahead of their turn.
+        run.set_lookahead_requests(requested.iter().cloned());
         save(
             &directory.join("primary.json"),
             &PortableHighPrecResult::from_runtime(run.primary())?,
@@ -349,10 +728,49 @@ mod hp {
             &directory.join("primary-sources.json"),
             &run.primary_sources(),
         )?;
+        // Source-bound observations are outputs of primary acquisition. They
+        // never require a second dimension or a future run to start this one.
+        let observation = xc_spectral::ccm::convergence_capture::finite_capture::RetainedFiniteSources::from_manifests(
+            &run.primary_sources(), false, &cache,
+        ).and_then(|s| s.observation());
+        let observation_error = match observation {
+            Ok(value) => {
+                save(&directory.join("convergence-observation.json"), &value)?;
+                None
+            }
+            Err(error) => Some(format!("retained convergence observation: {error:#}")),
+        };
         event(
             &mut events,
             &serde_json::json!({"phase":"primary","status":"saved","elapsed_seconds":started.elapsed().as_secs_f64()}),
         )?;
+        let preparation_error = if level == ResearchCapture::Ultra {
+            match std::env::var("XC_RESEARCH_PREPARER") {
+                Ok(configuration) => {
+                    let prepared = prepare_after_acquisition(
+                        &mut run,
+                        &directory,
+                        &resolved,
+                        &configuration,
+                        &cache,
+                    );
+                    let status = match &prepared {
+                        Ok(value) => value.clone(),
+                        Err(error) => {
+                            serde_json::json!({"status":"failed","phase":"after_primary_acquisition",
+                            "reason":format!("{error:#}"),"primary_preserved":true})
+                        }
+                    };
+                    save(&directory.join("input-preparation-status.json"), &status)?;
+                    event(&mut events, &status)?;
+                    prepared.err().map(|e| format!("{e:#}"))
+                }
+                Err(std::env::VarError::NotPresent) => None,
+                Err(error) => Some(error.to_string()),
+            }
+        } else {
+            None
+        };
         let retained = if plan.capture_prefix_analysis {
             match run.retained_even_sources(&cache) {
                 Ok(sources) => Some(sources),
@@ -500,7 +918,14 @@ mod hp {
             }
         };
         save(&directory.join("capture.json"), &record.value)?;
-        let mut complete = record.value.receipt.is_complete();
+        save_reviewed_values(
+            &directory.join("capture-values.json"),
+            &record.value,
+            &cache,
+        )?;
+        let mut complete = record.value.receipt.is_complete()
+            && observation_error.is_none()
+            && preparation_error.is_none();
         // Explicit requests below their named capture level and certificates
         // receive their own source-bound receipt, with no hidden policy change.
         let mut extra = Vec::new();
@@ -553,6 +978,29 @@ mod hp {
                 &directory.join("capture-explicit.json"),
                 &extra_record.value,
             )?;
+            save_reviewed_values(
+                &directory.join("capture-explicit-values.json"),
+                &extra_record.value,
+                &cache,
+            )?;
+        }
+        // Preserve the final source-bound inputs, including jets and actions
+        // prepared during capture, so supplemental analysis can reuse them.
+        if level == ResearchCapture::Ultra {
+            match run.prepare_extended_research_inputs() {
+                Ok(Some(input)) => save(&directory.join("external-research-inputs.json"), &input)?,
+                Ok(None) => {}
+                Err(error) => save(
+                    &directory.join("external-research-inputs-status.json"),
+                    &serde_json::json!({"status":"failed","reason":format!("{error:#}")}),
+                )?,
+            }
+        }
+        if level == ResearchCapture::Ultra {
+            save(
+                &directory.join("research-sources.json"),
+                &run.extended_research_sources(),
+            )?;
         }
         for (id, outcome) in record.value.receipt.outcomes() {
             println!(
@@ -569,7 +1017,7 @@ mod hp {
         managed.finalize_publication_inventory()?;
         save(
             &directory.join("status.json"),
-            &serde_json::json!({"status":if complete{"capture_complete"}else{"capture_incomplete"},"primary_saved":true,"capture_complete":complete,"applicability":applicability,"numerical_acceptance":"inspect primary and measurement payloads; completion is not validity","elapsed_seconds":started.elapsed().as_secs_f64()}),
+            &serde_json::json!({"status":if complete{"capture_complete"}else{"capture_incomplete"},"primary_saved":true,"capture_complete":complete,"applicability":applicability,"convergence_observation_error":observation_error,"input_preparation_error":preparation_error,"numerical_acceptance":"inspect primary and measurement payloads; completion is not validity","elapsed_seconds":started.elapsed().as_secs_f64()}),
         )?;
         println!(
             "  capture journal saved: {} ({})",
@@ -597,6 +1045,70 @@ mod hp {
         use super::*;
         use clap::Parser;
 
+        #[cfg(unix)]
+        #[test]
+        fn private_preparer_checks_exit_timeout_size_and_schema() {
+            let root = std::env::temp_dir().join(format!(
+                "paper-preparer-{}-{}",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            fs::create_dir(&root).unwrap();
+            let valid = serde_json::json!({"schema_version":1,"source_eigenpair":"b".repeat(64),
+                "lambda_squared":"5","n_modes":2,"precision_bits":128,
+                "convention_id":"synthetic transport","definition_digest":"a".repeat(64),"approximation_scope":"synthetic transport"});
+            save(&root.join("valid.json"), &valid).unwrap();
+            for (index, script, passes, reason) in [
+                (0, "cp ../valid.json \"$4\"", true, ""),
+                (1, "exit 7", false, "exited"),
+                (2, "exec sleep 2", false, "time limit"),
+                (3, "truncate -s 67108865 \"$4\"", false, "64 MiB"),
+                (4, "printf invalid > \"$4\"", false, ""),
+                (5, "printf '{}' > \"$4\"", false, ""),
+                (6, "(sleep 2; touch late-write) & wait", false, "time limit"),
+                (
+                    7,
+                    "cp ../valid.json \"$4\"; (sleep 2; touch late-write) & exit 0",
+                    true,
+                    "",
+                ),
+            ] {
+                let directory = root.join(index.to_string());
+                fs::create_dir(&directory).unwrap();
+                // Use an explicit cwd inside the shell test only. The real
+                // adapter receives absolute request/output paths and no shell.
+                let script = format!("cd -- \"$(dirname -- \"$4\")\"; {script}");
+                let configuration=serde_json::json!({"argv":["/bin/sh","-c",script,"fixture"],"timeout_seconds":1}).to_string();
+                let result = invoke_preparer(
+                    &directory,
+                    &serde_json::json!({"primary_saved":true}),
+                    &configuration,
+                );
+                assert_eq!(result.is_ok(), passes, "case {index}: {result:?}");
+                if !passes && !reason.is_empty() {
+                    assert!(format!("{:#}", result.as_ref().unwrap_err()).contains(reason));
+                }
+                assert!(directory.join("input-preparation-request.json").exists());
+                if let Ok(prepared) = result {
+                    let bytes = fs::read(directory.join("prepared-research-inputs.json")).unwrap();
+                    assert_eq!(prepared.digest, xc_cache::ContentDigest::sha256(&bytes));
+                    fs::write(
+                        directory.join("prepared-research-inputs.json"),
+                        b"changed after read",
+                    )
+                    .unwrap();
+                    assert_eq!(prepared.input.source_eigenpair.0, "b".repeat(64));
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2200));
+            assert!(!root.join("6/late-write").exists());
+            assert!(!root.join("7/late-write").exists());
+            fs::remove_dir_all(root).unwrap();
+        }
+
         fn args() -> CaptureJournalArgs {
             crate::Cli::try_parse_from([
                 "ccm-reproduction",
@@ -606,6 +1118,123 @@ mod hp {
             ])
             .unwrap()
             .capture_journal
+        }
+
+        #[test]
+        fn ultra_exports_every_referenced_finite_measurement_and_rejects_lost_values() {
+            use xc_cache::*;
+            use xc_spectral::ccm::capture::FINITE_DIAGNOSTICS;
+            let store = EphemeralCacheStore::new(8 << 20).unwrap();
+            let plan = CcmCapturePlan::ultra(8, 121).unwrap();
+            let requested = requested_diagnostics(&plan, true, &Default::default()).unwrap();
+            assert_eq!(requested.len(), 52);
+            assert!(requested.contains(&"trial_vector_energy".into()));
+            let mut expected = serde_json::Map::new();
+            let mut artifacts = std::collections::BTreeMap::new();
+            for &id in FINITE_DIAGNOSTICS {
+                assert!(requested.contains(&id.to_string()));
+                // Distinct exact values expose missing or cross-wired exports.
+                // These are transport fixtures, not physical trial vectors.
+                let value = serde_json::json!({"kind":"ccm_finite_diagnostic_analysis",
+                    "data":{"diagnostic":id,"outcome":"computed","rows":[{
+                        "label":id,"outcome":"point_measurement"}],
+                        "result":{"exact_fixture":"1/3","identity":id}}});
+                let draft = ArtifactDraft {
+                    schema_version: 1,
+                    key: ArtifactKey::new("ccm_finite_diagnostic_analysis", id, id.as_bytes())
+                        .unwrap(),
+                    producer_toolkit_version: ToolkitVersion::parse("0.16.0").unwrap(),
+                    minimum_reader_version: ToolkitVersion::parse("0.16.0").unwrap(),
+                    maximum_reader_version: None,
+                    quality: CacheQuality::Validated,
+                    visibility: CacheVisibility::Local,
+                    immutable: true,
+                    dependencies: vec![],
+                    tags: Default::default(),
+                    provenance_digest: None,
+                };
+                assert!(!artifact_kind_admitted_to_destination(
+                    &draft.key.kind,
+                    PublicationDestination::Public
+                ));
+                assert!(artifact_kind_admitted_to_destination(
+                    &draft.key.kind,
+                    PublicationDestination::Private
+                ));
+                artifacts.insert(
+                    id,
+                    store
+                        .put(&draft, &serde_json::to_vec(&value).unwrap())
+                        .unwrap(),
+                );
+                expected.insert(id.into(), value);
+            }
+            let mut record = collect_capture(
+                &plan,
+                FINITE_DIAGNOSTICS.iter().map(|s| s.to_string()).collect(),
+                |id| {
+                    CapturedDiagnostic::by_reference(
+                        &expected[id],
+                        vec![artifacts[id].clone()],
+                        false,
+                        vec![],
+                    )
+                    .map_err(CaptureFailure::failed)
+                },
+            )
+            .unwrap();
+            assert!(record.measurements.values().all(|m| m.value.is_null()));
+            let resolver = CacheResolver::new(vec![CacheLayer {
+                precedence: 0,
+                store: Box::new(store),
+            }]);
+            let policy = CachePolicy {
+                current_toolkit_version: ToolkitVersion::parse("0.16.0").unwrap(),
+                minimum_quality: CacheQuality::Validated,
+                accepted_schema_versions: vec![1],
+                allow_deprecated: false,
+                allow_quarantined: false,
+                allowed_visibilities: vec![CacheVisibility::Local],
+            };
+            let mut cache = ArtifactCacheContext {
+                resolver: Some(&resolver),
+                reference_resolver: None,
+                acceptance: Some(&policy),
+                ordered_overlays: vec![],
+                mode: ArtifactExecutionCacheMode::RequireReuse,
+                write_on_miss: false,
+                write_visibility: CacheVisibility::Local,
+                requested_assurance: xc_core::AssuranceLevel::Computed,
+                certification_failure_policy: CertificationFailurePolicy::RetainComputedFailRun,
+                production_sink: None,
+            };
+            let path = std::env::temp_dir().join(format!(
+                "paper-capture-export-{}-{}.json",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            save_reviewed_values(&path, &record, &cache).unwrap();
+            let saved: serde_json::Value =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            assert_eq!(saved, serde_json::Value::Object(expected));
+            fs::remove_file(&path).unwrap();
+            cache.resolver = None;
+            assert!(save_reviewed_values(&path, &record, &cache).is_err());
+            assert!(!path.exists());
+            cache.resolver = Some(&resolver);
+            record
+                .measurements
+                .get_mut("trial_vector_energy")
+                .unwrap()
+                .value_reference
+                .as_mut()
+                .unwrap()
+                .value_digest = "0".repeat(64);
+            assert!(save_reviewed_values(&path, &record, &cache).is_err());
+            assert!(!path.exists());
         }
 
         #[test]
@@ -666,6 +1295,13 @@ mod hp {
             .unwrap();
             let requested = requested_diagnostics(&plan, true, &excluded).unwrap();
             let full = requested_diagnostics(&plan, true, &Default::default()).unwrap();
+            // Historical v7 groups plus the current finite diagnostics; the
+            // same eight predeclared exclusions remain unchanged.
+            assert_eq!(excluded.len(), 8);
+            assert_eq!(
+                requested.len(),
+                33 + xc_spectral::ccm::capture::FINITE_DIAGNOSTICS.len()
+            );
             assert_eq!(
                 requested,
                 full.into_iter()
@@ -710,7 +1346,7 @@ mod hp {
                 requested_diagnostics(&CcmCapturePlan::ultra(8, 801).unwrap(), true, &excluded)
                     .unwrap()
                     .len(),
-                38
+                41 + xc_spectral::ccm::capture::FINITE_DIAGNOSTICS.len()
             );
         }
 
@@ -734,7 +1370,13 @@ mod hp {
                 let requested = requested_diagnostics(&plan, true, &excluded).unwrap();
                 assert_eq!(excluded.len(), 3);
                 assert!(excluded.contains_key(&format!("prefix_checkpoint_{}", n + 1)));
-                assert_eq!(requested.len(), 35);
+                assert_eq!(
+                    requested.len(),
+                    38 + xc_spectral::ccm::capture::FINITE_DIAGNOSTICS.len()
+                );
+                for added in ["assembly_error", "checkpoint_spectra", "target_comparison"] {
+                    assert!(requested.contains(&added.into()), "{added}");
+                }
                 assert!(requested.contains(&"prefix_ladder".into()));
                 assert!(requested.contains(&"retained_reduction".into()));
                 for fail in [false, true] {
@@ -755,7 +1397,7 @@ mod hp {
                     )
                     .unwrap();
                     assert_eq!(record.receipt.is_complete(), !fail);
-                    assert_eq!(record.receipt.outcomes().len(), 35);
+                    assert_eq!(record.receipt.outcomes().len(), requested.len());
                 }
             }
             for (c, n, digits, level, natural, checkpoint, bits) in [

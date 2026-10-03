@@ -33,6 +33,9 @@ DISPLAY_DIGITS=${DISPLAY_DIGITS:-50}
 TOP=${TOP:-25}
 PUBLISH_AFTER_COMPARISON=${XC_PUBLISH_EXECUTE:-false}
 
+# This paired experiment fixes both routes, regardless of a generic parity override.
+PARITY_POLICY_ARGS=(--parity-policy even-sector)
+
 EVEN_CAPTURE_ARGS=("${RESEARCH_CAPTURE_ARGS[@]}")
 NATURAL_CAPTURE_ARGS=("${RESEARCH_CAPTURE_ARGS[@]}")
 if [[ "$RESEARCH_CAPTURE_LEVEL" == "ultra" ]]; then
@@ -47,7 +50,7 @@ CONFIGS=(
 
 echo "=== Claim 8: natural full-space vs reduced even-sector eigenstate ==="
 if [[ "$RESEARCH_CAPTURE_LEVEL" == "ultra" ]]; then
-  echo "Natural branches: Ultra, 10 applicable requests; 3 documented even-state exports excluded"
+  echo "Natural branches: Ultra, 49 applicable requests; 3 documented even-state exports excluded"
   echo "Prefix ladders and innovation exports retained; primary natural states preserved"
 fi
 if [[ "$PUBLISH_AFTER_COMPARISON" == "true" || "$PUBLISH_AFTER_COMPARISON" == "1" ]]; then

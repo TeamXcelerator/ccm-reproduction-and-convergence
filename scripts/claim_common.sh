@@ -5,12 +5,16 @@ CLAIM_REPO_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$CLAIM_REPO_ROOT"
 
 # Claim scripts accept capture controls directly. Environment variables remain
-# available for unattended server jobs, but command-line flags take precedence.
+# available for unattended jobs, but command-line flags take precedence.
 RESEARCH_CAPTURE_LEVEL=${RESEARCH_CAPTURE_LEVEL:-ultra}
 RESEARCH_SECTOR_EIGENPAIRS=${RESEARCH_SECTOR_EIGENPAIRS:-8}
 ROOT_ACQUISITION_MODE=${ROOT_ACQUISITION_MODE:-seeded}
 PARITY_POLICY=${PARITY_POLICY:-even-sector}
-ROOT_VALIDATION_LEVEL=${ROOT_VALIDATION_LEVEL:-off}
+# The paper's claims run at Ultra with certification: certified root enclosures and a
+# sector-gap certificate for every run claim. --no-certification opts out.
+ROOT_VALIDATION_LEVEL=${ROOT_VALIDATION_LEVEL:-certified}
+SECTOR_GAP_CERTIFICATE=${SECTOR_GAP_CERTIFICATE:-true}
+PUBLICATION=${PUBLICATION:-none}
 ROOT_ENCLOSURE_DIGITS=${ROOT_ENCLOSURE_DIGITS:-}
 INCLUDE_NEGATIVE_ROOTS=${INCLUDE_NEGATIVE_ROOTS:-false}
 ALLOW_ROOT_OVERSUBSCRIPTION=${ALLOW_ROOT_OVERSUBSCRIPTION:-false}
@@ -24,8 +28,13 @@ DISTANCE_PROFILE_STEPS=${DISTANCE_PROFILE_STEPS:-1000}
 GL_ROOT_PARALLEL=${XC_GL_ROOT_PARALLEL:-false}
 JOURNAL_ARGS=()
 EXPLICIT_CAPTURE_ARGS=()
+PREFLIGHT_ONLY=false
 while (($# > 0)); do
   case "$1" in
+    --preflight-only)
+      PREFLIGHT_ONLY=true
+      shift
+      ;;
     --research-capture)
       if (($# < 2)); then
         echo "--research-capture requires claim, research, gap, maximum, or ultra" >&2
@@ -54,6 +63,19 @@ while (($# > 0)); do
       ;;
     --capture-deviation-decomposition|--capture-prime-power-response|--capture-u-flow-response|--capture-sector-gap-certificate)
       EXPLICIT_CAPTURE_ARGS+=("$1")
+      shift
+      ;;
+    --no-certification)
+      ROOT_VALIDATION_LEVEL=off
+      SECTOR_GAP_CERTIFICATE=false
+      shift
+      ;;
+    --publish)
+      PUBLICATION=execute
+      shift
+      ;;
+    --publish-plan)
+      PUBLICATION=plan
       shift
       ;;
     --root-validation)
@@ -169,7 +191,14 @@ while (($# > 0)); do
       echo "  LEVEL: claim, research, gap, maximum, or ultra (default)"
       echo "  ROOT ACQUISITION: seeded (default for every claim script) or independent"
       echo "  PARITY POLICY: even-sector (default), natural, or adaptive-even"
-      echo "  ROOT VALIDATION: off (default) or certified"
+      echo "  CERTIFICATION: certified roots and a sector-gap certificate for run claims (default);"
+      echo "                 --no-certification turns both off"
+      echo "  ROOT VALIDATION: certified (default) or off"
+      echo "  PUBLICATION: off by default. --publish publishes this claim's artifacts (author"
+      echo "               credentials and XC_PUBLISH_AUTHOR_EMAIL required); --publish-plan stages"
+      echo "               and plans the same publication without pushing. Claim 1a publishes to"
+      echo "               public and private; every other claim publishes to private only."
+      echo "               Runtime-target artifacts are always private-only."
       echo "  ROOT ENCLOSURE: defaults to the claim's display digits; override only when needed"
       echo "  ADVANCED ROOTS: signed and finite-shortfall controls require independent HP discovery"
       echo "  TARGET DISTANCE: --capture-distance retains the eigenfunction profile and its weighted"
@@ -196,6 +225,55 @@ while (($# > 0)); do
       ;;
   esac
 done
+
+case "$SECTOR_GAP_CERTIFICATE" in
+  true|false) ;;
+  *) echo "SECTOR_GAP_CERTIFICATE must be true or false" >&2; exit 1 ;;
+esac
+
+# Publication destinations are fixed per claim. Claim 1a is the public
+# headline reproduction; every other claim is private. The toolkit routes the
+# runtime-target kinds (target distance, distance resolution, target residual,
+# deviation decomposition, target comparison) to private only, including
+# under "both".
+case "$(basename "${BASH_SOURCE[1]}" .sh)" in
+  claim1a_lambda13) CLAIM_PUBLISH_TARGET=both ;;
+  *) CLAIM_PUBLISH_TARGET=private ;;
+esac
+if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
+  PUBLICATION=none
+fi
+case "$PUBLICATION" in
+  none)
+    # Inherited managed-session settings must not bypass --publish or the
+    # per-claim destination policy, even when this script is run directly.
+    export XC_PUBLISH_TARGET=none XC_PUBLISH_EXECUTE=false
+    ;;
+  plan|execute)
+    if [[ "$PUBLICATION" == "execute" && -z "${XC_PUBLISH_AUTHOR_EMAIL:-}" ]]; then
+      echo "--publish requires XC_PUBLISH_AUTHOR_EMAIL to be set" >&2
+      exit 1
+    fi
+    export XC_RUN_PROFILE=author XC_PUBLISH_TARGET="$CLAIM_PUBLISH_TARGET"
+    if [[ "$PUBLICATION" == "execute" ]]; then
+      export XC_PUBLISH_EXECUTE=true
+    else
+      export XC_PUBLISH_EXECUTE=false
+    fi
+    echo "  publication: $CLAIM_PUBLISH_TARGET ($PUBLICATION); runtime-target artifacts are private-only"
+    ;;
+  *)
+    echo "PUBLICATION must be none, plan, or execute" >&2
+    exit 1
+    ;;
+esac
+
+# Prepare a source-bound finite projection of an explicitly supplied target
+# for every Ultra invocation, including configuration/precision sweeps. The
+# private evaluator remains external; an explicit caller override is honored.
+if [[ "$RESEARCH_CAPTURE_LEVEL" == "ultra" && ( -n "${XC_TARGET_SPEC_FILE:-}" || -n "${XC_TARGET_SPEC_DIR:-}" ) ]]; then
+  export XC_RESEARCH_PREPARE_TARGET_REFERENCE=${XC_RESEARCH_PREPARE_TARGET_REFERENCE:-1}
+fi
 
 if [[ -n "$BENCHMARK_BASELINE" && -z "$BENCHMARK_REPORT" ]]; then
   echo "BENCHMARK_BASELINE requires BENCHMARK_REPORT" >&2
@@ -231,26 +309,6 @@ case "$GL_ROOT_PARALLEL" in
     ;;
 esac
 
-if [[ -z "${BIN+x}" ]]; then
-  CLAIM_TARGET_DIR="$CLAIM_REPO_ROOT/target"
-  BIN="$CLAIM_TARGET_DIR/release/ccm-reproduction"
-  # Cargo's incremental freshness check is quick and prevents an executable
-  # built from an older toolkit lockfile, without HP, or in an externally
-  # overridden CARGO_TARGET_DIR from being mistaken for the current binary.
-  CLAIM_FEATURES=hp
-  if [[ "$RESEARCH_CAPTURE_LEVEL" == "ultra" || "$ROOT_VALIDATION_LEVEL" == "certified" || " ${EXPLICIT_CAPTURE_ARGS[*]} " == *" --capture-sector-gap-certificate "* ]]; then
-    CLAIM_FEATURES=$CLAIM_FEATURES,root-certification
-  fi
-  if [[ "$GL_ROOT_PARALLEL_ENABLED" == "true" ]]; then
-    CLAIM_FEATURES=$CLAIM_FEATURES,experimental-gl-root-parallel
-  fi
-  cargo build --quiet --release --features "$CLAIM_FEATURES" --locked --bin ccm-reproduction \
-    --target-dir "$CLAIM_TARGET_DIR"
-elif [[ ! -x "$BIN" ]]; then
-  echo "Configured reproduction binary is not executable: $BIN" >&2
-  exit 1
-fi
-
 # Ultra is the default research recipe. Lower levels are explicit cost controls.
 # Every level preserves the selected root acquisition, parity, and arithmetic.
 case "$RESEARCH_CAPTURE_LEVEL" in
@@ -259,7 +317,7 @@ case "$RESEARCH_CAPTURE_LEVEL" in
     ;;
   maximum|ultra)
     # The shared recipe adds complete distance and retained-prefix diagnostics;
-    # exact interval certification remains an explicit request.
+    # root and sector certification follow the controls resolved below.
     RESEARCH_CAPTURE_ARGS=(
       --research-capture "$RESEARCH_CAPTURE_LEVEL"
       --research-sector-eigenpairs "$RESEARCH_SECTOR_EIGENPAIRS"
@@ -319,6 +377,10 @@ elif [[ "$ALLOW_ROOT_OVERSUBSCRIPTION" != "false" ]]; then
   echo "ALLOW_ROOT_OVERSUBSCRIPTION must be true or false" >&2
   exit 1
 fi
+if ((${#ADVANCED_ROOT_ARGS[@]} > 0)) && [[ "$ROOT_VALIDATION_LEVEL" == "certified" ]]; then
+  echo "Advanced signed or incomplete root windows cannot be certified; add --no-certification" >&2
+  exit 1
+fi
 if ((${#ADVANCED_ROOT_ARGS[@]} > 0)) && [[ "$ROOT_ACQUISITION_MODE" != "independent" ]]; then
   echo "Advanced root controls require ROOT_ACQUISITION_MODE=independent" >&2
   exit 1
@@ -358,6 +420,27 @@ if [[ "$GL_ROOT_PARALLEL_ENABLED" == "true" ]]; then
   RUNTIME_ARGS+=(--parallel-gl-roots)
 fi
 
+# Validate the complete invocation before starting a potentially expensive build.
+if [[ -z "${BIN+x}" ]]; then
+  CLAIM_TARGET_DIR="$CLAIM_REPO_ROOT/target"
+  BIN="$CLAIM_TARGET_DIR/release/ccm-reproduction"
+  # Cargo's incremental freshness check is quick and prevents an executable
+  # built from an older toolkit lockfile, without HP, or in an externally
+  # overridden CARGO_TARGET_DIR from being mistaken for the current binary.
+  CLAIM_FEATURES=hp
+  if [[ "$RESEARCH_CAPTURE_LEVEL" == "ultra" || "$ROOT_VALIDATION_LEVEL" == "certified" || "$SECTOR_GAP_CERTIFICATE" == "true" || " ${EXPLICIT_CAPTURE_ARGS[*]} " == *" --capture-sector-gap-certificate "* ]]; then
+    CLAIM_FEATURES=$CLAIM_FEATURES,root-certification
+  fi
+  if [[ "$GL_ROOT_PARALLEL_ENABLED" == "true" ]]; then
+    CLAIM_FEATURES=$CLAIM_FEATURES,experimental-gl-root-parallel
+  fi
+  cargo build --quiet --release --features "$CLAIM_FEATURES" --locked --bin ccm-reproduction \
+    --target-dir "$CLAIM_TARGET_DIR"
+elif [[ ! -x "$BIN" ]]; then
+  echo "Configured reproduction binary is not executable: $BIN" >&2
+  exit 1
+fi
+
 # A primary failure must not skip other independent cases. Each binary exit
 # status is retained, and the script itself fails after attempting its cases.
 CLAIM_FAILURES=0
@@ -373,7 +456,11 @@ claim_exit() {
     fi
   fi
   if ((CLAIM_FAILURES > 0)); then
-    echo "Claim script finished with $CLAIM_FAILURES failed invocation(s). See claim logs." >&2
+    if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
+      echo "Source admission failed for $CLAIM_FAILURES invocation(s); no claim computation was started." >&2
+    else
+      echo "Claim script finished with $CLAIM_FAILURES failed invocation(s). See claim logs." >&2
+    fi
     exit 1
   fi
   exit "$status"
@@ -384,6 +471,10 @@ run_research_claim() {
   local -a command=("$BIN" "${BENCHMARK_ARGS[@]}" "${RUNTIME_ARGS[@]}" "${JOURNAL_ARGS[@]}" "$@" "${RESEARCH_CAPTURE_ARGS[@]}")
   if [[ "${1:-}" == "run" ]]; then
     command+=("${ROOT_ACQUISITION_ARGS[@]}" "${PARITY_POLICY_ARGS[@]}" "${ROOT_VALIDATION_ARGS[@]}" "${ADVANCED_ROOT_ARGS[@]}" "${DISTANCE_ARGS[@]}" "${EXPLICIT_CAPTURE_ARGS[@]}")
+    # The sector-gap certificate needs parity-sector eigenpairs (gap and above).
+    if [[ "$SECTOR_GAP_CERTIFICATE" == "true" && "$RESEARCH_CAPTURE_LEVEL" =~ ^(gap|maximum|ultra)$           && " ${EXPLICIT_CAPTURE_ARGS[*]} " != *" --capture-sector-gap-certificate "* ]]; then
+      command+=(--capture-sector-gap-certificate)
+    fi
   elif [[ "${1:-}" == "check-evenness" ]]; then
     command+=("${ROOT_ACQUISITION_ARGS[@]}")
     if ((${#EXPLICIT_CAPTURE_ARGS[@]} > 0)); then
@@ -391,6 +482,14 @@ run_research_claim() {
       CLAIM_FAILURES=$((CLAIM_FAILURES + 1))
       return 0
     fi
+  fi
+  if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
+    # Use the exact claim arguments, but never invoke claim_inputs.py, target
+    # providers, journals, capture sessions or publication in admission mode.
+    if "${command[@]}" --preflight-only; then :
+    else CLAIM_FAILURES=$((CLAIM_FAILURES + 1))
+    fi
+    return 0
   fi
   local log_root=${CLAIM_LOG_ROOT:-$CLAIM_REPO_ROOT/.xcelerator-cache/claim-logs}
   mkdir -p "$log_root"

@@ -5,7 +5,7 @@
 # root accuracy even at λ²=100, while ε_N and GapLog approach the guarded
 # working-precision floor. Pair with claim2b_hp1000.sh.
 #
-# Designed to run independently on its own server alongside claim2b.
+# Can run independently on a separate machine.
 set -euo pipefail
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"

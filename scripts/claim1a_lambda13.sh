@@ -3,8 +3,7 @@
 #
 # Smallest of the three Claim 1 configs. Ultra retains the explicit root
 # window, both parity-sector spectra, and all applicable research measurements.
-# Designed to run independently on its own server so all three Claim 1
-# configs can run in parallel.
+# Can run independently on a separate machine.
 set -euo pipefail
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"

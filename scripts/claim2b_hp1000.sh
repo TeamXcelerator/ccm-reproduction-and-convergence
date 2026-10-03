@@ -5,7 +5,7 @@
 # GapLog while reproducing the same reported root-accuracy sweep. Pair with
 # claim2a_hp200.sh for the full comparison.
 #
-# Designed to run independently on its own server alongside claim2a.
+# Can run independently on a separate machine.
 set -euo pipefail
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"

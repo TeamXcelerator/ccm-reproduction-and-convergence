@@ -9,7 +9,8 @@ Ultra requests every applicable diagnostic. At this fixed configuration the
 policy excludes eight unsupported requests **before computation**. Each
 exclusion and its reason appear in the terminal, request journal,
 source-bound capture receipt, and final summary. They are not failed attempts
-or successful measurements. Ultra v6 adds 25 requests to the original five, for 30 requested groups and
+or successful measurements. The Toolkit v0.16.0 Ultra plan (capture-plan v8)
+adds 39 requests to the original five, for 44 requested groups and
 eight documented exclusions. Input absence and numerical resolution are
 reported separately; requesting a group does not establish that its result
 is resolved.
@@ -30,13 +31,12 @@ them does not establish an accurately isolated ground state or a target distance
 
 The policy applies only to Ultra at the exact configuration above. A different
 precision, basis size, cutoff, parity, or explicit prefix override is rejected
-before numerical work. All claims now use Ultra v6; these eight established exclusions remain
+before numerical work. All claims use the same Ultra plan; these eight established exclusions remain
 confined to the configuration above. The toolkit's general Ultra recipe is unchanged. Separate research
 commands can use the default `--capture-policy full`; they retain ordinary
 failure and numerical-review reporting and do not replace this reproduction.
 
-Unexpected failures in applicable diagnostics remain **INCOMPLETE**. The Vast
-launcher also returns a nonzero status for unexpected numerical-review results.
+Unexpected failures in applicable diagnostics remain **INCOMPLETE**.
 Exclusions never turn a failed requested diagnostic into a pass.
 
 Earlier unrestricted journals, receipts, and numerical artifacts remain intact.

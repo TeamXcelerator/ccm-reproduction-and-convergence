@@ -15,8 +15,8 @@
 # These are heavy HP runs (matrices 1261²–1941², Tau multi-GB).
 # Compatible fixtures may be resolved from the configured managed cache
 # layers, but the per-config eigenstate solve remains expensive. Budget hours
-# per configuration and substantially more disk for author publication than
-# for compute-only reuse. PREC is set per row inline.
+# per configuration; publication staging, if enabled, requires substantially
+# more disk than compute-only reuse. PREC is set per row inline.
 set -euo pipefail
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
