@@ -10,6 +10,28 @@ summary = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(summary)
 
 
+def root_point(n, digits, precision):
+    return {'lambda_squared': 13, 'n_modes': n, 'precision_digits': precision,
+            'roots': [{'reference_index': 1, 'status': 'converged', 'matching_digits': digits}]}
+
+
+def bracket_digits():
+    """First-zero digits shaped like tab:critical_brackets."""
+    values = {n: f'{45 + 0.5 * (n - 31):.6f}' for n in range(31, 39)}
+    values.update({39: '49.745584', 40: '50.293684'})
+    values.update({n: f'{52 + 0.5 * (n - 51):.6f}' for n in range(51, 55)})
+    values.update({55: '54.708183', 56: '55.011854'})
+    values.update({n: f'{55.1 + 0.1 * (n - 57):.6f}' for n in range(57, 61)})
+    return values
+
+
+def bracket_points(values=None, hp200=None):
+    values = values or bracket_digits()
+    hp200 = hp200 or values
+    return ([root_point(n, d, 200) for n, d in hp200.items()]
+            + [root_point(n, d, 1000) for n, d in values.items()])
+
+
 class ClaimSummaryTests(unittest.TestCase):
     def test_tiny_epsilon_keeps_sign_and_magnitude(self):
         point = {'lambda_squared': 1000, 'n_modes': 800, 'epsilon_N': '3.92215e-1264'}
@@ -47,6 +69,7 @@ class ClaimSummaryTests(unittest.TestCase):
     def test_series_needs_both_parities_and_precisions(self):
         self.assertTrue(all(not ok for _, ok in summary.assess_series('claim8_natural_eigenvector', [])))
         self.assertTrue(all(not ok for _, ok in summary.assess_series('claim7_convergence_n', [])))
+        self.assertTrue(all(not ok for _, ok in summary.assess_series('claim7b_critical_brackets', [])))
 
     def test_evenness_requires_positive_agreeing_states(self):
         point = {'lambda_squared': 13, 'n_modes': 120, 'evenness_deviation': '1e-900',
@@ -55,103 +78,94 @@ class ClaimSummaryTests(unittest.TestCase):
         point['natural_eigenvalue'] = '-3.48399e-59'
         self.assertFalse(all(ok for _, ok in summary.assess_point('claim4a_lambda13', point)))
 
-    def test_completed_capture_still_reports_numerical_nonacceptance(self):
-        record = {'measurements': {'distance_resolution': {'value': [{'refinements': [
-            {'tolerance_met': False, 'quadrature_rule': 'trapezoid', 'grid_variable': 'uniform_u', 'final_resolution': 128}
-        ]}]}, 'retained_reduction': {'value': {'checks_passed': False}}}}
-        review = summary.numerical_review(record)
-        self.assertEqual(len(review), 2)
-        self.assertIn('did not meet tolerance', review[0])
-
-    def test_ultra_v6_requires_new_diagnostics_on_natural_route(self):
-        names = summary.CLAIM8_NATURAL_REQUESTS | summary.ULTRA_V6_ADDITIONS
-        policy = {'policy':'claim8-natural', 'requested_diagnostics':sorted(names),
-                  'excluded_diagnostics':{name:'requires even primary' for name in
-                      ('prefix_checkpoint_121','prime_power_response','u_flow_response')}}
-        request = {'toolkit_release':'0.15.1', 'lambda_squared':13, 'n_modes':120,
-                   'precision_bits':3386,'parity_policy':'natural',
-                   'capture':{'level':'ultra','prefix_checkpoint_dimensions':[121]}, 'applicability':policy}
-        outcomes = {name:{'status':'completed'} for name in names}
-        record = {'resolved_plan':{'applicability':policy}, 'receipt':{'outcomes':outcomes}}
-        summary.validate_applicability({'applicability':policy}, request, record, outcomes)
-        outcomes.pop('transform_enclosure')
-        policy['requested_diagnostics'].remove('transform_enclosure')
-        with self.assertRaises(ValueError):
-            summary.validate_applicability({'applicability':policy}, request, record, outcomes)
-
-    def test_numerical_coverage_preserves_unresolved_rows_and_rejects_conflicts(self):
-        coverage = {'outcome':'partial_unresolved', 'resolved_rows':1, 'qualified_rows':2,
-                    'unresolved_rows':3, 'retained_rows':6, 'expected_rows':8}
-        record = {'numerical_coverage':{'transform_enclosure':coverage}}
-        self.assertEqual(summary.numerical_coverage([record])['transform_enclosure'], coverage)
-        with self.assertRaises(ValueError):
-            summary.numerical_coverage([record, {'numerical_coverage':{'transform_enclosure':{'outcome':'point_measurement'}}}])
-
     def test_wrong_or_missing_configuration_does_not_pass_a_claim(self):
         point = {'lambda_squared': 100, 'n_modes': 500}
         self.assertFalse(summary.assess_series('claim1a_lambda13', [point])[0][1])
 
-    def test_innovation_only_export_needs_validated_claim8_applicability(self):
-        checkpoint = {'dimension':121, 'status':'innovation_export_passed_eigenpair_not_supplied', 'eigenpair_source':None}
-        record = {'measurements':{'prefix_ladder':{'value':{'ladder':{'stopped':None}, 'checkpoints':[checkpoint]}}}}
-        policy = {'policy':'claim8-natural', 'requested_diagnostics':sorted(summary.CLAIM8_NATURAL_REQUESTS),
-                  'excluded_diagnostics':{name:'unsupported for this primary' for name in
-                      ('prefix_checkpoint_121', 'prime_power_response', 'u_flow_response')}}
-        request = {'lambda_squared':13, 'n_modes':120, 'precision_bits':3386, 'parity_policy':'natural',
-                   'capture':{'level':'ultra', 'prefix_checkpoint_dimensions':[121]}, 'applicability':policy}
-        outcomes = {name:{'status':'completed'} for name in summary.CLAIM8_NATURAL_REQUESTS}
-        record.update(resolved_plan={'applicability':policy}, receipt={'outcomes':outcomes})
-        validated = summary.validate_applicability({'applicability':policy}, request, record, outcomes)
-        self.assertEqual(summary.numerical_review(record, validated), [])
-        self.assertEqual(len(summary.numerical_review(record)), 1)
-        for status in ('unresolved_prefix', 'export_checks_failed'):
-            checkpoint['status'] = status
-            self.assertEqual(len(summary.numerical_review(record, validated)), 1)
-        checkpoint['status'] = 'innovation_export_passed_eigenpair_not_supplied'
-        checkpoint['eigenpair_source'] = {'unexpected':'state'}
-        self.assertEqual(len(summary.numerical_review(record, validated)), 1)
-        request['parity_policy'] = 'even-sector'
-        with self.assertRaises(ValueError):
-            summary.validate_applicability({'applicability':policy}, request, record, outcomes)
+    def test_critical_brackets_pass_on_the_published_crossings(self):
+        points = bracket_points()
+        point_checks = [ok for p in points for _, ok in summary.assess_point('claim7b_critical_brackets', p)]
+        self.assertTrue(point_checks and all(point_checks))
+        checks = summary.assess_series('claim7b_critical_brackets', points)
+        self.assertTrue(all(ok for _, ok in checks), [d for d, ok in checks if not ok])
+        # 2 precisions x (2 crossings + 4 printed values) + presence, both routes and agreement.
+        self.assertEqual(len(checks), 15)
 
-    def test_claim8_cannot_exclude_an_additional_failure(self):
-        policy = {'policy':'claim8-natural', 'requested_diagnostics':sorted(summary.CLAIM8_NATURAL_REQUESTS - {'retained_reduction'}),
-                  'excluded_diagnostics':{name:'excluded' for name in
-                      ('prefix_checkpoint_121', 'prime_power_response', 'u_flow_response', 'retained_reduction')}}
-        request = {'lambda_squared':13, 'n_modes':120, 'precision_bits':3386, 'parity_policy':'natural',
-                   'capture':{'level':'ultra', 'prefix_checkpoint_dimensions':[121]}, 'applicability':policy}
-        outcomes = {name:{'status':'completed'} for name in policy['requested_diagnostics']}
-        record = {'resolved_plan':{'applicability':policy}, 'receipt':{'outcomes':outcomes}}
-        with self.assertRaises(ValueError):
-            summary.validate_applicability({'applicability':policy}, request, record, outcomes)
+    def test_critical_brackets_fail_on_a_moved_crossing_value_or_disagreement(self):
+        moved = bracket_digits()
+        moved[39] = '50.000001'
+        self.assertFalse(all(ok for _, ok in summary.assess_series('claim7b_critical_brackets', bracket_points(moved))))
+        late = bracket_digits()
+        late[57] = '54.999999'
+        self.assertFalse(all(ok for _, ok in summary.assess_series('claim7b_critical_brackets', bracket_points(late))))
+        printed = bracket_digits()
+        printed[56] = '55.011855'
+        self.assertFalse(all(ok for _, ok in summary.assess_series('claim7b_critical_brackets', bracket_points(printed))))
+        drift = bracket_digits()
+        drift[33] = drift[33] + '0' * 143 + '1'  # 1e-150 above the HP-1000 value, exactly
+        self.assertFalse(all(ok for _, ok in summary.assess_series(
+            'claim7b_critical_brackets', bracket_points(hp200=drift))))
+        self.assertFalse(summary.assess_series('claim7b_critical_brackets', bracket_points()[1:])[0][1])
 
-    def test_exclusions_require_matching_predeclared_request_and_receipt(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            log = root/'claim.log'
-            point = {'lambda_squared':1000, 'n_modes':800, 'precision_digits':1000, 'roots':[
-                {'reference_index':1, 'status':'converged', 'matching_digits':'1019.0'},
-                {'reference_index':20, 'status':'converged', 'matching_digits':'1020.3'}]}
-            (root/'claim-measurements.json').write_text(json.dumps(point))
-            log.write_text(f'private claim journal: {root}\nClaim measurements: {root / "claim-measurements.json"}\n')
-            log.with_suffix('.status').write_text('binary_exit=0\nlog_exit=0\n')
-            policy = {'policy':'claim1c-hp1000', 'requested_diagnostics':['root_conditioning'],
-                      'excluded_diagnostics':{'u_flow_response':'requires an isolated state'}}
-            (root/'status.json').write_text(json.dumps({'capture_complete':True,'applicability':policy}))
-            (root/'request.json').write_text(json.dumps({'applicability':policy}))
-            record = {'resolved_plan':{'applicability':policy},'receipt':{'outcomes':{'root_conditioning':{'status':'completed'}}},'measurements':{}}
-            (root/'capture.json').write_text(json.dumps(record))
-            result = summary.summarize('claim1c_lambda1000', [log])
-            self.assertTrue(result['passed'])
-            self.assertTrue(result['captures'][0]['complete'])
-            self.assertEqual(result['captures'][0]['excluded_diagnostics'], policy['excluded_diagnostics'])
-            record['receipt']['outcomes']['root_conditioning'] = {'status':'failed','reason':'unexpected error'}
-            (root/'capture.json').write_text(json.dumps(record))
-            result = summary.summarize('claim1c_lambda1000', [log])
-            self.assertFalse(result['captures'][0]['complete'])
-            record['receipt']['outcomes']['u_flow_response'] = {'status':'failed','reason':'historical failure'}
-            (root/'capture.json').write_text(json.dumps(record))
-            self.assertFalse(summary.summarize('claim1c_lambda1000', [log])['passed'])
+    def test_critical_brackets_reject_other_configurations(self):
+        with self.assertRaises(ValueError):
+            summary.assess_point('claim7b_critical_brackets', root_point(45, '50.1', 200))
+
+    def write_evenness_run(self, root, gap=None, isolation=None, binary_exit='0'):
+        """A claim4a log, its status file, measurements and journal."""
+        measurements = root / 'evenness.json'
+        measurements.write_text(json.dumps({'command': 'check-evenness', 'lambda_squared': 13, 'n_modes': 120,
+                                            'precision_digits': 1000, 'evenness_deviation': '2.1e-966',
+                                            'natural_eigenvalue': '3.48398819933e-59',
+                                            'even_eigenvalue': '3.48398819933e-59'}))
+        journal = root / 'journal'
+        journal.mkdir()
+        (journal / 'request.json').write_text(json.dumps({'lambda_squared': 13, 'n_modes': 120}))
+        gap = gap or {'lambda_even': '3.48398819933e-59', 'lambda_difference': '3.05556499870e-55',
+                      'even_simplicity_margin': '1.31185424973e-51'}
+        (journal / 'capture.json').write_text(json.dumps({
+            'receipt': {'outcomes': {'evenness': {'status': 'completed'}, 'sector_analysis': {'status': 'completed'}}},
+            'measurements': {'sector_analysis': {'value': [gap]}}}))
+        if isolation is not False:
+            (journal / 'spectral-isolation.json').write_text(json.dumps(
+                {'selected_state_residual_to_gap_upper_bound': isolation or '1.13209418744e-968'}))
+        log = root / 'claim.log'
+        log.write_text(f'Claim measurements: {measurements}\n  private claim journal: {journal}\n')
+        log.with_suffix('.status').write_text(f'binary_exit={binary_exit}\nlog_exit=0\n')
+        return log
+
+    def test_evenness_claim_passes_with_the_published_separations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = self.write_evenness_run(Path(directory))
+            result = summary.summarize('claim4a_lambda13', [log])
+            self.assertTrue(result['passed'], [c for c in result['checks'] if not c['passed']])
+            described = ' '.join(c['description'] for c in result['checks'])
+            for text in ('o0-e0 rounds to 3.05556e-55', 'e1-e0 rounds to 1.31185e-51', 'residual / same-sector gap'):
+                self.assertIn(text, described)
+
+    def test_evenness_claim_fails_on_wrong_separation_large_ratio_or_missing_isolation(self):
+        cases = [
+            {'gap': {'lambda_even': '3.48398819933e-59', 'lambda_difference': '3.05566e-55',
+                     'even_simplicity_margin': '1.31185424973e-51'}},
+            {'gap': {'lambda_even': '3.48398819933e-59', 'lambda_difference': '3.05556499870e-55',
+                     'even_simplicity_margin': '-1.31185424973e-51'}},
+            {'isolation': '2.02e-533'},
+            {'isolation': False},
+            {'binary_exit': '1'},
+        ]
+        for case in cases:
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                log = self.write_evenness_run(Path(directory), **case)
+                self.assertFalse(summary.summarize('claim4a_lambda13', [log])['passed'])
+
+    def test_evenness_claim_requires_its_sector_analysis_to_complete(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = self.write_evenness_run(Path(directory))
+            capture = Path(directory) / 'journal' / 'capture.json'
+            record = json.loads(capture.read_text())
+            record['receipt']['outcomes']['sector_analysis'] = {'status': 'failed'}
+            capture.write_text(json.dumps(record))
+            self.assertFalse(summary.summarize('claim4a_lambda13', [log])['passed'])
 
 
 if __name__ == '__main__':

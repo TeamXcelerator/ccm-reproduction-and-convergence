@@ -2,11 +2,11 @@
 
 These controls prove positive definiteness and a simple even ground state for
 the finite CCM matrices at **C=13, N=10 and N=120**. They use interval assembly
-from the pinned Toolkit v0.15.0, then two independent Python/Arb inertia
+from the exporter's own pin of Toolkit v0.15.0, then two independent Python/Arb inertia
 implementations. No retained source payload or reference zero is required.
 
 On Linux or WSL, install the toolkit's [Arb build prerequisites](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.15.0/README.md)
-and `python-flint`, then run from the Paper 1 repository root:
+and `python-flint`, then run from the repository root:
 
 ```bash
 mkdir -p target/finite-certification

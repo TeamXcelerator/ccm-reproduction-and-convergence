@@ -2,8 +2,8 @@
 
 The [aggregate record](research-evidence.json) records the configurations,
 source digests, numerical results, and proof scopes used in the revised paper.
-The production harness remains pinned to Toolkit v0.15.0 at
-`2bea90ec7cb23d4d615448c293c8af0f94e14119`.
+The v2.5 campaign used Toolkit v0.15.0 at
+`2bea90ec7cb23d4d615448c293c8af0f94e14119`; the current release pins Toolkit v0.16.0.
 Here C denotes the cutoff parameter lambda-squared, and the full matrix has
 dimension 2N+1. See the [manuscript](../paper.pdf) for definitions and proofs.
 
@@ -101,23 +101,13 @@ brackets and must not be substituted into this certificate.
 
 ## Reproduce the Critical-N controls
 
-These controls test first-root convergence, so the small `claim` capture recipe
-is sufficient. They do not change the individual claim scripts' Ultra default.
-Build on Linux/WSL and use an isolated cache with publication disabled:
+These controls test first-root convergence. `scripts/claim7b_critical_brackets.sh`
+runs all forty configurations (every N in 31-40 and 51-60 at HP-200 and HP-1000)
+and checks the crossings, the table values and the agreement between the two
+precisions:
 
 ```bash
-cargo build --release --features hp --locked
-export XC_CACHE_ROOT="$PWD/target/critical-n-cache"
-export XC_CACHE_REMOTE=none XC_PUBLISH_TARGET=none XC_PUBLISH_EXECUTE=false
-for precision in 200 1000; do
-  for n in $(seq 31 40) $(seq 51 60); do
-    target/release/ccm-reproduction run \
-      --lambda-sq 13 --n-modes "$n" --precision-digits "$precision" \
-      --top 1 --display-digits 80 --research-capture claim \
-      --capture-output "$PWD/target/critical-n-journals/n${n}-p${precision}" \
-      --require-complete-capture || exit 1
-  done
-done
+bash scripts/claim7b_critical_brackets.sh
 ```
 
 The JSON measurements and status files are the assessment inputs. The selected

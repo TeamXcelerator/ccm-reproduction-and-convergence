@@ -1,45 +1,31 @@
 #!/usr/bin/env bash
-# Claim 2b: λ-sweep at HP-1000, N=120 (5 configs).
+# Claim 2b: λ-sweep at HP-1000, N=120 (5 configurations).
 #
-# Second half of the Claim 2 comparison: supplies ample headroom for ε_N and
-# GapLog while reproducing the same reported root-accuracy sweep. Pair with
-# claim2a_hp200.sh for the full comparison.
-#
-# Designed to run independently on its own server alongside claim2a.
+# Second half of the Claim 2 comparison: reproduces the same reported
+# root-accuracy sweep with ample precision headroom. Pair with claim2a_hp200.sh.
+# Can run independently on a separate machine.
+
 set -euo pipefail
-
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
-N=${N:-120}
-PREC=${PREC:-1000}
-DISPLAY_DIGITS=${DISPLAY_DIGITS:-50}
+claim_working_budget 16
 
-# FORCE_EVEN=false is the legacy alias for the unrestricted natural policy.
-EVEN_FLAG=""
-if [[ "${FORCE_EVEN:-true}" == "false" ]]; then
-  EVEN_FLAG="--no-force-even"
-  echo "  *** parity policy: natural full-space solve ***"
-fi
-
-echo "=== Claim 2b: λ-sweep at N=${N}, HP-${PREC} ==="
+echo "=== Claim 2b: λ-sweep at N=120, HP-1000 ==="
 echo
-
-# lambda^2 values
 CONFIGS=(
-  "13"
-  "20"
-  "30"
-  "50"
-  "100"
+  "13  120  1000"
+  "20  120  1000"
+  "30  120  1000"
+  "50  120  1000"
+  "100 120  1000"
 )
-
 for cfg in "${CONFIGS[@]}"; do
-  read -r LAMBDA_SQ <<< "$cfg"
+  read -r LAMBDA_SQ N PREC <<< "$cfg"
   echo "--- λ²=${LAMBDA_SQ}, N=${N}, HP-${PREC} ---"
-  run_research_claim run \
+  run_claim run \
     --lambda-sq "$LAMBDA_SQ" \
     --n-modes "$N" \
     --precision-digits "$PREC" \
-    --display-digits "$DISPLAY_DIGITS" \
-    --top 1 $EVEN_FLAG
+    --display-digits 50 \
+    --top 1
   echo
 done

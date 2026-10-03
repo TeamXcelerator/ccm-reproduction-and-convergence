@@ -23,8 +23,7 @@ paper.blg
 .DS_Store
 Thumbs.db
 
-# Local toolkit practice-run state and publication journals. Credentials are
-# held by Git Credential Manager and must never be written below this tree.
+# Local toolkit run state and publication journals.
 .xcelerator-local/
 
 # Local cache-output validation artifacts and comparison reports.

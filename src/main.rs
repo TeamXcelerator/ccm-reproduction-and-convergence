@@ -30,6 +30,9 @@ use benchmark::{BenchmarkComparisonMode, BenchmarkOptions, BenchmarkRecorder};
     version
 )]
 struct Cli {
+    /// Validate primary source admission without acquiring inputs or artifacts.
+    #[arg(long, global = true, hide = true)]
+    preflight_only: bool,
     #[command(flatten)]
     capture_journal: capture::CaptureJournalArgs,
     /// Recompute claim artifacts and compare them with the current reference cache.
@@ -106,6 +109,16 @@ enum RootValidation {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum GroundIndex {
+    /// Admit the selected state only when the ground-index proof concludes.
+    Require,
+    /// Retain the selected state and record the proof's outcome. Reserved for
+    /// the frozen Claim 1c configuration, whose lowest stored sector
+    /// eigenvalues lie within the HP-1000 working-precision floor.
+    RecordOutcome,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum RootAcquisitionMode {
     /// Refine roots from the toolkit-owned, content-bound reference-zero table.
     Seeded,
@@ -167,6 +180,20 @@ impl ResearchCapture {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    #[cfg(feature = "hp")]
+    #[command(hide = true)]
+    ReplayFinite {
+        #[arg(long)]
+        journal: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(
+            long,
+            value_delimiter = ',',
+            default_value = "constrained_l1_fit,directional_error_bound,finite_tail_bound,dimension_precision_budget,continuous_l1_bound,spectral_cluster_bound"
+        )]
+        diagnostics: Vec<String>,
+    },
     /// Run the CCM construction at given (lambda^2, N) and report eigenvalues
     /// vs Riemann zeros.
     Run {
@@ -276,9 +303,14 @@ enum Command {
         /// Defaults to display_digits and is independent of HP working precision.
         #[arg(long)]
         root_enclosure_digits: Option<u32>,
+        /// Ground-index admission of the primary state. `record-outcome` is
+        /// accepted only for lambda^2=1000, N=800, HP-1000 on the even-sector
+        /// route (Claim 1c).
+        #[arg(long, value_enum, default_value_t = GroundIndex::Require)]
+        ground_index: GroundIndex,
     },
     /// Measure the natural evenness of the smallest Weil eigenvector
-    /// (Claim 4: symmetry breakdown at large lambda).
+    /// (Claim 4: natural evenness of the ground state).
     CheckEvenness {
         /// lambda^2 value (e.g. 13, 100, 1000, 1200).
         #[arg(long, default_value_t = 13_u64)]
@@ -364,6 +396,28 @@ fn distance_capture_options(
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    if cli.preflight_only {
+        if !matches!(
+            &cli.command,
+            Command::Run { .. } | Command::CheckEvenness { .. }
+        ) {
+            anyhow::bail!("preflight-only supports run and check-evenness claims");
+        }
+        // Bypass runtime sessions, benchmark output, target preparation and
+        // output-validation finalization. The ordinary command parser and
+        // source configuration below remain shared with the real invocation.
+        let mut benchmark = BenchmarkRecorder::new(
+            BenchmarkOptions {
+                report_path: None,
+                baseline_path: None,
+                label: None,
+                parallel_gl_roots: false,
+                comparison_mode: BenchmarkComparisonMode::default(),
+            },
+            String::new(),
+        )?;
+        return run(cli, &mut benchmark);
+    }
     let process_started = std::time::Instant::now();
     let parallel_gl_roots = resolve_parallel_gl_roots(cli.parallel_gl_roots)?;
     let benchmark_options = BenchmarkOptions {
@@ -460,6 +514,12 @@ fn run_with_runtime_policy(
 fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
     print_runtime_parallelism();
     match cli.command {
+        #[cfg(feature = "hp")]
+        Command::ReplayFinite {
+            journal,
+            output,
+            diagnostics,
+        } => capture::replay_finite(&journal, &output, &diagnostics)?,
         Command::Run {
             lambda_sq,
             n_modes,
@@ -487,6 +547,7 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
             allow_root_oversubscription,
             root_validation,
             root_enclosure_digits,
+            ground_index,
         } => {
             if lambda_sq < 2 {
                 anyhow::bail!("lambda_sq must be >= 2 (got {lambda_sq})");
@@ -621,6 +682,9 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
             );
 
             if f64_only {
+                if cli.preflight_only {
+                    anyhow::bail!("preflight-only requires the HP tier");
+                }
                 if first_root_index != 1 {
                     anyhow::bail!("indexed root windows require the HP independent-discovery tier");
                 }
@@ -669,6 +733,22 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                         "  parity policy: {}",
                         cfg.effective_parity_policy().as_str()
                     );
+                    cfg.ground_index_policy =
+                        capture::ground_index_policy(cli.capture_journal.capture_policy);
+                    if ground_index == GroundIndex::RecordOutcome {
+                        if (lambda_sq, n_modes) != (1000, 800)
+                            || cfg.precision_bits != 3386
+                            || cfg.effective_parity_policy() != ccm::hp::CcmParityPolicy::EvenSector
+                        {
+                            anyhow::bail!(
+                                "--ground-index record-outcome is reserved for lambda^2=1000, N=800, HP-1000 (3386 bits) on the even-sector route"
+                            );
+                        }
+                        cfg.ground_index_policy = ccm::hp::CcmGroundIndexPolicy::RecordOutcome;
+                    }
+                    if cfg.ground_index_policy == ccm::hp::CcmGroundIndexPolicy::RecordOutcome {
+                        println!("  ground-index admission: record outcome (claim1c)");
+                    }
 
                     // Capture level never changes root acquisition semantics or
                     // expands an ordinal claim into a height window. A run is
@@ -786,6 +866,26 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                         capture_u_flow_response: capture_u_flow_response
                             || research_capture.includes_ultra(),
                     };
+                    if cli.preflight_only {
+                        capture::validate_configuration(
+                            &params,
+                            &cfg,
+                            research_capture,
+                            research_sector_eigenpairs,
+                            &cli.capture_journal,
+                        )?;
+                        cfg.validate_source_admission(&params)?;
+                        println!(
+                            "SOURCE_ADMISSION {}",
+                            serde_json::json!({
+                                "status":"admitted", "lambda_squared":lambda_sq,
+                                "n_modes":n_modes,"precision_bits":cfg.precision_bits,
+                                "parity":cfg.effective_parity_policy().as_str(),
+                                "scope":"primary source admission; actual input ranges, solver convergence and optional diagnostics remain runtime checks"
+                            })
+                        );
+                        return Ok(());
+                    }
                     let captured_run = capture::execute(
                         &params,
                         &cfg,
@@ -793,6 +893,7 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                         research_sector_eigenpairs,
                         &cli.capture_journal,
                         &capture_options,
+                        false,
                         |cache| match root_acquisition {
                             RootAcquisitionMode::Independent => {
                                 ccm::hp::capture_run::RetainedCcmRun::independent(
@@ -819,11 +920,29 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                     // ε_N is displayed in HP — at λ² >= 100 it routinely
                     // underflows f64 (10^-308). All downstream display stays
                     // in HP via xc_numerics::fmt helpers.
+                    // A state admitted without an established ground index is
+                    // the selected stored state, not a proven smallest one.
+                    let eigenvalue_label = match &hp_result.ground_index_admission {
+                        Some(admission) if !admission.established => {
+                            "selected stored-state Weil eigenvalue"
+                        }
+                        _ => "smallest Weil eigenvalue",
+                    };
                     println!(
-                        "  built and solved in {:.3}s, smallest Weil eigenvalue epsilon_N = {}",
+                        "  built and solved in {:.3}s, {eigenvalue_label} epsilon_N = {}",
                         hp_result.elapsed_seconds,
                         xc_numerics::fmt::display_hp(&hp_result.weil_min_eigenvalue, 6)
                     );
+                    if let Some(admission) = &hp_result.ground_index_admission {
+                        if admission.established {
+                            println!("  ground index: established");
+                        } else {
+                            println!(
+                                "  ground index: not established ({})",
+                                admission.reason.as_deref().unwrap_or("reason not recorded")
+                            );
+                        }
+                    }
 
                     if hp_result.eigenvalues_pos.is_empty() && !allow_root_oversubscription {
                         anyhow::bail!("CCM root acquisition returned no roots");
@@ -1007,18 +1126,22 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                         }
                     }
 
-                    capture::write_measurements(
-                        &captured_run.directory,
-                        &serde_json::json!({
-                            "schema_version":1,"command":"run","lambda_squared":lambda_sq,"n_modes":n_modes,
-                            "precision_digits":precision_digits,"parity_policy":cfg.effective_parity_policy().as_str(),
-                            "root_precision_policy":cfg.root_precision_policy,
-                            "root_maximum_extra_precision_bits":cfg.root_maximum_extra_precision_bits,
-                            "root_verification_precision_bits":cfg.root_verification_precision_bits,
-                            "root_acquisition":format!("{root_acquisition:?}"),"epsilon_N":hp_result.weil_min_eigenvalue.to_string(),
-                            "roots":measurements,
-                        }),
-                    )?;
+                    let mut run_measurements = serde_json::json!({
+                        "schema_version":1,"command":"run","lambda_squared":lambda_sq,"n_modes":n_modes,
+                        "precision_digits":precision_digits,"parity_policy":cfg.effective_parity_policy().as_str(),
+                        "root_precision_policy":cfg.root_precision_policy,
+                        "root_maximum_extra_precision_bits":cfg.root_maximum_extra_precision_bits,
+                        "root_verification_precision_bits":cfg.root_verification_precision_bits,
+                        "root_acquisition":format!("{root_acquisition:?}"),"epsilon_N":hp_result.weil_min_eigenvalue.to_string(),
+                        "roots":measurements,
+                    });
+                    // Only under the record-outcome policy, so default reports
+                    // are unchanged.
+                    if let Some(admission) = &hp_result.ground_index_admission {
+                        run_measurements["ground_index_admission"] =
+                            serde_json::to_value(admission)?;
+                    }
+                    capture::write_measurements(&captured_run.directory, &run_measurements)?;
                     let claim_elapsed = run_started.elapsed();
                     benchmark.record_duration("claim_and_research_capture", claim_elapsed);
                     println!(
@@ -1085,6 +1208,29 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                 validate_research_capture(n_modes, research_capture, research_sector_eigenpairs)?;
                 let params = CcmParams::from_lambda_sq_integer(lambda_sq, n_modes);
                 let cfg = ccm::hp::HighPrecConfig::for_decimal_digits(precision_digits);
+                if cli.preflight_only {
+                    capture::validate_configuration(
+                        &params,
+                        &cfg,
+                        research_capture,
+                        research_sector_eigenpairs,
+                        &cli.capture_journal,
+                    )?;
+                    let mut natural = cfg.clone();
+                    natural.set_parity_policy(ccm::hp::CcmParityPolicy::Natural);
+                    natural.validate_source_admission(&params)?;
+                    cfg.validate_source_admission(&params)?;
+                    println!(
+                        "SOURCE_ADMISSION {}",
+                        serde_json::json!({
+                            "status":"admitted", "lambda_squared":lambda_sq,
+                            "n_modes":n_modes,"precision_bits":cfg.precision_bits,
+                            "parity":"natural_and_even_sector",
+                            "scope":"primary source admission; actual input ranges, solver convergence and optional diagnostics remain runtime checks"
+                        })
+                    );
+                    return Ok(());
+                }
                 println!(
                     "Measuring evenness: lambda^2={}, N={}, precision={} digits",
                     lambda_sq, n_modes, precision_digits
@@ -1210,21 +1356,46 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                 let result = ccm::hp::analyze_sector_gap(&params, &cfg, eigenpairs)?;
                 benchmark.record_duration("toolkit_primary", toolkit_started.elapsed());
                 let show = |value: &rug::Float| xc_numerics::fmt::display_hp(value, display_digits);
+                // A conclusion the stored source does not resolve at this
+                // precision is shown as unresolved; the reasons follow.
+                let show_resolved = |value: &Option<rug::Float>| {
+                    value
+                        .as_ref()
+                        .map_or_else(|| "unresolved at this precision".to_owned(), show)
+                };
                 println!("  lambda_even             = {}", show(&result.lambda_even));
                 println!("  lambda_odd              = {}", show(&result.lambda_odd));
-                println!("  D_even                  = {}", show(&result.d_even));
-                println!("  D_odd                   = {}", show(&result.d_odd));
-                println!("  GapLog (D_even-D_odd)   = {}", show(&result.gap_log));
+                println!(
+                    "  D_even                  = {}",
+                    show_resolved(&result.d_even)
+                );
+                println!(
+                    "  D_odd                   = {}",
+                    show_resolved(&result.d_odd)
+                );
+                println!(
+                    "  GapLog (D_even-D_odd)   = {}",
+                    show_resolved(&result.gap_log)
+                );
                 println!(
                     "  lambda_odd-lambda_even  = {}",
                     show(&result.lambda_difference)
                 );
                 println!(
                     "  difference depth        = {}",
-                    show(&result.difference_depth)
+                    show_resolved(&result.difference_depth)
                 );
-                println!("  ordering                = {}", result.ordering);
+                println!(
+                    "  ordering                = {}",
+                    result.ordering.map_or_else(
+                        || "unresolved at this precision".to_owned(),
+                        |o| o.to_string()
+                    )
+                );
                 println!("  even ground state simple = {}", result.even_simple);
+                for reason in &result.unresolved {
+                    println!("  unresolved: {reason}");
+                }
                 println!(
                     "  even simplicity margin  = {}",
                     show(&result.even_simplicity_margin)
@@ -1750,6 +1921,10 @@ fn capture_supplemental_research_artifacts(
         params.n_modes + 1,
     )?
     .primary_options()?;
+    // The evenness claims report the even-state spectral isolation with the
+    // parity-sector separations; it needs the even-sector route.
+    let even_state_isolation = level != ResearchCapture::Claim
+        && cfg.effective_parity_policy() == ccm::hp::CcmParityPolicy::EvenSector;
     capture::execute(
         params,
         &cfg,
@@ -1757,6 +1932,7 @@ fn capture_supplemental_research_artifacts(
         count,
         journal,
         &options,
+        even_state_isolation,
         |cache| match acquisition {
             RootAcquisitionMode::Independent => ccm::hp::capture_run::RetainedCcmRun::independent(
                 params,

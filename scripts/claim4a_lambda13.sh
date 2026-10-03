@@ -1,27 +1,20 @@
 #!/usr/bin/env bash
 # Claim 4a: λ²=13, N=120 at HP-1000 (essentially-even reference).
 #
-# First of the four Claim 4 evenness configs. At λ²=13 the smallest
-# eigenvalue (ε_N ~10⁻⁵⁹) is far above the HP-1000 floor, so the
-# natural smallest eigenvector is unambiguously even (latest deviation
-# 2.126×10⁻⁹⁶⁶; natural and even-sector eigenvalues agree to about
-# 962 relative decimal digits) — the small-λ
-# reference point for the evenness study. Supplemental roots, when requested,
-# use the same acquisition policy as the claim invocation.
-#
-# Designed to run independently on its own server so all four Claim 4
-# configs can run in parallel.
+# First of the four Claim 4 evenness configurations. Measures the natural
+# smallest eigenvector's evenness and both eigenvalues, the low parity-sector
+# separations o0-e0 and e1-e0, and the even-state residual over its same-sector
+# gap (tab:evenness, tab:sector_separations).
+# Can run independently on a separate machine.
+
 set -euo pipefail
-
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
-PREC=${PREC:-1000}
-DISPLAY_DIGITS=${DISPLAY_DIGITS:-12}
+claim_working_budget 16
 
-echo "=== Claim 4a: λ²=13, N=120 at HP-${PREC} (essentially-even reference) ==="
+echo "=== Claim 4a: λ²=13, N=120 at HP-1000 (essentially-even reference) ==="
 echo
-
-run_research_claim check-evenness \
+run_claim check-evenness \
   --lambda-sq 13 \
   --n-modes 120 \
-  --precision-digits "$PREC" \
-  --display-digits "$DISPLAY_DIGITS"
+  --precision-digits 1000 \
+  --display-digits 12
