@@ -2,16 +2,62 @@
 
 ## Software pin
 
-Release v2.6 pins Xcelerator Toolkit v0.16.0. [Cargo.toml](../Cargo.toml) names
-the `v0.16.0` tag, and [Cargo.lock](../Cargo.lock) binds the exact commit
-`c7fd3b7f12468bc8d989aa3662be206a591a5e5c`. Every claim-run journal preserves
-the lockfile of the build that produced it.
+Release v2.6 pins Xcelerator Toolkit 0.17.0 at
+`e0646b97006ad6338ea60fd3134791ae1d8288bd` using exact Git revisions in [Cargo.toml](../Cargo.toml)
+and [Cargo.lock](../Cargo.lock). Every run journal preserves the build lockfile.
+The table distinguishes the initial v2.6 pin from this amended integration.
 
-Toolkit 0.16.0 starts a clean artifact fabric: artifacts produced by earlier
-toolkit releases are not reused and are recomputed under 0.16.0 identities.
-See the toolkit's
-[numerical compatibility guidance](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.16.0/docs/NUMERICAL_COMPATIBILITY.md#v0160-clean-slate)
-and [release notes](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.16.0/docs/RELEASE_NOTES.md).
+Compatible artifacts remain reusable. See the Toolkit's numerical compatibility
+and release notes at the pinned source revision for identity changes and scope.
+Arb-enabled builds require a single system GMP/MPFR stack shared with FLINT;
+ordinary HP builds retain the bundled-library option. Quadrature generation
+remains an explicit Toolkit policy and is not changed by claim capture level.
+
+## v2.6 integration update
+
+This amended v2.6 integration enables the Toolkit's default CUDA discovery for
+HP primary, evenness, and bordered-response dense LU. Panels follow
+`min(512, max(1, dimension / 4))`, and trailing updates round
+`C - exact(L * U)` once. CPU and CUDA execution share the arithmetic identity
+`dense_lu_partial_pivot_dimension_panel512_exact_schur_v1`. These updates can
+change pivots and serialized numerical results relative to the paper's v2.5
+software; the published paper and historical measurements are unchanged.
+Factorization, eigenpair, and response identities bind the current arithmetic
+before cache lookup. Compatible source matrices and quadrature remain reusable.
+
+`XC_DENSE_BACKEND` selects `auto` (default), `cpu`, or forced `cuda`.
+`XC_CUDA_DEVICES=0,1` considers those CUDA-visible ordinals, relative to
+`CUDA_VISIBLE_DEVICES`. Device discovery also reports physical PCI bus IDs.
+Each admitted device owns its handle and buffers, receives one reserved
+prime-residue product, and then shares a dynamic queue. Per-device
+`successful_moduli` counts report actual completed work; successful counts sum
+to the product's modulus count. Peer access and NVLink are not required.
+Admission is bounded by the worker allowance, prime count, aggregate workspace,
+and free VRAM after the configured headroom. Two visible devices still require
+two workers and enough workspace. `XC_CUDA_HEADROOM_MIB` controls the reserve,
+with a minimum of 10% of total device memory. `XC_CUDA_TIMINGS=1` reports the
+planning, conversion, product, and reconstruction times.
+
+Auto can select CPU before dispatch. Once a GPU product is selected, allocation,
+transfer, self-test, kernel, cleanup, and device-restoration errors fail the
+operation. CUDA runtime and cuBLAS 12/13 are loaded at runtime; they are not
+required to build the executable. Local hardware qualification used one RTX
+5090 with CUDA runtime 13.2. Physical two-GPU execution and full claim performance
+remain for server validation; this integration does not establish a speedup.
+
+## Artifact-preserving throughput controls
+
+The throughput integration preserves the fixed claim grids, source precisions,
+mathematical gates, and compatible artifact identities. Operational preparation
+reuse and publication worker controls do not establish a new numerical
+certificate or change an unresolved outcome into a resolved one.
+`XC_PUBLICATION_FAMILY_WORKERS` defaults to four destination families and
+accepts an explicit positive integer. The claim scripts preserve this control;
+the Toolkit validates it before publication workspace or remote I/O.
+The scripts' explicit Ultra route also preserves external preparation-cache
+controls, while ordinary claim routes continue to clear research inputs.
+These are execution controls; bounded regression results do not establish a
+claim-scale speedup.
 
 ## The paper's computations
 
@@ -64,4 +110,5 @@ synthetic test fixtures are not substitutes for that input.
 | v2.4 | v0.14.2 |
 | v2.5, paper campaign | 0.15.0 at `2bea90ec7cb23d4d615448c293c8af0f94e14119` |
 | v2.5, tag `v2.5` | v0.15.1 at `ec0f09cb1a0a133dfb62c7bceceff2c1669a429c` |
-| v2.6 | v0.16.0 at `c7fd3b7f12468bc8d989aa3662be206a591a5e5c` |
+| v2.6 (initial pin) | v0.16.0 at `c7fd3b7f12468bc8d989aa3662be206a591a5e5c` |
+| v2.6 (amended integration) | v0.17.0 at `e0646b97006ad6338ea60fd3134791ae1d8288bd` |

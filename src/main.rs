@@ -181,6 +181,32 @@ impl ResearchCapture {
 #[derive(Debug, Subcommand)]
 enum Command {
     #[cfg(feature = "hp")]
+    /// Finalize an explicit retained publication queue without computation.
+    PublishStaged {
+        #[arg(long)]
+        staging_root: PathBuf,
+    },
+    #[cfg(feature = "hp")]
+    /// Recover supplemental captures from exact retained sources; never solve a primary.
+    RecoverCapture {
+        #[arg(long)]
+        journal: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        /// Relocated target with exactly the originally recorded bytes.
+        #[arg(long)]
+        target_spec_file: Option<PathBuf>,
+        /// Defaults to every non-completed diagnostic in the original receipt.
+        #[arg(long, value_delimiter = ',')]
+        diagnostics: Vec<String>,
+        /// Reuse authenticated completed preparation and supplemental diagnostics.
+        #[arg(long, conflicts_with = "publish_only")]
+        resume: bool,
+        /// Retry only publication of retained staging; never execute preparation or diagnostics.
+        #[arg(long, conflicts_with = "resume")]
+        publish_only: bool,
+    },
+    #[cfg(feature = "hp")]
     #[command(hide = true)]
     ReplayFinite {
         #[arg(long)]
@@ -394,8 +420,22 @@ fn distance_capture_options(
     })
 }
 
+fn validate_publication_mode(cli: &Cli) -> Result<()> {
+    if cli.capture_journal.defer_publication {
+        anyhow::ensure!(
+            cfg!(feature = "hp")
+                && !cli.preflight_only
+                && matches!(&cli.command,
+                    Command::Run { f64_only: false, .. } | Command::CheckEvenness { .. }),
+            "--defer-publication requires an HP run or check-evenness capture; it cannot be used with preflight, f64, or other commands"
+        );
+    }
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    validate_publication_mode(&cli)?;
     if cli.preflight_only {
         if !matches!(
             &cli.command,
@@ -512,8 +552,29 @@ fn run_with_runtime_policy(
 }
 
 fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
+    validate_publication_mode(&cli)?;
     print_runtime_parallelism();
     match cli.command {
+        #[cfg(feature = "hp")]
+        Command::PublishStaged { staging_root } => capture::publish_staged(&staging_root)?,
+        #[cfg(feature = "hp")]
+        Command::RecoverCapture {
+            journal,
+            output,
+            target_spec_file,
+            diagnostics,
+            resume,
+            publish_only,
+        } => {
+            capture::recover_capture_with_mode(
+                &journal,
+                &output,
+                target_spec_file.as_deref(),
+                &diagnostics,
+                resume,
+                publish_only,
+            )?;
+        }
         #[cfg(feature = "hp")]
         Command::ReplayFinite {
             journal,
@@ -1238,7 +1299,7 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
 
                 let claim_started = std::time::Instant::now();
                 let toolkit_started = std::time::Instant::now();
-                let result = ccm::hp::measure_evenness(&params, &cfg)?;
+                let result = capture::measure_evenness(&params, &cfg, &cli.capture_journal)?;
                 benchmark.record_duration("toolkit_primary", toolkit_started.elapsed());
                 capture::write_evenness(
                     &cli.capture_journal,

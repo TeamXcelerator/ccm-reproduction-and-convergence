@@ -7,22 +7,34 @@ at arbitrary precision.
 **Author:** Ronnie Andrews, Jr.  
 **ORCID:** [0009-0003-9724-3104](https://orcid.org/0009-0003-9724-3104)  
 **Contact:** randrewsmath@gmail.com  
-**Release:** v2.6 (Xcelerator Toolkit v0.16.0)
+**Release:** v2.6 (Xcelerator Toolkit v0.17.0)
 
-The paper's computations were produced with release v2.5 (tag `v2.5`) and
-Toolkit 0.15.0; v2.6 updates the software to Toolkit v0.16.0.
-Each claim script runs its fixed published configurations, computes exactly the
-measurements that the paper's checks use, and ends with a **PASS** or **FAIL**
-summary of those checks.
-The toolkit release tag is pinned in [Cargo.toml](Cargo.toml) and its exact
-commit in [Cargo.lock](Cargo.lock); every run journal preserves the build's lockfile.
+The paper's computations were produced with release v2.5 and Toolkit 0.15.0.
+The current software integration pins Toolkit commit `e0646b97006ad6338ea60fd3134791ae1d8288bd` in
+[Cargo.toml](Cargo.toml) and [Cargo.lock](Cargo.lock). Every run journal preserves
+the build's lockfile. Cite the exact commit to distinguish amended software releases.
+Each claim script keeps its fixed published numerical configuration and reports
+**PASS** or **FAIL** for its documented checks.
 
-The pinned toolkit reuses compatible cached artifacts and computes locally
-when a required artifact is unavailable. Toolkit 0.16.0 does not reuse
-artifacts produced by earlier toolkit releases; it recomputes them under
-0.16.0 identities without deleting old data (see its
-[numerical compatibility guidance](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.16.0/docs/NUMERICAL_COMPATIBILITY.md#v0160-clean-slate)).
+Compatible retained artifacts are reused; unavailable or semantically changed
+artifacts are computed under their appropriate identities. No cache reset is
+required. Ordinary claim runs keep the existing Gauss-Legendre generator;
+enabling root certification does not switch quadrature generators.
+
+HP runs automatically use admitted CUDA devices for exact integer Schur products
+in dense LU; CPU execution uses the same arithmetic. Each admitted GPU receives
+work from the prime-residue scheduler, with completed work counts reported per
+device. Panel operations, conversion, and reconstruction still use the CPU.
+See [the v2.6 integration notes](docs/VALIDATION.md#v26-integration-update) for
+device controls, cache compatibility, and the scope of hardware validation.
+
 See [Validation](docs/VALIDATION.md) for the checks on this build.
+
+Incomplete private research preparation can be repaired with
+[supplemental retained-source recovery](docs/CAPTURE_RECOVERY.md). Recovery
+authenticates existing parents and the original target, fills missing
+acquisitions and refreshes measurements affected by new inputs in a new
+journal, and never repeats the primary solve or root calculation.
 
 ## Read the paper and evidence
 
@@ -87,15 +99,16 @@ Memory is the working budget each script declares for the toolkit's primary
 admission (Tau and source assembly and the ground-index proof). It covers the
 conservative admission estimate of every configuration in the claim, so run a
 claim on a machine with at least that much memory available; actual peaks are
-lower. Inherited `XC_RESEARCH_*` and `XC_TARGET_*` settings are cleared and do not
-affect a claim.
+lower. By default, inherited `XC_RESEARCH_*` and `XC_TARGET_*` settings are
+cleared and do not affect a claim. Explicit Ultra capture can need a larger
+working budget; set `XC_CLAIM_MEMORY_GIB` to the available budget for that run.
 
 Scripts that test a sweep or a paired comparison run those configurations
 together because the comparison itself is the claim. A failed configuration
 does not skip later independent configurations; the script returns a nonzero
 status after its summary if any execution or check failed. The configurations
-are fixed; the scripts accept only the publication, journal, cache-verification,
-preflight, and benchmark controls shown by `--help`.
+are fixed; `--help` lists the publication, journal, cache-verification,
+preflight, benchmark, and explicit Ultra controls.
 
 The evenness claims (4a-4d) measure the natural smallest eigenvector's evenness
 and both eigenvalues, the low even and odd parity-sector eigenvalues (giving
@@ -171,7 +184,7 @@ identities. Changed identities are recomputed under new identities; old objects
 are preserved as historical evidence. Artifacts produced by toolkit releases
 before 0.16.0 are not reused. A changed identity is not evidence of corruption, and old
 certificates are not silently promoted to the current semantics. See the toolkit's
-[numerical compatibility guidance](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.16.0/docs/NUMERICAL_COMPATIBILITY.md).
+[numerical compatibility guidance](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/e0646b97006ad6338ea60fd3134791ae1d8288bd/docs/NUMERICAL_COMPATIBILITY.md).
 
 `XC_CACHE_ROOT` selects the managed cache root. To use only local cache lookup
 and local computation, disable remote lookup:
@@ -183,6 +196,34 @@ XC_CACHE_REMOTE=none bash scripts/claim1a_lambda13.sh
 The same numerical checks apply whether an artifact is reused or computed
 locally.
 
+For research acquisition, explicitly add `--research-capture ultra` to a claim
+script. This keeps its fixed numerical configuration and retains all single-run
+Ultra measurements, honoring configured `XC_RESEARCH_*` and `XC_TARGET_*` inputs.
+It saves the source records needed for later cohort analysis; it does not run
+cross-configuration cohort analysis during each claim. Use
+`--research-sector-eigenpairs 8` to set the retained low spectrum. On root-producing
+claims, `--root-validation certified` requests root enclosures. The separate
+`--capture-sector-gap-certificate` option requests the large sector-gap proof;
+it is off by default, including in Ultra. The `check-evenness` scripts reject these proof
+switches. Ultra builds also enable `root-certification` for
+finite transform enclosures. Private target preparation remains external; when
+`XC_TARGET_SPEC_DIR` is configured, each configuration selects its
+`c<C>-d<DIGITS>.json` target file and refuses a missing file. Research coverage and
+proof status remain separate from the numerical claim verdict. Without explicit
+Ultra, inherited research and target settings are ignored as before.
+Every individual claim script accepts Ultra. Claim 1c automatically selects its
+`claim1c-hp1000` applicability policy, which records the known precision-limited
+diagnostics as excluded and rejects an explicit sector-gap certificate request.
+Its directional-error, finite-tail, and spectral-cluster bounds remain requested:
+the Toolkit admits their matrix dimensions against the configured working budget
+and reports unresolved finite premises explicitly.
+Claim 8 selects `claim8-natural` on its unrestricted route and `full` on its
+paired even-sector route. All other configurations use `full`. These policies
+preserve each claim's numerical configuration; exclusions and their reasons
+appear in the run journal. The epsilon-N scripts retain their existing one-root
+window and can certify that root; evenness scripts have no root-certificate
+request and do not accept root-validation flags.
+
 Validating the paper's results needs no credentials: by default a claim script
 computes and checks everything locally and publishes nothing.
 
@@ -191,6 +232,44 @@ claim's artifacts with `--publish` (requires `XC_PUBLISH_AUTHOR_EMAIL`), or
 stage and plan the same publication without pushing with `--publish-plan`.
 Destinations are fixed per claim: Claim 1a publishes to the public and private
 caches, and every other claim publishes to the private caches only.
+With `--publish`, every configuration retains its full staging queue and marks
+publication pending. The shared launcher finalizes the authenticated cumulative
+queue once after all configurations, before reporting the claim summary. This
+avoids repeating remote publication for each configuration; it does not change
+numerical settings, diagnostics, artifact identities, or fixed destinations.
+Natural-evenness measurements use the same deferred session contract, so an
+unavailable publication destination cannot prevent saving their computed values.
+`--publish-plan` keeps its existing per-configuration planning behavior.
+`--publication-per-configuration` selects the previous finalization policy.
+
+Deferred publication uses a fresh draft queue. An explicitly configured
+`XC_PUBLISH_STAGING_ROOT` may contain launcher identity/head files and empty
+scaffolding, but existing drafts or another claim's active staging lock are
+refused. Without an explicit root, the script creates and retains a unique one.
+An atomic `claim-publication-*.status.json` beside the claim logs records pending,
+failed, or completed publication separately from numerical acceptance; collectors
+retain it with the other claim logs. The final Toolkit inventory and successful
+execution reports together establish publication completion for verification.
+
+A failed numerical configuration still leaves useful artifacts for that final
+publication, and its failure remains a failure afterward. A publication failure
+also fails the script. Unexpected failure or interruption starts no final remote
+work and retains staging. To retry only publication with the same author/cache/
+destination environment, use the HP binary explicitly:
+
+```bash
+ccm-reproduction publish-staged --staging-root RETAINED_STAGING_ROOT
+```
+
+This command authenticates the retained queue and dependency closure and uses the
+normal publication authorization and compare-and-swap checks. It has no numerical
+producer callbacks. Direct HP captures can opt into the same staging behavior
+with `--defer-publication`; unsupported, f64, and preflight paths reject that flag.
+
+`XC_PUBLICATION_FAMILY_WORKERS` controls concurrent destination families
+(positive integer, default four). Use one on a workstation with a tight
+process-thread budget. Git subprocesses and transport readers add threads
+beyond this count; it does not change the claim grid or artifact identities.
 
 ```bash
 bash scripts/claim1a_lambda13.sh --publish-plan
@@ -232,8 +311,9 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
 The `root-certification` feature (FLINT 3; Ubuntu 24.04 provides
-`libflint-dev`) enables the binary's optional Arb-backed root certification; the
-claim scripts do not use it. The shell orchestration tests run on Linux/WSL.
+`libflint-dev`) enables the binary's optional Arb-backed root certification and
+finite transform enclosures; claim scripts enable it only with explicit Ultra.
+The shell orchestration tests run on Linux/WSL.
 They verify that every claim runs exactly its configurations and measurements,
 that a failed case cannot skip subsequent cases, and that missing evidence
 cannot produce PASS.

@@ -3,6 +3,7 @@ import importlib.util
 import json
 import tempfile
 import unittest
+from decimal import Decimal, localcontext
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location('claim_summary', Path(__file__).resolve().parents[1] / 'scripts/claim_summary.py')
@@ -72,11 +73,53 @@ class ClaimSummaryTests(unittest.TestCase):
         self.assertTrue(all(not ok for _, ok in summary.assess_series('claim7b_critical_brackets', [])))
 
     def test_evenness_requires_positive_agreeing_states(self):
-        point = {'lambda_squared': 13, 'n_modes': 120, 'evenness_deviation': '1e-900',
+        point = {'lambda_squared': 13, 'n_modes': 120, 'precision_digits': 1000, 'evenness_deviation': '1e-900',
                  'natural_eigenvalue': '3.48399e-59', 'even_eigenvalue': '3.48399e-59'}
         self.assertTrue(all(ok for _, ok in summary.assess_point('claim4a_lambda13', point)))
         point['natural_eigenvalue'] = '-3.48399e-59'
         self.assertFalse(all(ok for _, ok in summary.assess_point('claim4a_lambda13', point)))
+
+    def test_evenness_requires_each_published_precision(self):
+        for claim, c, n, precision in (('claim4a', 13, 120, 1000), ('claim4b', 100, 500, 1000),
+                                      ('claim4c', 1000, 800, 2000), ('claim4c', 1000, 890, 2000),
+                                      ('claim4d', 1200, 970, 2000)):
+            point = {'lambda_squared': c, 'n_modes': n, 'precision_digits': precision,
+                     'evenness_deviation': '1e-900', 'natural_eigenvalue': '1e-1500',
+                     'even_eigenvalue': '1e-1500'}
+            with self.subTest(claim=claim, n=n):
+                self.assertTrue(all(ok for _, ok in summary.assess_point(claim, point)))
+                for invalid in (200, 1000 if precision == 2000 else 2000, None):
+                    point['precision_digits'] = invalid
+                    self.assertFalse(all(ok for _, ok in summary.assess_point(claim, point)))
+
+    def test_evenness_difference_retains_subcontext_digits(self):
+        natural = '1.' + '0' * 961 + '1e-59'
+        point = {'lambda_squared': 13, 'n_modes': 120, 'precision_digits': 1000,
+                 'evenness_deviation': '1e-966', 'natural_eigenvalue': natural, 'even_eigenvalue': '1e-59'}
+        with localcontext() as context:
+            context.prec = 28
+            relative = summary.evenness_relative_difference(Decimal(natural), Decimal('1e-59'))
+            checks = summary.assess_point('claim4a', point)
+            self.assertEqual(context.prec, 28)
+        self.assertEqual(relative, Decimal('1e-962'))
+        self.assertTrue(all(ok for _, ok in checks))
+        self.assertIn('1.00000e-962', ' '.join(description for description, _ in checks))
+
+    def test_evenness_relative_difference_preserves_strict_threshold(self):
+        point = {'lambda_squared': 13, 'n_modes': 120, 'precision_digits': 1000,
+                 'evenness_deviation': '1e-966', 'even_eigenvalue': '1'}
+        for natural, accepted in (('1.000000009' + '9' * 1000, True),
+                                  ('1.00000001', False), ('1.00000001' + '0' * 1000 + '1', False)):
+            with self.subTest(accepted=accepted, length=len(natural)):
+                point['natural_eigenvalue'] = natural
+                self.assertEqual(all(ok for _, ok in summary.assess_point('claim4a', point)), accepted)
+        point['even_eigenvalue'] = '0'
+        self.assertFalse(all(ok for _, ok in summary.assess_point('claim4a', point)))
+
+    def test_evenness_admission_bounds_decimal_work(self):
+        for invalid in ('1' * (summary.EVENNESS_SCALAR_LIMIT + 1), '1e40001', '1e-40001', 'NaN'):
+            with self.subTest(length=len(invalid)), self.assertRaises(ValueError):
+                summary.evenness_number(invalid)
 
     def test_wrong_or_missing_configuration_does_not_pass_a_claim(self):
         point = {'lambda_squared': 100, 'n_modes': 500}

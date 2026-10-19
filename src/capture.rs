@@ -36,17 +36,24 @@ pub struct CaptureJournalArgs {
     /// Return failure after saving the journal if any requested capture is incomplete.
     #[arg(long, global = true)]
     pub require_complete_capture: bool,
+    /// Retain publication staging for one explicit publish-staged call after a campaign.
+    #[arg(long, global = true)]
+    pub defer_publication: bool,
 }
 
 #[cfg(feature = "hp")]
 pub use hp::{
-    execute, ground_index_policy, replay_finite, validate_configuration, write_evenness,
-    write_measurements,
+    execute, ground_index_policy, measure_evenness, publish_staged, recover_capture_with_mode,
+    replay_finite, validate_configuration, write_evenness, write_measurements,
 };
 
 #[cfg(feature = "hp")]
 mod hp {
     use super::*;
+    mod recovery {
+        include!("capture_recovery.rs");
+    }
+    pub use recovery::recover_capture_with_mode;
     /// Ground-index admission of the primary state under a capture policy.
     ///
     /// The lowest stored sector eigenvalues of the frozen Claim 1c configuration
@@ -84,6 +91,64 @@ mod hp {
         },
         CcmParams,
     };
+
+    fn validate_deferred_publication(config: &xc_cache::ManagedArtifactCacheConfig) -> Result<()> {
+        anyhow::ensure!(
+            config.profile == xc_cache::ManagedRunProfile::Author
+                && config.execute_remote_mutations
+                && config.publication_target != xc_core::PublicationTarget::None
+                && config.staging_root.is_some()
+                && config.output_validation.is_none(),
+            "deferred publication requires an explicit author staging root, execution, destination and no output validation"
+        );
+        Ok(())
+    }
+
+    /// Preserve the natural-space measurement before a campaign publishes its
+    /// retained drafts. The ordinary Toolkit entry point finalizes immediately.
+    pub fn measure_evenness(
+        params: &CcmParams,
+        cfg: &HighPrecConfig,
+        args: &CaptureJournalArgs,
+    ) -> Result<xc_spectral::ccm::hp::EvennessResult> {
+        if !args.defer_publication {
+            return xc_spectral::ccm::hp::measure_evenness(params, cfg);
+        }
+        let config = xc_cache::ManagedArtifactCacheConfig::from_environment()?
+            .context("deferred evenness requires explicit managed cache configuration")?;
+        validate_deferred_publication(&config)?;
+        let managed = xc_cache::ManagedArtifactCacheSession::new_with_resources(
+            config,
+            xc_cache::managed_resource_policy_from_environment()?,
+        )?;
+        xc_spectral::ccm::hp::measure_evenness_via_cache(params, cfg, &managed.context())
+    }
+
+    /// Publish only authenticated retained drafts; no numerical callback exists.
+    pub fn publish_staged(staging_root: &Path) -> Result<()> {
+        let config = xc_cache::ManagedArtifactCacheConfig::from_environment()?
+            .context("publish-staged requires explicit managed cache configuration")?;
+        validate_deferred_publication(&config)?;
+        anyhow::ensure!(
+            fs::symlink_metadata(staging_root)?.file_type().is_dir()
+                && config
+                    .staging_root
+                    .as_ref()
+                    .context("staging root missing")?
+                    .canonicalize()?
+                    == staging_root.canonicalize()?,
+            "publish-staged requires the exact configured ordinary staging directory"
+        );
+        let managed = xc_cache::ManagedArtifactCacheSession::new_with_resources(
+            config,
+            xc_cache::managed_resource_policy_from_environment()?,
+        )?;
+        let inventory = managed
+            .retry_retained_publication()?
+            .context("publish-staged did not finalize a retained inventory")?;
+        println!("Staged publication finalized: {}", inventory.display());
+        Ok(())
+    }
 
     /// These exclusions belong to the frozen paper reproduction, not to the
     /// toolkit's general Ultra recipe. Never infer them from a failed attempt.
@@ -152,13 +217,6 @@ mod hp {
         ] {
             result.insert(id.into(), "at HP-1000, 35 even-sector eigenvalues lie within the working-precision floor of the selected value, so no sector eigenvector can be identified; sector analysis, natural evenness, the sector-gap certificate and the root budget that replays it cannot be formed".into());
         }
-        for id in [
-            "directional_error_bound",
-            "finite_tail_bound",
-            "spectral_cluster_bound",
-        ] {
-            result.insert(id.into(), "automatic finite-matrix analysis is limited to dimension 512; the dimension-801 primary sources are retained for supplemental analysis".into());
-        }
         Ok(result)
     }
 
@@ -213,7 +271,12 @@ mod hp {
         record: &xc_cache::CaptureArtifact,
         cache: &xc_cache::ArtifactCacheContext<'_>,
     ) -> Result<()> {
-        let mut values = serde_json::Map::new();
+        let _timing = xc_core::performance_stage_with("paper.capture.export", || {
+            xc_core::PerformanceStageMetadata::default()
+        });
+        // Only references enter this export. Sort names exactly as serde_json's
+        // map did, while retaining at most one decoded measurement at a time.
+        let mut values = std::collections::BTreeMap::new();
         for name in REVIEWED_MEASUREMENTS.into_iter().chain(
             xc_spectral::ccm::capture::FINITE_DIAGNOSTICS
                 .iter()
@@ -225,22 +288,74 @@ mod hp {
             if measurement.value_reference.is_none() {
                 continue;
             }
-            let resolver = cache
-                .resolver
-                .context("capture export requires a cache resolver")?;
-            let policy = cache
-                .acceptance
-                .context("capture export requires a cache acceptance policy")?;
-            match xc_cache::measurement_value(measurement, resolver, policy) {
-                Ok(value) => {
-                    values.insert(name.to_owned(), value);
-                }
-                Err(error) => {
-                    anyhow::bail!("{name}: referenced capture value not resolved: {error}")
-                }
+            values.insert(name, measurement);
+        }
+        // A failed integrity check must leave no partial final export. A hard
+        // link installs the completed file without replacing an existing path.
+        let temporary = path.with_extension("json.export-partial");
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let pending_file = options.open(&temporary)?;
+        struct RemoveTemporary(PathBuf);
+        impl Drop for RemoveTemporary {
+            fn drop(&mut self) {
+                let _ = fs::remove_file(&self.0);
             }
         }
-        save(path, &values)
+        let _cleanup = RemoveTemporary(temporary.clone());
+        let mut file = std::io::BufWriter::new(pending_file);
+        struct Indented<'a>(&'a mut std::io::BufWriter<std::fs::File>);
+        impl Write for Indented<'_> {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                for part in bytes.split_inclusive(|byte| *byte == b'\n') {
+                    self.0.write_all(part)?;
+                    if part.last() == Some(&b'\n') {
+                        self.0.write_all(b"  ")?;
+                    }
+                }
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                self.0.flush()
+            }
+        }
+        if values.is_empty() {
+            file.write_all(b"{}\n")?;
+        } else {
+            file.write_all(b"{\n")?;
+            for (index, (name, measurement)) in values.into_iter().enumerate() {
+                if index != 0 {
+                    file.write_all(b",\n")?;
+                }
+                file.write_all(b"  ")?;
+                serde_json::to_writer(&mut file, name)?;
+                file.write_all(b": ")?;
+                let resolver = cache
+                    .resolver
+                    .context("capture export requires a cache resolver")?;
+                let policy = cache
+                    .acceptance
+                    .context("capture export requires a cache acceptance policy")?;
+                let mut writer = Indented(&mut file);
+                let result =
+                    xc_cache::measurement_value(measurement, resolver, policy).and_then(|value| {
+                        serde_json::to_writer_pretty(&mut writer, &value)?;
+                        Ok(())
+                    });
+                result.with_context(|| format!("{name}: referenced capture value not resolved"))?;
+            }
+            file.write_all(b"\n}\n")?;
+        }
+        file.flush()?;
+        file.get_ref().sync_all()?;
+        drop(file);
+        fs::hard_link(&temporary, path)?;
+        Ok(())
     }
 
     pub struct CapturedRun {
@@ -357,7 +472,11 @@ mod hp {
         config.remote_cache_mode = xc_cache::ManagedRemoteCacheMode::None;
         config.output_validation = None;
         config.cache_mode = xc_cache::ArtifactExecutionCacheMode::PreferReuse;
-        xc_cache::ManagedArtifactCacheSession::new(config).map_err(Into::into)
+        xc_cache::ManagedArtifactCacheSession::new_with_resources(
+            config,
+            xc_cache::managed_resource_policy_from_environment()?,
+        )
+        .map_err(Into::into)
     }
 
     pub fn write_measurements(directory: &Path, value: &impl Serialize) -> Result<()> {
@@ -459,6 +578,58 @@ mod hp {
         digest: xc_cache::ContentDigest,
     }
 
+    // Operational telemetry deliberately stays out of prepared inputs, source
+    // identities and capture plans. Never echo adapter stdout/stderr or argv.
+    struct PreparationProgress {
+        started: Instant,
+        last_heartbeat: Instant,
+        file: fs::File,
+        directory: PathBuf,
+    }
+
+    impl PreparationProgress {
+        fn new(directory: &Path) -> Result<Self> {
+            Ok(Self {
+                started: Instant::now(),
+                last_heartbeat: Instant::now(),
+                file: OpenOptions::new()
+                    .create_new(true)
+                    .write(true)
+                    .open(directory.join("input-preparation-progress.jsonl"))?,
+                directory: directory.to_path_buf(),
+            })
+        }
+
+        fn emit(&mut self, stage: &'static str) -> Result<()> {
+            self.emit_timed(stage, None)
+        }
+
+        fn emit_timed(
+            &mut self,
+            stage: &'static str,
+            validation_seconds: Option<f64>,
+        ) -> Result<()> {
+            let bytes = |name| {
+                fs::metadata(self.directory.join(name))
+                    .map(|m| m.len())
+                    .unwrap_or(0)
+            };
+            let event = serde_json::json!({"schema_version":1,"stage":stage,
+                "elapsed_seconds":self.started.elapsed().as_secs_f64(),
+                "validation_seconds":validation_seconds,
+                "stdout_bytes":bytes("input-preparation.stdout.log"),
+                "stderr_bytes":bytes("input-preparation.stderr.log"),
+                "output_bytes":bytes("prepared-research-inputs.json"),
+                "numerical_progress_verified":false});
+            serde_json::to_writer(&mut self.file, &event)?;
+            self.file.write_all(b"\n")?;
+            self.file.sync_data()?;
+            self.last_heartbeat = Instant::now();
+            xc_core::progress_message!("private preparation: stage={stage}, elapsed={:.1}s; retained logs: input-preparation.stdout.log, input-preparation.stderr.log (private preparation directory); byte counters are operational only", self.started.elapsed().as_secs_f64());
+            Ok(())
+        }
+    }
+
     struct PreparerProcess(std::process::Child);
     impl Drop for PreparerProcess {
         fn drop(&mut self) {
@@ -505,6 +676,14 @@ mod hp {
             "invalid private input preparation command or time limit"
         );
         let directory = directory.canonicalize()?;
+        let mut progress = PreparationProgress::new(&directory)?;
+        progress.emit("request_admitted")?;
+        // The location is driver-owned and screened independently from adapter
+        // output; secret-bearing paths are never echoed to the terminal.
+        let location = directory.display().to_string();
+        if xc_core::validate_secret_free(&location, "preparation log location").is_ok() {
+            xc_core::progress_message!("private preparation log directory: {location}");
+        }
         let request_path = directory.join("input-preparation-request.json");
         let output_path = directory.join("prepared-research-inputs.json");
         save(&request_path, request)?;
@@ -536,6 +715,7 @@ mod hp {
                 .context("starting private input preparer")?,
         );
         let started = Instant::now();
+        progress.emit("process_started")?;
         let status = loop {
             if let Some(status) = child.0.try_wait()? {
                 break status;
@@ -552,14 +732,24 @@ mod hp {
                 })
             });
             if excessive {
+                progress.emit("output_budget_exceeded")?;
                 anyhow::bail!("private input preparer exceeded its output budget");
             }
             if started.elapsed().as_secs() >= preparer.timeout_seconds {
+                progress.emit("timeout")?;
                 anyhow::bail!("private input preparation exceeded its time limit");
+            }
+            if progress.last_heartbeat.elapsed() >= std::time::Duration::from_secs(30) {
+                progress.emit("process_running")?;
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
         };
         drop(child);
+        progress.emit(if status.success() {
+            "process_exited_successfully"
+        } else {
+            "process_exited_unsuccessfully"
+        })?;
         anyhow::ensure!(
             status.success(),
             "private input preparer exited with {status}"
@@ -583,13 +773,24 @@ mod hp {
         // admitted bytes. A changed retained file will fail summary verification.
         use std::io::Read;
         let mut bytes = Vec::new();
+        let validation_started = Instant::now();
+        progress.emit("validating_prepared_input")?;
         fs::File::open(&output_path)?
             .take(xc_spectral::ccm::capture_runtime::RESEARCH_INPUT_MAXIMUM_BYTES + 1)
             .read_to_end(&mut bytes)?;
         let input = xc_spectral::ccm::extended_research::ExternalResearchInputs::from_bytes(
             &output_path,
             &bytes,
+        );
+        progress.emit_timed(
+            if input.is_ok() {
+                "prepared_input_validated"
+            } else {
+                "prepared_input_validation_failed"
+            },
+            Some(validation_started.elapsed().as_secs_f64()),
         )?;
+        let input = input?;
         Ok(PreparedInputs {
             input,
             digest: xc_cache::ContentDigest::sha256(&bytes),
@@ -731,7 +932,7 @@ mod hp {
         for (id, reason) in &excluded {
             println!("  [EXCLUDED] {id}: {reason}");
         }
-        let resolved = serde_json::json!({"schema_version":1,"paper_version":env!("CARGO_PKG_VERSION"),"toolkit_release":"0.16.0","arb_enabled":cfg!(feature="root-certification"),"research_inputs":research_input_inventory(),"capture":plan,"applicability":applicability,"retained_reduction":reduction,"lambda_squared":params.lambda_sq_int(),"n_modes":params.n_modes,"precision_bits":cfg.precision_bits,"root_precision_policy":cfg.root_precision_policy,"root_maximum_extra_precision_bits":cfg.root_maximum_extra_precision_bits,"root_verification_precision_bits":cfg.root_verification_precision_bits,"parity_policy":cfg.effective_parity_policy().as_str(),"distance":options.distance_capture.as_ref().map(|d|serde_json::json!({"alpha":d.alpha,"rules":d.rules.iter().map(|r|serde_json::json!({"family":r.family(),"rule":r.rule(),"variable":r.variable().as_str(),"resolution":r.resolution()})).collect::<Vec<_>>(),"profile_steps":d.profile_steps})),"source_policy":"resolve compatible identities; preserve historical artifacts","assurance":"capture completeness is separate from numerical acceptance"});
+        let resolved = serde_json::json!({"schema_version":1,"paper_version":env!("CARGO_PKG_VERSION"),"toolkit_release":"0.17.0","arb_enabled":cfg!(feature="root-certification"),"research_inputs":research_input_inventory(),"capture":plan,"applicability":applicability,"retained_reduction":reduction,"lambda_squared":params.lambda_sq_int(),"n_modes":params.n_modes,"precision_bits":cfg.precision_bits,"root_precision_policy":cfg.root_precision_policy,"root_maximum_extra_precision_bits":cfg.root_maximum_extra_precision_bits,"root_verification_precision_bits":cfg.root_verification_precision_bits,"parity_policy":cfg.effective_parity_policy().as_str(),"distance":options.distance_capture.as_ref().map(|d|serde_json::json!({"alpha":d.alpha,"rules":d.rules.iter().map(|r|serde_json::json!({"family":r.family(),"rule":r.rule(),"variable":r.variable().as_str(),"resolution":r.resolution()})).collect::<Vec<_>>(),"profile_steps":d.profile_steps})),"source_policy":"resolve compatible identities; preserve historical artifacts","assurance":"capture completeness is separate from numerical acceptance"});
         let mut resolved = resolved;
         resolved["assembly_policy"] = serde_json::json!({
             "recipe":"paper_default_mode_length_precision_quadrature",
@@ -754,8 +955,15 @@ mod hp {
                 "toolkit_working_source_digest":option_env!("XC_TOOLKIT_SOURCE_DIGEST"),
                 "local_qualification":option_env!("XC_TOOLKIT_SOURCE_DIGEST").is_some()}),
         )?;
-        let managed = xc_cache::ManagedArtifactCacheSession::from_environment()?
+        let managed_config = xc_cache::ManagedArtifactCacheConfig::from_environment()?
             .context("managed cache required")?;
+        if args.defer_publication {
+            validate_deferred_publication(&managed_config)?;
+        }
+        let managed = xc_cache::ManagedArtifactCacheSession::new_with_resources(
+            managed_config,
+            xc_cache::managed_resource_policy_from_environment()?,
+        )?;
         let cache = managed.context();
         event(
             &mut events,
@@ -1089,15 +1297,25 @@ mod hp {
             None
         };
         complete &= isolation_error.is_none();
-        managed.finalize_publication_inventory()?;
+        if args.defer_publication {
+            println!("  publication deferred: retained staging awaits publish-staged");
+        } else {
+            managed.finalize_publication_inventory()?;
+        }
         save(
             &directory.join("status.json"),
-            &serde_json::json!({"status":if complete{"capture_complete"}else{"capture_incomplete"},"primary_saved":true,"capture_complete":complete,"applicability":applicability,"convergence_observation_error":observation_error,"input_preparation_error":preparation_error,"numerical_acceptance":"inspect primary and measurement payloads; completion is not validity","elapsed_seconds":started.elapsed().as_secs_f64()}),
+            &serde_json::json!({"status":if complete{"capture_complete"}else{"capture_incomplete"},"primary_saved":true,"capture_complete":complete,"publication_status":if args.defer_publication{"deferred"}else{"not_deferred"},"applicability":applicability,"convergence_observation_error":observation_error,"input_preparation_error":preparation_error,"numerical_acceptance":"inspect primary and measurement payloads; completion is not validity","elapsed_seconds":started.elapsed().as_secs_f64()}),
         )?;
         println!(
             "  capture journal saved: {} ({})",
             directory.display(),
-            if complete {
+            if args.defer_publication {
+                if complete {
+                    "capture complete; publication pending"
+                } else {
+                    "capture incomplete; publication pending; see receipt reasons"
+                }
+            } else if complete {
                 "complete"
             } else {
                 "incomplete; see receipt reasons"
@@ -1161,6 +1379,12 @@ mod hp {
                     true,
                     "",
                 ),
+                (
+                    8,
+                    "printf 'arbitrary-private-output' >&2; cp ../valid.json \"$4\"",
+                    true,
+                    "",
+                ),
             ] {
                 let directory = root.join(index.to_string());
                 fs::create_dir(&directory).unwrap();
@@ -1176,10 +1400,27 @@ mod hp {
                 assert_eq!(result.is_ok(), passes, "case {index}: {result:?}");
                 if !passes && !reason.is_empty() {
                     let error = format!("{:#}", result.as_ref().unwrap_err());
-                    assert!(error.contains(reason), "case {index}: {error}");
+                    // The size guard can run before child exit or during the
+                    // final output check. Both paths must refuse the payload.
+                    let expected = error.contains(reason)
+                        || (index == 3
+                            && error.contains("private input preparer exceeded its output budget"));
+                    assert!(expected, "case {index}: {error}");
                 }
                 assert!(directory.join("input-preparation-request.json").exists());
+                let progress =
+                    fs::read_to_string(directory.join("input-preparation-progress.jsonl")).unwrap();
+                assert!(!progress.contains("arbitrary-private-output"));
+                let stages: Vec<serde_json::Value> = progress
+                    .lines()
+                    .map(|line| serde_json::from_str(line).unwrap())
+                    .collect();
+                assert_eq!(stages[0]["stage"], "request_admitted");
+                assert!(stages
+                    .iter()
+                    .all(|stage| stage["numerical_progress_verified"] == false));
                 if let Ok(prepared) = result {
+                    assert_eq!(stages.last().unwrap()["stage"], "prepared_input_validated");
                     let bytes = fs::read(directory.join("prepared-research-inputs.json")).unwrap();
                     assert_eq!(prepared.digest, xc_cache::ContentDigest::sha256(&bytes));
                     fs::write(
@@ -1194,6 +1435,101 @@ mod hp {
             assert!(!root.join("6/late-write").exists());
             assert!(!root.join("7/late-write").exists());
             fs::remove_dir_all(root).unwrap();
+        }
+
+        #[test]
+        fn deferred_publication_preserves_capture_recipe_and_applicability_identity() {
+            let ordinary = args();
+            let mut deferred = ordinary.clone();
+            deferred.defer_publication = true;
+            let params = CcmParams::from_lambda_sq_integer(1000, 800);
+            let cfg = HighPrecConfig::for_decimal_digits(1000);
+            let identity = |args: &CaptureJournalArgs| {
+                serde_json::json!({
+                "capture":recipe(ResearchCapture::Ultra, 8, 801, args, cfg.precision_bits).unwrap(),
+                "applicability":exclusions(args.capture_policy, ResearchCapture::Ultra, &params, &cfg, args).unwrap(),
+                "requested":requested_diagnostics(&recipe(ResearchCapture::Ultra, 8, 801, args, cfg.precision_bits).unwrap(), true,
+                    &exclusions(args.capture_policy, ResearchCapture::Ultra, &params, &cfg, args).unwrap()).unwrap(),
+                "precision_bits":cfg.precision_bits,"lambda_squared":params.lambda_sq_int(),"n_modes":params.n_modes})
+            };
+            assert_eq!(identity(&ordinary), identity(&deferred));
+            let cli = crate::Cli::try_parse_from([
+                "ccm-reproduction",
+                "publish-staged",
+                "--staging-root",
+                "retained",
+            ])
+            .unwrap();
+            assert!(matches!(cli.command, crate::Command::PublishStaged { .. }));
+            assert!(!cli.capture_journal.defer_publication);
+        }
+
+        #[test]
+        fn deferred_publication_rejects_ignored_or_read_only_command_paths() {
+            for arguments in [
+                vec![
+                    "ccm-reproduction",
+                    "--defer-publication",
+                    "run",
+                    "--f64-only",
+                ],
+                vec!["ccm-reproduction", "--defer-publication", "sector-gap"],
+                vec![
+                    "ccm-reproduction",
+                    "--defer-publication",
+                    "publish-staged",
+                    "--staging-root",
+                    "retained",
+                ],
+                vec![
+                    "ccm-reproduction",
+                    "--defer-publication",
+                    "--preflight-only",
+                    "run",
+                ],
+            ] {
+                let cli = crate::Cli::try_parse_from(arguments).unwrap();
+                assert!(crate::validate_publication_mode(&cli).is_err());
+            }
+            for command in ["run", "check-evenness"] {
+                let cli = crate::Cli::try_parse_from([
+                    "ccm-reproduction",
+                    "--defer-publication",
+                    command,
+                ])
+                .unwrap();
+                crate::validate_publication_mode(&cli).unwrap();
+            }
+        }
+
+        #[test]
+        fn deferred_publication_requires_explicit_mutating_author_route() {
+            use xc_cache::*;
+            let valid = ManagedArtifactCacheConfig {
+                profile: ManagedRunProfile::Author,
+                requested_assurance: xc_core::AssuranceLevel::Computed,
+                certification_failure_policy: CertificationFailurePolicy::RetainComputedFailRun,
+                cache_root: PathBuf::from("cache"),
+                staging_root: Some(PathBuf::from("staging")),
+                publication_target: xc_core::PublicationTarget::Private,
+                repository_owner: "TeamXcelerator".into(),
+                remote_cache_mode: ManagedRemoteCacheMode::None,
+                cache_mode: ArtifactExecutionCacheMode::PreferReuse,
+                replace_existing_publication: false,
+                execute_remote_mutations: true,
+                output_validation: None,
+            };
+            validate_deferred_publication(&valid).unwrap();
+            for index in 0..4 {
+                let mut rejected = valid.clone();
+                match index {
+                    0 => rejected.profile = ManagedRunProfile::Normal,
+                    1 => rejected.execute_remote_mutations = false,
+                    2 => rejected.publication_target = xc_core::PublicationTarget::None,
+                    _ => rejected.staging_root = None,
+                }
+                assert!(validate_deferred_publication(&rejected).is_err());
+            }
         }
 
         fn args() -> CaptureJournalArgs {
@@ -1304,13 +1640,20 @@ mod hp {
                     .as_nanos()
             ));
             save_reviewed_values(&path, &record, &cache).unwrap();
-            let saved: serde_json::Value =
-                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-            assert_eq!(saved, serde_json::Value::Object(expected));
+            let fallback_bytes = fs::read(&path).unwrap();
+            let saved: serde_json::Value = serde_json::from_slice(&fallback_bytes).unwrap();
+            assert_eq!(saved, serde_json::Value::Object(expected.clone()));
+            let mut legacy_bytes = serde_json::to_vec_pretty(&expected).unwrap();
+            legacy_bytes.push(b'\n');
+            assert_eq!(fallback_bytes, legacy_bytes);
+            // The complete output is installed once and cannot overwrite evidence.
+            assert!(save_reviewed_values(&path, &record, &cache).is_err());
+            assert_eq!(fs::read(&path).unwrap(), legacy_bytes);
             fs::remove_file(&path).unwrap();
             cache.resolver = None;
             assert!(save_reviewed_values(&path, &record, &cache).is_err());
             assert!(!path.exists());
+            assert!(!path.with_extension("json.export-partial").exists());
             cache.resolver = Some(&resolver);
             record
                 .measurements
@@ -1398,14 +1741,14 @@ mod hp {
             let requested = requested_diagnostics(&plan, true, &excluded).unwrap();
             let full = requested_diagnostics(&plan, true, &Default::default()).unwrap();
             // Historical v7 groups plus the current finite diagnostics, less
-            // fourteen planned exclusions; the fifteenth is the explicit
+            // eleven planned exclusions; the twelfth is the explicit
             // sector-gap certificate request.
-            assert_eq!(excluded.len(), 15);
+            assert_eq!(excluded.len(), 12);
             assert!(excluded.contains_key("sector_gap_certificate"));
             assert!(!full.contains(&"sector_gap_certificate".into()));
             assert_eq!(
                 requested.len(),
-                41 + xc_spectral::ccm::capture::FINITE_DIAGNOSTICS.len() - 14
+                41 + xc_spectral::ccm::capture::FINITE_DIAGNOSTICS.len() - 11
             );
             assert_eq!(
                 requested,
@@ -1415,13 +1758,19 @@ mod hp {
             );
             assert!(requested.contains(&"transform_enclosure".into()));
             assert!(requested.contains(&"operator_energy".into()));
-            for id in [
-                "sector_analysis",
-                "evenness",
-                "finite_root_budget",
-                "finite_tail_bound",
-            ] {
+            for id in ["sector_analysis", "evenness", "finite_root_budget"] {
                 assert!(!requested.contains(&id.into()));
+            }
+            // Toolkit shape-based admission supersedes the old dimension-512
+            // cap. Preserve these requests even when their finite premises
+            // may remain unresolved at the source precision.
+            for id in [
+                "directional_error_bound",
+                "finite_tail_bound",
+                "spectral_cluster_bound",
+            ] {
+                assert!(!excluded.contains_key(id));
+                assert!(requested.contains(&id.into()));
             }
             let resolved = serde_json::json!({"excluded_diagnostics":excluded, "requested_diagnostics":requested});
             for fail in [false, true] {

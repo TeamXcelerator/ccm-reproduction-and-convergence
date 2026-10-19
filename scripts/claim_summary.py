@@ -44,6 +44,9 @@ SEPARATIONS = {(13, 120): ('3.05556e-55', '1.31185e-51'), (100, 500): ('1.79801e
                (1000, 800): ('1.24493e-1258', '2.05363e-1253'), (1000, 890): ('5.42414e-1357', '1.04167e-1351'),
                (1200, 970): ('2.86128e-1493', '6.55282e-1488')}
 RESIDUAL_TO_GAP_BOUND = D('2.01e-533')
+EVENNESS_PRECISIONS = {(13, 120): 1000, (100, 500): 1000,
+                      (1000, 800): 2000, (1000, 890): 2000, (1200, 970): 2000}
+EVENNESS_SCALAR_LIMIT = 40000
 
 
 def number(value):
@@ -51,6 +54,27 @@ def number(value):
     if not result.is_finite():
         raise ValueError('non-finite measurement')
     return result
+
+
+def evenness_number(value):
+    """Bound retained scalar size before allocating its decimal coefficient."""
+    text = str(value)
+    if len(text) > EVENNESS_SCALAR_LIMIT:
+        raise ValueError('evenness measurement exceeds the scalar admission limit')
+    result = number(text)
+    if abs(result.adjusted()) > EVENNESS_SCALAR_LIMIT:
+        raise ValueError('evenness measurement exponent exceeds the admission limit')
+    return result
+
+
+def evenness_relative_difference(natural, even):
+    if even == 0:
+        return None
+    with localcontext() as context:
+        context.prec = max(100, len(natural.as_tuple().digits), len(even.as_tuple().digits)) + 16
+        # Subtract the exact retained coefficients before dividing. Dividing
+        # first and subtracting one erases differences below the context floor.
+        return abs(natural - even) / abs(even)
 
 
 def root_digits(point, index):
@@ -66,10 +90,14 @@ def assess_point(claim, point):
     c, n = point['lambda_squared'], point['n_modes']
     checks = []
     if claim.startswith('claim4'):
-        deviation = number(point['evenness_deviation'])
-        natural, even = number(point['natural_eigenvalue']), number(point['even_eigenvalue'])
+        expected_precision = EVENNESS_PRECISIONS[(c, n)]
+        checks.append((f'published precision HP-{expected_precision}', point.get('precision_digits') == expected_precision))
+        deviation = evenness_number(point['evenness_deviation'])
+        natural, even = evenness_number(point['natural_eigenvalue']), evenness_number(point['even_eigenvalue'])
+        relative = evenness_relative_difference(natural, even)
+        relative_text = f'{relative:.5e}' if relative is not None else 'undefined'
         checks.append(('evenness deviation < 1e-10', deviation >= 0 and deviation < D('1e-10')))
-        checks.append(('both eigenvalues positive and relative difference < 1e-8', natural > 0 and even > 0 and abs(natural / even - 1) < D('1e-8')))
+        checks.append((f'both eigenvalues positive and relative difference {relative_text} < 1e-8', natural > 0 and even > 0 and relative < D('1e-8')))
     elif claim.startswith(('claim1', 'claim8')):
         baseline = HEADLINE[(c,n)]
         # A guarded arithmetic floor is not reproducible to its last digit.
