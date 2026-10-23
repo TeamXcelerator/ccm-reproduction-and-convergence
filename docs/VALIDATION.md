@@ -47,6 +47,14 @@ remain for server validation; this integration does not establish a speedup.
 
 ## Artifact-preserving throughput controls
 
+Supplemental recovery admits retained JSON documents using the configured
+research working budget, with one eighth available per document up to the
+Toolkit research-input ceiling. This allowance provides parsing headroom; it
+is not a measured peak-memory bound. JSON is parsed and hashed from the same
+bounded stream, and inventory-only checks avoid constructing a JSON value
+tree. Existing document digests and numerical results are unchanged. A
+refusal identifies the document and its admitted byte limit.
+
 The throughput integration preserves the fixed claim grids, source precisions,
 mathematical gates, and compatible artifact identities. Operational preparation
 reuse and publication worker controls do not establish a new numerical

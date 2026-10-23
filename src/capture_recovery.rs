@@ -11,8 +11,10 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use xc_spectral::ccm::extended_research::ExternalResearchInputs;
 
-const INVENTORY_LIMIT: u64 = 64 * 1024 * 1024;
 const COPY_BUFFER_BYTES: usize = 64 * 1024;
+// Leave working-memory headroom for parsed JSON and simultaneously retained
+// documents. This bounds serialized input, not the process's measured RSS.
+const JOURNAL_DOCUMENT_WORKING_DIVISOR: u64 = 8;
 const ORIGINAL_REQUIRED_FILES: &[&str] = &[
     "request.json",
     "input-preparation-request.json",
@@ -42,11 +44,14 @@ fn optional_original_inputs(
             Err(error) => return Err(error.into()),
             Ok(_) => {}
         }
-        let (value, digest) = frozen_json(&journal.join(name))?;
-        digests.insert(name.into(), serde_json::to_value(digest)?);
-        if ["research-sources.json", "input-preparation-status.json"].contains(&name) {
+        let digest = if ["research-sources.json", "input-preparation-status.json"].contains(&name) {
+            let (value, digest) = frozen_json(&journal.join(name))?;
             inputs.insert(name.into(), value);
-        }
+            digest
+        } else {
+            frozen_json_digest(&journal.join(name))?
+        };
+        digests.insert(name.into(), serde_json::to_value(digest)?);
     }
     Ok((digests, inputs))
 }
@@ -60,7 +65,9 @@ fn verify_original_inventory(journal: &Path, inventory: &serde_json::Value) -> R
         let observed = match fs::symlink_metadata(journal.join(name)) {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => return Err(error.into()),
-            Ok(_) => Some(serde_json::to_value(frozen_json(&journal.join(name))?.1)?),
+            Ok(_) => Some(serde_json::to_value(frozen_json_digest(
+                &journal.join(name),
+            )?)?),
         };
         anyhow::ensure!(
             observed.as_ref() == inventory.get(name),
@@ -523,7 +530,7 @@ fn producer_identity(configuration: &str) -> Result<serde_json::Value> {
     let runtime = std::env::var_os("XC_RECOVERY_PRODUCER_IDENTITY_FILE")
         .map(|path| -> Result<serde_json::Value> {
             let path = PathBuf::from(path).canonicalize()?;
-            let (_, digest) = frozen_json(&path)?;
+            let digest = frozen_json_digest(&path)?;
             Ok(serde_json::json!({"path":path,"sha256":digest}))
         })
         .transpose()?;
@@ -716,33 +723,183 @@ fn merge_diagnostic_records(
 }
 
 fn frozen_json(path: &Path) -> Result<(serde_json::Value, xc_cache::ContentDigest)> {
-    frozen_json_with_limit(path, INVENTORY_LIMIT)
+    frozen_json_with_limit(
+        path,
+        xc_spectral::ccm::capture_runtime::RESEARCH_INPUT_MAXIMUM_BYTES,
+    )
+}
+
+fn journal_document_limit(maximum_bytes: u64, working_bytes: u64) -> u64 {
+    maximum_bytes
+        .min(xc_spectral::ccm::capture_runtime::RESEARCH_INPUT_MAXIMUM_BYTES)
+        .min(working_bytes / JOURNAL_DOCUMENT_WORKING_DIVISOR)
+}
+
+fn frozen_json_digest(path: &Path) -> Result<xc_cache::ContentDigest> {
+    // Validate the complete JSON syntax without building an unused Value tree.
+    // Its digest still covers the exact stored bytes, including whitespace.
+    Ok(frozen_document::<DiscardedJson>(
+        path,
+        xc_spectral::ccm::capture_runtime::RESEARCH_INPUT_MAXIMUM_BYTES,
+    )?
+    .1)
+}
+
+struct DiscardedJson;
+
+impl<'de> serde::Deserialize<'de> for DiscardedJson {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = DiscardedJson;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a JSON value")
+            }
+            fn visit_bool<E: serde::de::Error>(
+                self,
+                _: bool,
+            ) -> std::result::Result<Self::Value, E> {
+                Ok(DiscardedJson)
+            }
+            fn visit_i64<E: serde::de::Error>(self, _: i64) -> std::result::Result<Self::Value, E> {
+                Ok(DiscardedJson)
+            }
+            fn visit_u64<E: serde::de::Error>(self, _: u64) -> std::result::Result<Self::Value, E> {
+                Ok(DiscardedJson)
+            }
+            fn visit_f64<E: serde::de::Error>(self, _: f64) -> std::result::Result<Self::Value, E> {
+                Ok(DiscardedJson)
+            }
+            fn visit_str<E: serde::de::Error>(
+                self,
+                _: &str,
+            ) -> std::result::Result<Self::Value, E> {
+                Ok(DiscardedJson)
+            }
+            fn visit_unit<E: serde::de::Error>(self) -> std::result::Result<Self::Value, E> {
+                Ok(DiscardedJson)
+            }
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut values: A,
+            ) -> std::result::Result<Self::Value, A::Error> {
+                while values.next_element::<DiscardedJson>()?.is_some() {}
+                Ok(DiscardedJson)
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut values: A,
+            ) -> std::result::Result<Self::Value, A::Error> {
+                while values.next_entry::<String, DiscardedJson>()?.is_some() {}
+                Ok(DiscardedJson)
+            }
+        }
+        // Unlike IgnoredAny, decode numbers and strings normally so overflow
+        // and malformed Unicode retain serde_json::Value's rejection behavior.
+        deserializer.deserialize_any(Visitor)
+    }
 }
 
 fn frozen_json_with_limit(
     path: &Path,
     maximum_bytes: u64,
 ) -> Result<(serde_json::Value, xc_cache::ContentDigest)> {
-    use std::io::Read;
+    frozen_document(path, maximum_bytes)
+}
+
+fn frozen_document<T: serde::de::DeserializeOwned>(
+    path: &Path,
+    maximum_bytes: u64,
+) -> Result<(T, xc_cache::ContentDigest)> {
+    let working_bytes =
+        xc_spectral::ccm::capture_runtime::CaptureResourcePolicy::from_environment()?
+            .maximum_working_bytes;
+    let maximum_bytes = journal_document_limit(maximum_bytes, working_bytes);
     anyhow::ensure!(
         fs::symlink_metadata(path)?.file_type().is_file(),
-        "retained journal document must be a regular file"
+        "retained journal document must be a regular file: {}",
+        path.display()
     );
+    let mut file = fs::File::open(path)
+        .with_context(|| format!("open retained journal document {}", path.display()))?;
+    let before = file.metadata()?;
     anyhow::ensure!(
-        fs::metadata(path)?.len() <= maximum_bytes,
-        "retained journal document exceeds admission budget"
+        before.is_file(),
+        "opened retained journal document must be regular: {}",
+        path.display()
     );
-    let mut bytes = Vec::new();
-    fs::File::open(path)?
-        .take(maximum_bytes + 1)
-        .read_to_end(&mut bytes)?;
+    let value = read_frozen_document(&mut file, before.len(), maximum_bytes, path)?;
+    let after = file.metadata()?;
     anyhow::ensure!(
-        bytes.len() as u64 <= maximum_bytes,
-        "retained journal document exceeds admission budget"
+        after.len() == before.len() && after.modified().ok() == before.modified().ok(),
+        "retained journal document changed while reading: {}",
+        path.display()
+    );
+    Ok(value)
+}
+
+struct FrozenDigestReader<R> {
+    reader: R,
+    digest: Sha256,
+    bytes: u64,
+    maximum_bytes: u64,
+}
+
+impl<R: std::io::Read> std::io::Read for FrozenDigestReader<R> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        let remaining = self.maximum_bytes.saturating_sub(self.bytes);
+        let allowed = buffer
+            .len()
+            .min(usize::try_from(remaining.saturating_add(1)).unwrap_or(usize::MAX));
+        let read = self.reader.read(&mut buffer[..allowed])?;
+        if read as u64 > remaining {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "retained journal document grew beyond its admitted size",
+            ));
+        }
+        self.digest.update(&buffer[..read]);
+        self.bytes += read as u64;
+        Ok(read)
+    }
+}
+
+fn read_frozen_document<T: serde::de::DeserializeOwned>(
+    reader: &mut impl std::io::Read,
+    expected_bytes: u64,
+    maximum_bytes: u64,
+    path: &Path,
+) -> Result<(T, xc_cache::ContentDigest)> {
+    // Reject from metadata before allocating the buffer or deserializing.
+    anyhow::ensure!(
+        expected_bytes <= maximum_bytes,
+        "retained journal document {} exceeds admission budget: file_bytes={expected_bytes}, maximum_document_bytes={maximum_bytes}; the limit is at most one eighth of XC_RESEARCH_WORKING_BYTES and the research input byte ceiling",
+        path.display()
+    );
+    let mut reader = std::io::BufReader::with_capacity(
+        COPY_BUFFER_BYTES,
+        FrozenDigestReader {
+            reader,
+            digest: Sha256::new(),
+            bytes: 0,
+            maximum_bytes: expected_bytes,
+        },
+    );
+    let value = serde_json::from_reader(&mut reader)
+        .with_context(|| format!("read retained journal document {}", path.display()))?;
+    let reader = reader.into_inner();
+    anyhow::ensure!(
+        reader.bytes == expected_bytes,
+        "retained journal document changed while reading {}: expected_bytes={expected_bytes}, observed_bytes={}",
+        path.display(),
+        reader.bytes
     );
     Ok((
-        serde_json::from_slice(&bytes)?,
-        xc_cache::ContentDigest::sha256(&bytes),
+        value,
+        xc_cache::ContentDigest(format!("{:x}", reader.digest.finalize())),
     ))
 }
 
@@ -1060,7 +1217,7 @@ fn recover_capture_configured_mode(
         })
         .context("original preparation request has no target file")?
         .canonicalize()?;
-    let (_, target_digest) = frozen_json(&target)?;
+    let target_digest = frozen_json_digest(&target)?;
     validate_recovery_request(
         &original_request,
         &configuration,
@@ -1453,6 +1610,104 @@ fn recover_capture_configured_mode(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recovery_json_admission_uses_working_budget_and_exact_streamed_bytes() {
+        let ceiling = xc_spectral::ccm::capture_runtime::RESEARCH_INPUT_MAXIMUM_BYTES;
+        assert_eq!(journal_document_limit(ceiling, 8 << 30), 1 << 30);
+        assert_eq!(journal_document_limit(ceiling, 64 << 30), ceiling);
+        assert_eq!(journal_document_limit(19, 1024), 19);
+        assert_eq!(journal_document_limit(u64::MAX, u64::MAX), ceiling);
+        assert!(journal_document_limit(ceiling, 8 << 30) > 92_077_133);
+
+        let path = Path::new("retained-capture.json");
+        let bytes = b" {\"a\":[0,1.5,true,null,\"value\"],\"b\":{\"nested\":7}} \n";
+        let (value, digest): (serde_json::Value, _) = read_frozen_document(
+            &mut &bytes[..],
+            bytes.len() as u64,
+            bytes.len() as u64,
+            path,
+        )
+        .unwrap();
+        assert_eq!(
+            value,
+            serde_json::from_slice::<serde_json::Value>(bytes).unwrap()
+        );
+        assert_eq!(digest, xc_cache::ContentDigest::sha256(bytes));
+        let (_, ignored_digest): (DiscardedJson, _) = read_frozen_document(
+            &mut &bytes[..],
+            bytes.len() as u64,
+            bytes.len() as u64,
+            path,
+        )
+        .unwrap();
+        assert_eq!(ignored_digest, digest);
+    }
+
+    #[test]
+    fn recovery_json_refuses_oversize_before_read_and_detects_changed_lengths() {
+        struct NeverRead;
+        impl std::io::Read for NeverRead {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                panic!("oversized metadata must be rejected before reading or allocating JSON");
+            }
+        }
+        let path = Path::new("retained-capture.json");
+        let error = read_frozen_document::<serde_json::Value>(&mut NeverRead, 33, 32, path)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("retained-capture.json"));
+        assert!(error.contains("file_bytes=33"));
+        assert!(error.contains("maximum_document_bytes=32"));
+        assert!(error.contains("XC_RESEARCH_WORKING_BYTES"));
+        for (bytes, expected) in [(&b"{} "[..], 2), (&b"{}"[..], 3)] {
+            assert!(
+                read_frozen_document::<serde_json::Value>(&mut &bytes[..], expected, 32, path)
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn recovery_json_discard_validation_matches_value_for_malformed_documents() {
+        for bytes in [
+            &b"{\"value\":1e400}"[..],
+            &b"{\"value\":\"\\uD800\"}"[..],
+            &b"{} false"[..],
+            &b"{\"value\":[1,]}"[..],
+        ] {
+            assert!(serde_json::from_slice::<serde_json::Value>(bytes).is_err());
+            assert!(read_frozen_document::<DiscardedJson>(
+                &mut &bytes[..],
+                bytes.len() as u64,
+                128,
+                Path::new("malformed.json"),
+            )
+            .is_err());
+        }
+    }
+
+    #[test]
+    #[ignore = "explicit read-only retained capture ingestion; no recovery or numerical work"]
+    fn recovery_json_read_retained_capture_from_environment() {
+        let path = PathBuf::from(
+            std::env::var_os("XC_TEST_RETAINED_CAPTURE_JSON")
+                .expect("set XC_TEST_RETAINED_CAPTURE_JSON to an explicit retained capture"),
+        );
+        let bytes = fs::metadata(&path).unwrap().len();
+        let started = Instant::now();
+        let (value, digest) = frozen_json(&path).unwrap();
+        let capture: xc_cache::CaptureArtifact = serde_json::from_value(value).unwrap();
+        capture.validate().unwrap();
+        assert_eq!(frozen_json_digest(&path).unwrap(), digest);
+        assert_eq!(bounded_file_digest(&path).unwrap(), digest);
+        println!(
+            "retained capture ingestion: bytes={bytes}, sha256={}, diagnostics={}, seconds={:.3}; source read only, no recovery or computation",
+            digest.0,
+            capture.requested_diagnostics.len(),
+            started.elapsed().as_secs_f64()
+        );
+    }
 
     #[test]
     fn interrupted_committed_generation_transition_refuses_stale_completion() {
