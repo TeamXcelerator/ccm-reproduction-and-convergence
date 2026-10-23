@@ -14,6 +14,12 @@ request and output directory. `XC_RESEARCH_WORKING_BYTES` bounds retained-source
 admission and arithmetic preparation. Missing primary, Tau, secular or root
 payloads fail; recovery contains no primary eigensolve or root-solving fallback.
 
+The preparer command JSON retains its `timeout_seconds` field. Any positive
+unsigned 64-bit value sets the elapsed-time limit in seconds; there is no fixed
+two-hour ceiling. Explicit `"timeout_seconds": 0` disables the elapsed-time
+cutoff. Process-group cleanup, output-size checks, and input validation remain
+active. Set this field explicitly for work that needs a longer preparation.
+
 The default request is every non-completed diagnostic in the original receipt.
 After a recorded preparation failure, successfully supplied smooth trial inputs
 also refresh the originally requested `trial_vector_energy`, `trial_vector_parity`,

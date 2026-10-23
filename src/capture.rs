@@ -569,7 +569,15 @@ mod hp {
     #[serde(deny_unknown_fields)]
     struct InputPreparer {
         argv: Vec<String>,
+        // Zero explicitly disables only the elapsed-time cutoff.
         timeout_seconds: u64,
+    }
+
+    impl InputPreparer {
+        fn time_limit(&self) -> Option<std::time::Duration> {
+            (self.timeout_seconds != 0)
+                .then(|| std::time::Duration::from_secs(self.timeout_seconds))
+        }
     }
 
     #[derive(Debug)]
@@ -671,13 +679,21 @@ mod hp {
                 && preparer
                     .argv
                     .iter()
-                    .all(|a| !a.is_empty() && a.len() <= 32768)
-                && (1..=7200).contains(&preparer.timeout_seconds),
-            "invalid private input preparation command or time limit"
+                    .all(|a| !a.is_empty() && a.len() <= 32768),
+            "invalid private input preparation command"
         );
         let directory = directory.canonicalize()?;
         let mut progress = PreparationProgress::new(&directory)?;
         progress.emit("request_admitted")?;
+        match preparer.time_limit() {
+            Some(limit) => xc_core::progress_message!(
+                "private preparation: configured elapsed-time limit={} seconds",
+                limit.as_secs()
+            ),
+            None => xc_core::progress_message!(
+                "private preparation: elapsed-time cutoff disabled (timeout_seconds=0)"
+            ),
+        }
         // The location is driver-owned and screened independently from adapter
         // output; secret-bearing paths are never echoed to the terminal.
         let location = directory.display().to_string();
@@ -735,7 +751,10 @@ mod hp {
                 progress.emit("output_budget_exceeded")?;
                 anyhow::bail!("private input preparer exceeded its output budget");
             }
-            if started.elapsed().as_secs() >= preparer.timeout_seconds {
+            if preparer
+                .time_limit()
+                .is_some_and(|limit| started.elapsed() >= limit)
+            {
                 progress.emit("timeout")?;
                 anyhow::bail!("private input preparation exceeded its time limit");
             }
@@ -1344,6 +1363,37 @@ mod hp {
         use super::*;
         use clap::Parser;
 
+        #[test]
+        fn private_preparer_time_limit_accepts_disabled_and_large_explicit_values() {
+            use std::time::Duration;
+            for seconds in [0, 1, 7200, 7201, u64::MAX] {
+                let configuration = serde_json::json!({
+                    "argv": ["fixture"], "timeout_seconds": seconds
+                });
+                let preparer: InputPreparer = serde_json::from_value(configuration).unwrap();
+                if seconds == 0 {
+                    assert_eq!(preparer.time_limit(), None);
+                    assert!(!preparer
+                        .time_limit()
+                        .is_some_and(|limit| Duration::MAX >= limit));
+                } else {
+                    let limit = Duration::from_secs(seconds);
+                    assert_eq!(preparer.time_limit(), Some(limit));
+                    assert!(!preparer
+                        .time_limit()
+                        .is_some_and(|value| limit - Duration::from_nanos(1) >= value));
+                    assert!(preparer.time_limit().is_some_and(|value| limit >= value));
+                }
+            }
+            for configuration in [
+                r#"{"argv":["fixture"],"timeout_seconds":-1}"#,
+                r#"{"argv":["fixture"],"timeout_seconds":1.5}"#,
+                r#"{"argv":["fixture"],"timeout_seconds":18446744073709551616}"#,
+            ] {
+                assert!(serde_json::from_str::<InputPreparer>(configuration).is_err());
+            }
+        }
+
         #[cfg(unix)]
         #[test]
         fn private_preparer_checks_exit_timeout_size_and_schema() {
@@ -1385,13 +1435,34 @@ mod hp {
                     true,
                     "",
                 ),
+                (9, "cp ../valid.json \"$4\"", true, ""),
+                (10, "cp ../valid.json \"$4\"", true, ""),
+                (11, "cp ../valid.json \"$4\"", true, ""),
+                (
+                    12,
+                    "truncate -s 4294967297 \"$4\"",
+                    false,
+                    "research input byte limit",
+                ),
+                (
+                    13,
+                    "cp ../valid.json \"$4\"; (sleep 2; touch late-write) & exit 0",
+                    true,
+                    "",
+                ),
             ] {
                 let directory = root.join(index.to_string());
                 fs::create_dir(&directory).unwrap();
                 // Use an explicit cwd inside the shell test only. The real
                 // adapter receives absolute request/output paths and no shell.
                 let script = format!("cd -- \"$(dirname -- \"$4\")\"; {script}");
-                let configuration=serde_json::json!({"argv":["/bin/sh","-c",script,"fixture"],"timeout_seconds":1}).to_string();
+                let timeout_seconds = match index {
+                    9 | 12 | 13 => 0,
+                    10 => 7201,
+                    11 => u64::MAX,
+                    _ => 1,
+                };
+                let configuration=serde_json::json!({"argv":["/bin/sh","-c",script,"fixture"],"timeout_seconds":timeout_seconds}).to_string();
                 let result = invoke_preparer(
                     &directory,
                     &serde_json::json!({"primary_saved":true}),
@@ -1403,7 +1474,7 @@ mod hp {
                     // The size guard can run before child exit or during the
                     // final output check. Both paths must refuse the payload.
                     let expected = error.contains(reason)
-                        || (index == 3
+                        || (matches!(index, 3 | 12)
                             && error.contains("private input preparer exceeded its output budget"));
                     assert!(expected, "case {index}: {error}");
                 }
@@ -1434,6 +1505,7 @@ mod hp {
             std::thread::sleep(std::time::Duration::from_millis(2200));
             assert!(!root.join("6/late-write").exists());
             assert!(!root.join("7/late-write").exists());
+            assert!(!root.join("13/late-write").exists());
             fs::remove_dir_all(root).unwrap();
         }
 
