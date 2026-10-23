@@ -791,7 +791,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 [[package]]
 name = "xc-cache"
 version = "0.17.0"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=e0646b97006ad6338ea60fd3134791ae1d8288bd#e0646b97006ad6338ea60fd3134791ae1d8288bd"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=1acf6d625b578b0e4e640e060b1d0a795a3ea33b#1acf6d625b578b0e4e640e060b1d0a795a3ea33b"
 dependencies = [
  "fs2",
  "getrandom",
@@ -806,7 +806,7 @@ dependencies = [
 [[package]]
 name = "xc-certify"
 version = "0.17.0"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=e0646b97006ad6338ea60fd3134791ae1d8288bd#e0646b97006ad6338ea60fd3134791ae1d8288bd"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=1acf6d625b578b0e4e640e060b1d0a795a3ea33b#1acf6d625b578b0e4e640e060b1d0a795a3ea33b"
 dependencies = [
  "rug",
  "serde",
@@ -819,7 +819,7 @@ dependencies = [
 [[package]]
 name = "xc-core"
 version = "0.17.0"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=e0646b97006ad6338ea60fd3134791ae1d8288bd#e0646b97006ad6338ea60fd3134791ae1d8288bd"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=1acf6d625b578b0e4e640e060b1d0a795a3ea33b#1acf6d625b578b0e4e640e060b1d0a795a3ea33b"
 dependencies = [
  "serde",
  "serde_json",
@@ -829,7 +829,7 @@ dependencies = [
 [[package]]
 name = "xc-numerics"
 version = "0.17.0"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=e0646b97006ad6338ea60fd3134791ae1d8288bd#e0646b97006ad6338ea60fd3134791ae1d8288bd"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=1acf6d625b578b0e4e640e060b1d0a795a3ea33b#1acf6d625b578b0e4e640e060b1d0a795a3ea33b"
 dependencies = [
  "anyhow",
  "cc",
@@ -849,7 +849,7 @@ dependencies = [
 [[package]]
 name = "xc-operator"
 version = "0.17.0"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=e0646b97006ad6338ea60fd3134791ae1d8288bd#e0646b97006ad6338ea60fd3134791ae1d8288bd"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=1acf6d625b578b0e4e640e060b1d0a795a3ea33b#1acf6d625b578b0e4e640e060b1d0a795a3ea33b"
 dependencies = [
  "rayon",
  "rug",
@@ -861,7 +861,7 @@ dependencies = [
 [[package]]
 name = "xc-root"
 version = "0.17.0"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=e0646b97006ad6338ea60fd3134791ae1d8288bd#e0646b97006ad6338ea60fd3134791ae1d8288bd"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=1acf6d625b578b0e4e640e060b1d0a795a3ea33b#1acf6d625b578b0e4e640e060b1d0a795a3ea33b"
 dependencies = [
  "num-bigint",
  "rayon",
@@ -875,7 +875,7 @@ dependencies = [
 [[package]]
 name = "xc-solver"
 version = "0.17.0"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=e0646b97006ad6338ea60fd3134791ae1d8288bd#e0646b97006ad6338ea60fd3134791ae1d8288bd"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=1acf6d625b578b0e4e640e060b1d0a795a3ea33b#1acf6d625b578b0e4e640e060b1d0a795a3ea33b"
 dependencies = [
  "nalgebra",
  "num-bigint",
@@ -892,7 +892,7 @@ dependencies = [
 [[package]]
 name = "xc-spectral"
 version = "0.17.0"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=e0646b97006ad6338ea60fd3134791ae1d8288bd#e0646b97006ad6338ea60fd3134791ae1d8288bd"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=1acf6d625b578b0e4e640e060b1d0a795a3ea33b#1acf6d625b578b0e4e640e060b1d0a795a3ea33b"
 dependencies = [
  "anyhow",
  "cc",
@@ -920,7 +920,7 @@ dependencies = [
 [[package]]
 name = "xc-zeta"
 version = "0.17.0"
-source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=e0646b97006ad6338ea60fd3134791ae1d8288bd#e0646b97006ad6338ea60fd3134791ae1d8288bd"
+source = "git+https://github.com/TeamXcelerator/xcelerator-toolkit?rev=1acf6d625b578b0e4e640e060b1d0a795a3ea33b#1acf6d625b578b0e4e640e060b1d0a795a3ea33b"
 dependencies = [
  "anyhow",
  "rug",

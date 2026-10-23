@@ -941,16 +941,89 @@ fn recovery_diagnostics(
             requested.contains(id),
             "recovery diagnostic was not requested by the original journal: {id}"
         );
-        let normalized = id.strip_suffix("_full").unwrap_or(id);
         anyhow::ensure!(
-            xc_spectral::ccm::capture::FINITE_DIAGNOSTICS.contains(&id.as_str())
-                || xc_spectral::ccm::extended_research::DIAGNOSTICS.contains(&normalized)
-                || xc_spectral::ccm::convergence_capture::DIAGNOSTICS.contains(&normalized)
-                || xc_spectral::ccm::research_completion::DIAGNOSTICS.contains(&normalized),
+            xc_spectral::ccm::convergence_capture::finite_capture::supports_recovery_diagnostic(id),
             "diagnostic has no retained-source recovery route: {id}"
         );
     }
     Ok(result)
+}
+
+fn response_options_from_documents(
+    configuration: &serde_json::Value,
+    primary: xc_spectral::ccm::hp::PortableHighPrecResult,
+) -> Result<xc_spectral::ccm::hp::response_repair::RetainedResponseOptions> {
+    use xc_spectral::ccm::hp::{response_repair::RetainedResponseOptions, CcmParityPolicy};
+    let integer = |value: &serde_json::Value, field: &str| {
+        value
+            .as_u64()
+            .with_context(|| format!("retained response requires original request.json {field}"))
+    };
+    anyhow::ensure!(
+        configuration["assembly_policy"]["recipe"]
+            == "paper_default_mode_length_precision_quadrature",
+        "retained response requires the recorded paper quadrature recipe in request.json"
+    );
+    let quadrature_base_points = usize::try_from(integer(
+        &configuration["assembly_policy"]["quadrature_base_points"],
+        "assembly_policy.quadrature_base_points",
+    )?)?;
+    anyhow::ensure!(
+        quadrature_base_points > 0,
+        "retained response quadrature_base_points must be positive"
+    );
+    let parity_policy: CcmParityPolicy =
+        serde_json::from_value(configuration["parity_policy"].clone())
+            .context("retained response requires original request.json parity_policy")?;
+    anyhow::ensure!(
+        parity_policy == CcmParityPolicy::EvenSector,
+        "retained response requires the original even-sector parity policy; primary parity is preserved"
+    );
+    let options = RetainedResponseOptions {
+        primary,
+        lambda_squared: integer(&configuration["lambda_squared"], "lambda_squared")?,
+        n_modes: usize::try_from(integer(&configuration["n_modes"], "n_modes")?)?,
+        precision_bits: u32::try_from(integer(
+            &configuration["precision_bits"],
+            "precision_bits",
+        )?)?,
+        quadrature_base_points,
+        parity_policy,
+    };
+    anyhow::ensure!(
+        options.lambda_squared >= 2
+            && options.n_modes > 0
+            && (64..=1_000_000).contains(&options.precision_bits)
+            && options.primary.precision_bits == options.precision_bits,
+        "retained response request.json shape or precision disagrees with primary.json"
+    );
+    Ok(options)
+}
+
+fn recovery_response_options(
+    journal: &Path,
+    configuration: &serde_json::Value,
+    diagnostics: &[String],
+    optional_digests: &serde_json::Map<String, serde_json::Value>,
+) -> Result<Option<xc_spectral::ccm::hp::response_repair::RetainedResponseOptions>> {
+    if !diagnostics
+        .iter()
+        .any(|id| matches!(id.as_str(), "prime_power_response" | "u_flow_response"))
+    {
+        return Ok(None);
+    }
+    // The primary's selected window may be smaller than its retained root
+    // artifact. Its exact selection is mandatory; never infer a new prefix.
+    let expected = optional_digests
+        .get("primary.json")
+        .context("retained response recovery requires the original frozen primary.json")?;
+    let (value, digest) = frozen_json(&journal.join("primary.json"))?;
+    anyhow::ensure!(
+        serde_json::to_value(&digest)? == *expected,
+        "original primary.json changed before retained response admission"
+    );
+    let primary = serde_json::from_value(value).context("decode retained response primary.json")?;
+    response_options_from_documents(configuration, primary).map(Some)
 }
 
 fn prepared_diagnostics(
@@ -1201,6 +1274,12 @@ fn recover_capture_configured_mode(
     }
     let initial_diagnostics = recovery_diagnostics(&original, selected)?;
     let (optional_digests, optional_inputs) = optional_original_inputs(&journal)?;
+    let response_options = recovery_response_options(
+        &journal,
+        &configuration,
+        &initial_diagnostics,
+        &optional_digests,
+    )?;
     let preparation_failed = optional_inputs
         .get("input-preparation-status.json")
         .is_some_and(|status| status["status"] == "failed");
@@ -1334,6 +1413,11 @@ fn recover_capture_configured_mode(
     )?;
     let result = (|| -> Result<()> {
         let sources = RetainedFiniteSources::from_manifests(&manifests, true, &cache)?;
+        if let Some(options) = &response_options {
+            // Authenticate the original state and selected roots before any
+            // arithmetic or private preparation, not after hours of work.
+            sources.validate_recovery_response_options(options)?;
+        }
         let request = checkpoint_preparation_request(
             &output,
             &identity,
@@ -1518,7 +1602,15 @@ fn recover_capture_configured_mode(
                 id,
                 &capture_request,
                 &cache,
-                || sources.capture_recovery_outcome(id, &input, &parents, &cache),
+                || {
+                    sources.capture_recovery_outcome_with_response_options(
+                        id,
+                        &input,
+                        &parents,
+                        &cache,
+                        response_options.as_ref(),
+                    )
+                },
             )?);
         }
         let combined = merge_diagnostic_records(&capture_request, &diagnostics, &records)?;
@@ -1705,6 +1797,34 @@ mod tests {
             "retained capture ingestion: bytes={bytes}, sha256={}, diagnostics={}, seconds={:.3}; source read only, no recovery or computation",
             digest.0,
             capture.requested_diagnostics.len(),
+            started.elapsed().as_secs_f64()
+        );
+    }
+
+    #[test]
+    #[ignore = "explicit original response option admission only; no matrix loading, preparation, or computation"]
+    fn recovery_response_admit_original_options_from_environment() {
+        let journal = PathBuf::from(
+            std::env::var_os("XC_TEST_RETAINED_JOURNAL")
+                .expect("set XC_TEST_RETAINED_JOURNAL to an explicit original journal"),
+        );
+        let started = Instant::now();
+        let configuration = frozen_json(&journal.join("request.json")).unwrap().0;
+        let original: xc_cache::CaptureArtifact =
+            serde_json::from_value(frozen_json(&journal.join("capture.json")).unwrap().0).unwrap();
+        original.validate().unwrap();
+        let diagnostics = recovery_diagnostics(&original, &[]).unwrap();
+        let (digests, _) = optional_original_inputs(&journal).unwrap();
+        let options = recovery_response_options(&journal, &configuration, &diagnostics, &digests)
+            .unwrap()
+            .expect("original journal must have an unfinished response");
+        // Decoding portable floats validates their exact representation without
+        // loading Tau or executing a primary, root, or response calculation.
+        options.primary.to_runtime().unwrap();
+        println!(
+            "retained response option admission: diagnostics={}, root_count={}, first_root={}, quadrature_base_points={}, seconds={:.3}; no matrix loading, preparation, or numerical recovery",
+            diagnostics.len(), options.primary.eigenvalues_pos.len(),
+            options.primary.first_positive_root_index, options.quadrature_base_points,
             started.elapsed().as_secs_f64()
         );
     }
@@ -2185,6 +2305,205 @@ mod tests {
         let mut record = original_capture();
         record.measurements.remove("compactness");
         assert!(recovery_diagnostics(&record, &[]).is_err());
+    }
+
+    #[test]
+    fn recovery_selects_retained_transforms_responses_and_extended_groups() {
+        let ids = [
+            "indexed_transform",
+            "signed_transform",
+            "prime_power_response",
+            "u_flow_response",
+            "band_reconstruction",
+            "energy_allowance",
+            "weighted_tail",
+            "tail_operator",
+        ];
+        let record = xc_cache::collect_capture(
+            &serde_json::json!({"fixture":"unfinished retained-source diagnostics"}),
+            ids.iter().map(|id| (*id).to_owned()).collect(),
+            |_| {
+                Err(CaptureFailure::Failed {
+                    reason: "original supplementary capture stopped".into(),
+                })
+            },
+        )
+        .unwrap();
+        let before = serde_json::to_vec(&record).unwrap();
+        let expected: BTreeSet<_> = ids.iter().map(|id| (*id).to_owned()).collect();
+        assert_eq!(
+            recovery_diagnostics(&record, &[])
+                .unwrap()
+                .into_iter()
+                .collect::<BTreeSet<_>>(),
+            expected
+        );
+        for id in ids {
+            assert_eq!(recovery_diagnostics(&record, &[id.into()]).unwrap(), [id]);
+        }
+        assert_eq!(serde_json::to_vec(&record).unwrap(), before);
+    }
+
+    #[test]
+    fn recovery_refuses_primary_and_root_acquisition_even_when_originally_requested() {
+        for id in [
+            "primary",
+            "ccm_weil_eigenpair",
+            "ccm_tau_matrix",
+            "ccm_root_refinement",
+            "ccm_root_discovery_window",
+            "root_certificate",
+            "indexed_transform_full",
+            "prime_power_response_full",
+            "u_flow_response_full",
+        ] {
+            let record = xc_cache::collect_capture(
+                &serde_json::json!({"fixture":"unsupported recovery request"}),
+                vec![id.into()],
+                |_| {
+                    Err(CaptureFailure::Missing {
+                        reason: "retained source unavailable".into(),
+                    })
+                },
+            )
+            .unwrap();
+            for selection in [Vec::new(), vec![id.into()]] {
+                let error = recovery_diagnostics(&record, &selection).unwrap_err();
+                assert!(
+                    error
+                        .to_string()
+                        .contains("no retained-source recovery route"),
+                    "{id}: {error:#}"
+                );
+            }
+        }
+    }
+
+    fn response_primary_fixture() -> xc_spectral::ccm::hp::PortableHighPrecResult {
+        use xc_numerics::fmt::PortableHpFloat;
+        use xc_spectral::ccm::hp::{PortableHighPrecResult, PortableInverseIterationDiagnostics};
+        let point = |n| PortableHpFloat::from_float(&rug::Float::with_val(128, n)).unwrap();
+        PortableHighPrecResult {
+            eigenvalues_pos: vec![],
+            first_positive_root_index: 1,
+            weil_min_eigenvalue: point(1),
+            stored_state_resolution: None,
+            ground_index_admission: None,
+            xi: vec![point(0), point(1), point(0)],
+            inverse_iteration_diagnostics: PortableInverseIterationDiagnostics {
+                configured_step_limit: 2,
+                unshifted_steps: 2,
+                unshifted_converged: true,
+                final_relative_rayleigh_change: Some("0".into()),
+                shifted_refinement: "accepted".into(),
+                final_relative_residual_norm: "0".into(),
+            },
+            elapsed_seconds: 1.,
+            precision_bits: 128,
+        }
+    }
+
+    fn response_configuration_fixture() -> serde_json::Value {
+        serde_json::json!({"lambda_squared":5,"n_modes":1,"precision_bits":128,
+            "parity_policy":"even-sector","assembly_policy":{
+                "recipe":"paper_default_mode_length_precision_quadrature",
+                "quadrature_base_points":37}})
+    }
+
+    #[test]
+    fn recovery_response_configuration_preserves_original_values_and_fails_closed() {
+        let configuration = response_configuration_fixture();
+        let primary = response_primary_fixture();
+        let options = response_options_from_documents(&configuration, primary.clone()).unwrap();
+        // Deliberately nondefault: recovery must not derive a quadrature order
+        // from precision or silently select the current driver's default.
+        assert_eq!(options.quadrature_base_points, 37);
+        assert_eq!(options.lambda_squared, 5);
+        assert_eq!(options.n_modes, 1);
+        assert_eq!(options.precision_bits, 128);
+        assert_eq!(options.primary, primary);
+        for (pointer, value) in [
+            ("/assembly_policy/recipe", serde_json::json!("unknown")),
+            (
+                "/assembly_policy/quadrature_base_points",
+                serde_json::Value::Null,
+            ),
+            (
+                "/assembly_policy/quadrature_base_points",
+                serde_json::json!(0),
+            ),
+            (
+                "/assembly_policy/quadrature_base_points",
+                serde_json::json!(37.5),
+            ),
+            ("/parity_policy", serde_json::json!("natural")),
+            ("/parity_policy", serde_json::json!("adaptive-even")),
+            ("/parity_policy", serde_json::Value::Null),
+            ("/lambda_squared", serde_json::json!("5")),
+            ("/lambda_squared", serde_json::json!(1)),
+            ("/n_modes", serde_json::json!(0)),
+            ("/precision_bits", serde_json::json!(256)),
+            ("/precision_bits", serde_json::Value::Null),
+            ("/precision_bits", serde_json::json!(u64::MAX)),
+        ] {
+            let mut changed = configuration.clone();
+            *changed.pointer_mut(pointer).unwrap() = value;
+            assert!(
+                response_options_from_documents(&changed, primary.clone()).is_err(),
+                "accepted changed response configuration: {changed}"
+            );
+        }
+    }
+
+    #[test]
+    fn recovery_response_selection_requires_exact_frozen_primary_bytes() {
+        let root = std::env::temp_dir().join(format!(
+            "paper-recovery-response-primary-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&root).unwrap();
+        let configuration = response_configuration_fixture();
+        let mut digests = serde_json::Map::new();
+        // Older finite-only journals remain usable without a primary result.
+        assert!(recovery_response_options(
+            &root,
+            &serde_json::json!({}),
+            &["energy_allowance".into()],
+            &digests,
+        )
+        .unwrap()
+        .is_none());
+        let response = vec!["u_flow_response".into()];
+        let error = recovery_response_options(&root, &configuration, &response, &digests)
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("frozen primary.json"));
+        let primary = response_primary_fixture();
+        save(&root.join("primary.json"), &primary).unwrap();
+        digests.insert(
+            "primary.json".into(),
+            serde_json::to_value(frozen_json_digest(&root.join("primary.json")).unwrap()).unwrap(),
+        );
+        let options = recovery_response_options(&root, &configuration, &response, &digests)
+            .unwrap()
+            .unwrap();
+        assert_eq!(options.primary, primary);
+        // Even semantically irrelevant whitespace changes the frozen source.
+        let mut file = OpenOptions::new()
+            .append(true)
+            .open(root.join("primary.json"))
+            .unwrap();
+        file.write_all(b" \n").unwrap();
+        drop(file);
+        let error = recovery_response_options(&root, &configuration, &response, &digests)
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("primary.json changed"));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

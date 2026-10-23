@@ -2,10 +2,18 @@
 
 ## Software pin
 
-Release v2.6 pins Xcelerator Toolkit 0.17.0 at
-`e0646b97006ad6338ea60fd3134791ae1d8288bd` using exact Git revisions in [Cargo.toml](../Cargo.toml)
+This supplemental-recovery repair branch pins Xcelerator Toolkit 0.17.0 at
+`1acf6d625b578b0e4e640e060b1d0a795a3ea33b` using exact Git revisions in [Cargo.toml](../Cargo.toml)
 and [Cargo.lock](../Cargo.lock). Every run journal preserves the build lockfile.
 The table distinguishes the initial v2.6 pin from this amended integration.
+
+Supplemental recovery admits indexed transforms and finite prime-power/u-flow
+responses through the Toolkit's retained-source routes. It authenticates the
+original primary's selected root subset and stored state, reads the recorded
+quadrature and parity settings, and refuses mismatches before private input
+preparation. Original primary results, roots, and journals remain unchanged.
+Secondary spectral preparation and tangent solves may still be needed; receipt
+completion and the mathematical scope of each bound are separate checks.
 
 Compatible artifacts remain reusable. See the Toolkit's numerical compatibility
 and release notes at the pinned source revision for identity changes and scope.
@@ -119,4 +127,4 @@ synthetic test fixtures are not substitutes for that input.
 | v2.5, paper campaign | 0.15.0 at `2bea90ec7cb23d4d615448c293c8af0f94e14119` |
 | v2.5, tag `v2.5` | v0.15.1 at `ec0f09cb1a0a133dfb62c7bceceff2c1669a429c` |
 | v2.6 (initial pin) | v0.16.0 at `c7fd3b7f12468bc8d989aa3662be206a591a5e5c` |
-| v2.6 (amended integration) | v0.17.0 at `e0646b97006ad6338ea60fd3134791ae1d8288bd` |
+| Supplemental-recovery repair branch | v0.17.0 at `1acf6d625b578b0e4e640e060b1d0a795a3ea33b` |
