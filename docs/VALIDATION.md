@@ -2,8 +2,8 @@
 
 ## Software pin
 
-This supplemental-recovery repair branch pins Xcelerator Toolkit 0.17.0 at
-`1acf6d625b578b0e4e640e060b1d0a795a3ea33b` using exact Git revisions in [Cargo.toml](../Cargo.toml)
+This response-acceleration integration pins Xcelerator Toolkit 0.17.0 at
+`e7d2ed09940b9d46430b04b95e668efec46d9f77` using exact Git revisions in [Cargo.toml](../Cargo.toml)
 and [Cargo.lock](../Cargo.lock). Every run journal preserves the build lockfile.
 The table distinguishes the initial v2.6 pin from this amended integration.
 
@@ -75,6 +75,26 @@ controls, while ordinary claim routes continue to clear research inputs.
 These are execution controls; bounded regression results do not establish a
 claim-scale speedup.
 
+## Response execution controls
+
+U-flow prime-response actions share exact coefficient preparation across bounded
+CPU batches. `XC_RESPONSE_EVENT_BATCH` defaults to 8 and accepts a positive ASCII
+integer. Available working memory still limits batching; the CPU route retains
+the original per-event path when the optional batch workspace is unavailable.
+Correctly rounded final actions, source precision, and compatible artifact
+identities are preserved.
+
+`XC_PRIME_RESPONSE_BACKEND` selects `cpu` (default), `auto` (currently CPU), or
+strict `cuda`, independently of dense LU. Explicit CUDA requires admitted GPU
+resources and propagates admission or backend failures. Its operational limits
+are `XC_PRIME_RESPONSE_GPU_MAXIMUM_BYTES` (default 4 GiB),
+`XC_PRIME_RESPONSE_GPU_TILE_ROWS` (default 64, range 1 through 8193), and
+`XC_PRIME_RESPONSE_GPU_HOST_WORKERS` (default at most four, within the actual
+worker allowance). Explicit counts must be positive ASCII integers; requested
+workers above the allowance are refused. These controls do not alter claim
+configurations. Bounded equality checks and kernel timings do not establish a
+full-claim speedup.
+
 ## The paper's computations
 
 The paper's campaign and verification were produced with release v2.5, using
@@ -127,4 +147,4 @@ synthetic test fixtures are not substitutes for that input.
 | v2.5, paper campaign | 0.15.0 at `2bea90ec7cb23d4d615448c293c8af0f94e14119` |
 | v2.5, tag `v2.5` | v0.15.1 at `ec0f09cb1a0a133dfb62c7bceceff2c1669a429c` |
 | v2.6 (initial pin) | v0.16.0 at `c7fd3b7f12468bc8d989aa3662be206a591a5e5c` |
-| Supplemental-recovery repair branch | v0.17.0 at `1acf6d625b578b0e4e640e060b1d0a795a3ea33b` |
+| Response-acceleration feature branch | v0.17.0 at `e7d2ed09940b9d46430b04b95e668efec46d9f77` |

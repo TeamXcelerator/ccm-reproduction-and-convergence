@@ -10,7 +10,7 @@ at arbitrary precision.
 **Release:** v2.6 (Xcelerator Toolkit v0.17.0)
 
 The paper's computations were produced with release v2.5 and Toolkit 0.15.0.
-The current software integration pins Toolkit commit `1acf6d625b578b0e4e640e060b1d0a795a3ea33b` in
+The current software integration pins Toolkit commit `e7d2ed09940b9d46430b04b95e668efec46d9f77` in
 [Cargo.toml](Cargo.toml) and [Cargo.lock](Cargo.lock). Every run journal preserves
 the build's lockfile. Cite the exact commit to distinguish amended software releases.
 Each claim script keeps its fixed published numerical configuration and reports
@@ -27,6 +27,11 @@ work from the prime-residue scheduler, with completed work counts reported per
 device. Panel operations, conversion, and reconstruction still use the CPU.
 See [the v2.6 integration notes](docs/VALIDATION.md#v26-integration-update) for
 device controls, cache compatibility, and the scope of hardware validation.
+
+U-flow prime-response actions use bounded CPU event batches by default.
+Exact CUDA response contraction is an explicit, strict option independent of
+dense LU selection. See [response execution controls](docs/VALIDATION.md#response-execution-controls);
+bounded kernel measurements do not establish a full-claim speedup.
 
 See [Validation](docs/VALIDATION.md) for the checks on this build.
 
@@ -184,7 +189,7 @@ identities. Changed identities are recomputed under new identities; old objects
 are preserved as historical evidence. Artifacts produced by toolkit releases
 before 0.16.0 are not reused. A changed identity is not evidence of corruption, and old
 certificates are not silently promoted to the current semantics. See the toolkit's
-[numerical compatibility guidance](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/1acf6d625b578b0e4e640e060b1d0a795a3ea33b/docs/NUMERICAL_COMPATIBILITY.md).
+[numerical compatibility guidance](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/e7d2ed09940b9d46430b04b95e668efec46d9f77/docs/NUMERICAL_COMPATIBILITY.md).
 
 `XC_CACHE_ROOT` selects the managed cache root. To use only local cache lookup
 and local computation, disable remote lookup:
