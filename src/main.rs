@@ -199,6 +199,9 @@ enum Command {
         /// Defaults to every non-completed diagnostic in the original receipt.
         #[arg(long, value_delimiter = ',')]
         diagnostics: Vec<String>,
+        /// Cumulative streamed scalar bytes for new supplemental inputs (1..=1 TiB); not a RAM limit.
+        #[arg(long, value_parser = clap::value_parser!(u64).range(1..=1_099_511_627_776))]
+        maximum_stream_scalar_bytes: Option<u64>,
         /// Reuse authenticated completed preparation and supplemental diagnostics.
         #[arg(long, conflicts_with = "publish_only")]
         resume: bool,
@@ -563,6 +566,7 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
             output,
             target_spec_file,
             diagnostics,
+            maximum_stream_scalar_bytes,
             resume,
             publish_only,
         } => {
@@ -573,6 +577,7 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                 &diagnostics,
                 resume,
                 publish_only,
+                maximum_stream_scalar_bytes,
             )?;
         }
         #[cfg(feature = "hp")]
@@ -2068,6 +2073,61 @@ fn print_results_f64(result: &CcmResult, top: usize) -> Result<()> {
 
 #[cfg(test)]
 mod cli_tests {
+    #[cfg(feature = "hp")]
+    #[test]
+    fn recovery_stream_scalar_limit_has_an_explicit_bounded_cli_domain() {
+        let parse = |value: &str| {
+            Cli::try_parse_from([
+                "ccm-reproduction",
+                "recover-capture",
+                "--journal",
+                "original",
+                "--output",
+                "supplement",
+                "--maximum-stream-scalar-bytes",
+                value,
+            ])
+        };
+        for value in ["1", "17179869184", "1099511627776"] {
+            let cli = parse(value).unwrap();
+            let Command::RecoverCapture {
+                maximum_stream_scalar_bytes,
+                ..
+            } = cli.command
+            else {
+                panic!("wrong command")
+            };
+            assert_eq!(maximum_stream_scalar_bytes, Some(value.parse().unwrap()));
+        }
+        for value in [
+            "0",
+            "-1",
+            "1.5",
+            "bytes",
+            "1099511627777",
+            "18446744073709551616",
+        ] {
+            assert!(parse(value).is_err(), "{value}");
+        }
+        let cli = Cli::try_parse_from([
+            "ccm-reproduction",
+            "recover-capture",
+            "--journal",
+            "original",
+            "--output",
+            "supplement",
+        ])
+        .unwrap();
+        let Command::RecoverCapture {
+            maximum_stream_scalar_bytes,
+            ..
+        } = cli.command
+        else {
+            panic!("wrong command")
+        };
+        assert_eq!(maximum_stream_scalar_bytes, None);
+    }
+
     #[test]
     fn comparison_limits_do_not_overstate_binary_or_reference_precision() {
         assert_eq!(super::comparison_digit_limit(53, 2500), 15);

@@ -40,6 +40,26 @@ exactly. Arithmetic prerequisites are derived from the authenticated retained
 state and matrix under the assigned resource budget. Explicit supplied values
 prevail. The private preparer then adds its source-qualified trial data.
 
+When `signed_transform` is selected and explicit reference jets are absent,
+recovery can reconstruct the live route's finite Fourier reference from the
+original authenticated runtime-target projection and retained roots. The target
+specification must retain its original byte and semantic identities. Later
+smooth-trial coefficients are not used as reference authority. This route opens
+no provider, solves no roots, and makes no claim about an infinite reference
+tail. Existing explicit jets prevail. A failed reconstruction is recorded only
+for `signed_transform`; independent selected diagnostics continue.
+
+Use `--maximum-stream-scalar-bytes BYTES` to raise or lower the cumulative
+serialized endpoint-text allowance for newly recovered finite diagnostics.
+The accepted range is 1 through 1 TiB. This is a total-work allowance, not a
+resident-memory or per-block limit; existing bounded blocks and the run memory
+budget remain in effect. The override is frozen in the recovery identity and
+applied after preparation authentication, so an exact retained preparation
+donor can still be reused. A changed override requires a fresh supplemental
+journal. Explicitly select completed acquisitions whose numerical coverage was
+blocked by the old allowance, such as `trial_vector_energy` and
+`trial_vector_parity`.
+
 The output directory must be new and outside the original journal. Recovery
 retains its request, original file hashes, preparation status, source inventory,
 supplemental capture receipt and numerical coverage. Original files are checked

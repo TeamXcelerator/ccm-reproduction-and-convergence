@@ -15,6 +15,63 @@ const COPY_BUFFER_BYTES: usize = 64 * 1024;
 // Leave working-memory headroom for parsed JSON and simultaneously retained
 // documents. This bounds serialized input, not the process's measured RSS.
 const JOURNAL_DOCUMENT_WORKING_DIVISOR: u64 = 8;
+// Cumulative serialized scalar endpoints across streamed matrices, not a RAM
+// allowance. Keep the same upper domain as xc-solver's streaming consumer.
+const MAXIMUM_STREAM_SCALAR_BYTES: u64 = 1_099_511_627_776;
+
+fn validate_stream_scalar_override(value: Option<u64>) -> Result<()> {
+    if let Some(value) = value {
+        anyhow::ensure!(
+            (1..=MAXIMUM_STREAM_SCALAR_BYTES).contains(&value),
+            "maximum stream scalar bytes must be in 1..=1099511627776 (cumulative bytes, not working memory)"
+        );
+    }
+    Ok(())
+}
+
+fn bind_stream_scalar_override(identity: &mut serde_json::Value, value: Option<u64>) -> Result<()> {
+    validate_stream_scalar_override(value)?;
+    // Omit absent overrides so existing recovery identities remain replayable.
+    if let Some(value) = value {
+        identity["operational_overrides"] =
+            serde_json::json!({"maximum_stream_scalar_bytes":value});
+    }
+    Ok(())
+}
+
+fn apply_stream_scalar_override(
+    input: &mut ExternalResearchInputs,
+    value: Option<u64>,
+) -> Result<()> {
+    validate_stream_scalar_override(value)?;
+    if let Some(value) = value {
+        let finite = input.finite_diagnostics.get_or_insert_with(|| {
+            xc_spectral::ccm::convergence_capture::finite_capture::Inputs {
+                scope: "supplemental recovery streaming resource policy".into(),
+                ..Default::default()
+            }
+        });
+        finite.streaming_options.maximum_stream_scalar_bytes = value;
+        input.validate()?;
+    }
+    Ok(())
+}
+
+fn capture_with_reference_failure<F>(
+    id: &str,
+    failure: Option<&xc_cache::CaptureFailure>,
+    execute: F,
+) -> std::result::Result<xc_cache::CapturedDiagnostic, xc_cache::CaptureFailure>
+where
+    F: FnOnce() -> std::result::Result<xc_cache::CapturedDiagnostic, xc_cache::CaptureFailure>,
+{
+    if id == "signed_transform" {
+        if let Some(failure) = failure {
+            return Err(failure.clone());
+        }
+    }
+    execute()
+}
 const ORIGINAL_REQUIRED_FILES: &[&str] = &[
     "request.json",
     "input-preparation-request.json",
@@ -1185,12 +1242,13 @@ pub fn recover_capture_with_mode(
     selected: &[String],
     resume: bool,
     publish_only: bool,
+    maximum_stream_scalar_bytes: Option<u64>,
 ) -> Result<()> {
     let preparer = std::env::var("XC_RESEARCH_PREPARER")
         .context("recovery requires an explicitly configured private preparer")?;
     let config = xc_cache::ManagedArtifactCacheConfig::from_environment()?
         .context("managed retained cache required")?;
-    recover_capture_configured_mode(
+    recover_capture_configured_mode_with_override(
         journal,
         output,
         target,
@@ -1199,6 +1257,7 @@ pub fn recover_capture_with_mode(
         config,
         resume,
         publish_only,
+        maximum_stream_scalar_bytes,
     )
 }
 
@@ -1223,8 +1282,33 @@ fn recover_capture_configured(
     )
 }
 
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 fn recover_capture_configured_mode(
+    journal: &Path,
+    output: &Path,
+    target: Option<&Path>,
+    selected: &[String],
+    preparer: &str,
+    managed_config: xc_cache::ManagedArtifactCacheConfig,
+    resume: bool,
+    publish_only: bool,
+) -> Result<()> {
+    recover_capture_configured_mode_with_override(
+        journal,
+        output,
+        target,
+        selected,
+        preparer,
+        managed_config,
+        resume,
+        publish_only,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn recover_capture_configured_mode_with_override(
     journal: &Path,
     output: &Path,
     target: Option<&Path>,
@@ -1233,8 +1317,10 @@ fn recover_capture_configured_mode(
     mut managed_config: xc_cache::ManagedArtifactCacheConfig,
     resume: bool,
     publish_only: bool,
+    maximum_stream_scalar_bytes: Option<u64>,
 ) -> Result<()> {
     use xc_spectral::ccm::convergence_capture::finite_capture::RetainedFiniteSources;
+    validate_stream_scalar_override(maximum_stream_scalar_bytes)?;
     let resources = xc_cache::managed_resource_policy_from_environment()?;
     let journal = journal.canonicalize()?;
     let parent = output
@@ -1349,7 +1435,7 @@ fn recover_capture_configured_mode(
     for (name, digest) in optional_digests {
         frozen[name] = digest;
     }
-    let identity = serde_json::json!({"schema_version":1,"original_journal":journal,
+    let mut identity = serde_json::json!({"schema_version":1,"original_journal":journal,
         "original_files":frozen,"target_sha256":target_digest,
         "selected_diagnostics":selected,"initial_diagnostics":initial_diagnostics,
         "producer":producer_identity(preparer)?,
@@ -1360,6 +1446,7 @@ fn recover_capture_configured_mode(
         "certification_failure_policy":format!("{:?}", managed_config.certification_failure_policy),
         "repository_owner":managed_config.repository_owner,
         "remote_cache_mode":format!("{:?}", managed_config.remote_cache_mode)});
+    bind_stream_scalar_override(&mut identity, maximum_stream_scalar_bytes)?;
     let checkpoint_path = output.join("recovery-checkpoint.json");
     if resume || publish_only {
         anyhow::ensure!(frozen_json(&checkpoint_path)?.0 == identity,
@@ -1403,14 +1490,13 @@ fn recover_capture_configured_mode(
         return Ok(());
     }
     let cache = managed.context();
-    checkpoint_save(
-        &output.join("request.json"),
-        &serde_json::json!({"schema_version":1,"phase":"retained_capture_recovery",
+    let mut recovery_metadata = serde_json::json!({"schema_version":1,"phase":"retained_capture_recovery",
         "original_journal":journal,"original_files":frozen,"initial_diagnostics":initial_diagnostics,
         "selection_policy":if selected.is_empty(){"unfinished plus affected finite diagnostics after successful preparation"}else{"explicit selection"},
         "original_preparation_failed":preparation_failed,"primary_recomputation":false,
-        "root_recomputation":false,"original_claim_receipt_unchanged":true,"cargo_lock":include_str!("../Cargo.lock")}),
-    )?;
+        "root_recomputation":false,"original_claim_receipt_unchanged":true,"cargo_lock":include_str!("../Cargo.lock")});
+    bind_stream_scalar_override(&mut recovery_metadata, maximum_stream_scalar_bytes)?;
+    checkpoint_save(&output.join("request.json"), &recovery_metadata)?;
     let result = (|| -> Result<()> {
         let sources = RetainedFiniteSources::from_manifests(&manifests, true, &cache)?;
         if let Some(options) = &response_options {
@@ -1480,6 +1566,42 @@ fn recover_capture_configured_mode(
         );
         sources.validate_recovery_input(&prepared.input)?;
         let mut input = prepared.input;
+        // Preserve the authenticated donor preparation request and producer
+        // output. Operational limits and original finite-reference jets belong
+        // only to these new supplemental inputs, after donor authentication.
+        apply_stream_scalar_override(&mut input, maximum_stream_scalar_bytes)?;
+        let original_base = &original_request["base_inputs"];
+        let reference_preparation_failure = if initial_diagnostics
+            .iter()
+            .any(|id| id == "signed_transform")
+            && input.reference_jets.is_empty()
+            && original_base["convention_id"] == "runtime-target-samples-and-fourier-v1"
+        {
+            let authority = (|| -> Result<_> {
+                let (target_value, checked_target_digest) = frozen_json(&target)?;
+                anyhow::ensure!(
+                    checked_target_digest == target_digest,
+                    "target changed during preparation"
+                );
+                let spec = xc_spectral::target::TargetProfileSpec::from_json(&serde_json::to_vec(
+                    &target_value,
+                )?)?;
+                let definition = xc_cache::ContentDigest(spec.digest()?);
+                let original_base: ExternalResearchInputs =
+                    serde_json::from_value(original_base.clone())?;
+                Ok((original_base, definition))
+            })();
+            match authority {
+                Ok((original_base, definition)) => sources
+                    .restore_recovery_reference_jets(&original_base, &definition, &mut input)
+                    .err(),
+                Err(error) => Some(CaptureFailure::failed(format!(
+                    "retained finite reference authority: {error:#}"
+                ))),
+            }
+        } else {
+            None
+        };
         // An explicitly excluded old sector solve supplies provenance for an
         // assessment of unavailable vectors. It is not evidence that a new
         // sector solve ran, nor a substitute set of cluster eigenvectors.
@@ -1569,13 +1691,18 @@ fn recover_capture_configured_mode(
                 "smooth qualification belongs to a different target source"
             );
         }
-        checkpoint_save(
-            &output.join("input-preparation-status.json"),
-            &serde_json::json!({"status":"prepared","input_sha256":prepared.digest,
+        let mut preparation_status = serde_json::json!({"status":"prepared","input_sha256":prepared.digest,
                 "preparer_output_file":"prepared-research-inputs.json",
                 "final_input_digest":final_input_digest,
                 "post_preparation_assessments":"explicit prior sector-policy provenance, when applicable",
-            "source_join_validated":true,"primary_recomputed":false,"root_recomputed":false}),
+            "source_join_validated":true,"primary_recomputed":false,"root_recomputed":false});
+        if let Some(failure) = &reference_preparation_failure {
+            preparation_status["signed_reference_preparation_failure"] =
+                serde_json::to_value(failure)?;
+        }
+        checkpoint_save(
+            &output.join("input-preparation-status.json"),
+            &preparation_status,
         )?;
         let (status_value, status_digest) =
             frozen_json(&output.join("input-preparation-status.json"))?;
@@ -1603,12 +1730,18 @@ fn recover_capture_configured_mode(
                 &capture_request,
                 &cache,
                 || {
-                    sources.capture_recovery_outcome_with_response_options(
+                    capture_with_reference_failure(
                         id,
-                        &input,
-                        &parents,
-                        &cache,
-                        response_options.as_ref(),
+                        reference_preparation_failure.as_ref(),
+                        || {
+                            sources.capture_recovery_outcome_with_response_options(
+                                id,
+                                &input,
+                                &parents,
+                                &cache,
+                                response_options.as_ref(),
+                            )
+                        },
                     )
                 },
             )?);
@@ -1702,6 +1835,153 @@ fn recover_capture_configured_mode(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn signed_reference_failure_is_scoped_and_keeps_independent_measurements() {
+        use std::cell::Cell;
+        for failure in [
+            CaptureFailure::Failed {
+                reason: "retained reference authority mismatch".into(),
+            },
+            CaptureFailure::Blocked {
+                reason: "run memory budget exceeded".into(),
+            },
+        ] {
+            let calls = Cell::new(0);
+            let record = xc_cache::collect_capture(
+                &serde_json::json!({"external_input_digest":"unchanged final input"}),
+                vec!["signed_transform".into(), "indexed_transform".into()],
+                |id| {
+                    capture_with_reference_failure(id, Some(&failure), || {
+                        assert_eq!(id, "indexed_transform");
+                        calls.set(calls.get() + 1);
+                        xc_cache::CapturedDiagnostic::new(
+                            &serde_json::json!({"outcome":"point_measurement","value":"1"}),
+                            vec![],
+                        )
+                        .map_err(CaptureFailure::failed)
+                    })
+                },
+            )
+            .unwrap();
+            assert_eq!(calls.get(), 1);
+            assert!(!record.receipt.is_complete());
+            assert!(!record.measurements.contains_key("signed_transform"));
+            assert!(record.measurements.contains_key("indexed_transform"));
+            match failure {
+                CaptureFailure::Failed { .. } => assert!(matches!(
+                    record.receipt.outcomes()["signed_transform"],
+                    xc_core::DiagnosticOutcome::Failed { .. }
+                )),
+                CaptureFailure::Blocked { .. } => assert!(matches!(
+                    record.receipt.outcomes()["signed_transform"],
+                    xc_core::DiagnosticOutcome::Blocked { .. }
+                )),
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[test]
+    fn recovery_stream_scalar_override_changes_only_the_requested_operational_field() {
+        let digest = xc_cache::ContentDigest::sha256(b"streaming override fixture");
+        let mut input: ExternalResearchInputs = serde_json::from_value(serde_json::json!({
+            "schema_version":1,"source_eigenpair":digest,"lambda_squared":"9","n_modes":1,"precision_bits":128,
+            "convention_id":"explicit fixture","definition_digest":digest,"approximation_scope":"finite stored fixture",
+            "finite_diagnostics":{"scope":"original finite scope","streaming_options":{
+                "maximum_dimension":8,"maximum_parts":3,"maximum_block_entries":17,"maximum_block_scalar_bytes":1024,
+                "maximum_stream_entries":31,"maximum_stream_scalar_bytes":2048,"maximum_vector_scalar_bytes":512,
+                "maximum_interval_operations":1000,"maximum_rational_bits":512,"norm_precision_bits":128}}
+        })).unwrap();
+        input.validate().unwrap();
+        let original = input.clone();
+        apply_stream_scalar_override(&mut input, None).unwrap();
+        assert_eq!(input, original);
+        for cap in [1, MAXIMUM_STREAM_SCALAR_BYTES] {
+            apply_stream_scalar_override(&mut input, Some(cap)).unwrap();
+            let mut expected = serde_json::to_value(&original).unwrap();
+            expected["finite_diagnostics"]["streaming_options"]["maximum_stream_scalar_bytes"] =
+                cap.into();
+            assert_eq!(serde_json::to_value(&input).unwrap(), expected);
+        }
+        for cap in [0, MAXIMUM_STREAM_SCALAR_BYTES + 1, u64::MAX] {
+            let before = input.clone();
+            assert!(apply_stream_scalar_override(&mut input, Some(cap)).is_err());
+            assert_eq!(
+                input, before,
+                "invalid override must not partially mutate an input"
+            );
+        }
+        input.finite_diagnostics = None;
+        apply_stream_scalar_override(&mut input, Some(1)).unwrap();
+        assert_eq!(
+            input
+                .finite_diagnostics
+                .as_ref()
+                .unwrap()
+                .streaming_options
+                .maximum_stream_scalar_bytes,
+            1
+        );
+        input.validate().unwrap();
+    }
+
+    #[test]
+    fn recovery_stream_scalar_override_is_frozen_before_preparation_without_changing_donor_request()
+    {
+        let original_identity =
+            serde_json::json!({"fixture":"original source and producer identity"});
+        let mut unchanged = original_identity.clone();
+        bind_stream_scalar_override(&mut unchanged, None).unwrap();
+        assert_eq!(unchanged, original_identity);
+        let mut first = original_identity.clone();
+        bind_stream_scalar_override(&mut first, Some(1)).unwrap();
+        let mut changed = original_identity;
+        bind_stream_scalar_override(&mut changed, Some(2)).unwrap();
+        assert_ne!(
+            xc_cache::ContentDigest::sha256_json(&first).unwrap(),
+            xc_cache::ContentDigest::sha256_json(&changed).unwrap()
+        );
+        let root = std::env::temp_dir().join(format!(
+            "paper-stream-override-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&root).unwrap();
+        let request = serde_json::json!({"base_inputs":{"fixture":"unchanged donor inputs"},"configuration":{"fixture":"unchanged original configuration"}});
+        assert_eq!(
+            checkpoint_preparation_request(&root, &first, || Ok(request.clone()), |_| Ok(()))
+                .unwrap(),
+            request
+        );
+        assert_eq!(
+            checkpoint_preparation_request(
+                &root,
+                &first,
+                || panic!("same identity reran preparation"),
+                |_| Ok(())
+            )
+            .unwrap(),
+            request
+        );
+        assert!(checkpoint_preparation_request(
+            &root,
+            &changed,
+            || panic!("changed limit reached preparation"),
+            |_| Ok(())
+        )
+        .is_err());
+        assert_eq!(
+            frozen_json(&root.join("recovery-preparation-request.json"))
+                .unwrap()
+                .0,
+            request
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn recovery_json_admission_uses_working_budget_and_exact_streamed_bytes() {

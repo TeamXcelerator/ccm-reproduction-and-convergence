@@ -3,7 +3,7 @@
 ## Software pin
 
 This main-branch response-acceleration integration pins Xcelerator Toolkit 0.17.0 at
-`550df7246faece0a1b2fca6a0d25c8bf31d54c36` using exact Git revisions in [Cargo.toml](../Cargo.toml)
+`8b36455495668e3a0dab7706486eb195a196025a` using exact Git revisions in [Cargo.toml](../Cargo.toml)
 and [Cargo.lock](../Cargo.lock). Every run journal preserves the build lockfile.
 The table distinguishes the initial v2.6 pin from this integration. Main includes unreleased software updates after the existing v2.6 tag; the package version remains 2.6.0 and the tag retains its published snapshot.
 
@@ -147,4 +147,4 @@ synthetic test fixtures are not substitutes for that input.
 | v2.5, paper campaign | 0.15.0 at `2bea90ec7cb23d4d615448c293c8af0f94e14119` |
 | v2.5, tag `v2.5` | v0.15.1 at `ec0f09cb1a0a133dfb62c7bceceff2c1669a429c` |
 | v2.6 (initial pin) | v0.16.0 at `c7fd3b7f12468bc8d989aa3662be206a591a5e5c` |
-| Current main-branch integration | v0.17.0 at `550df7246faece0a1b2fca6a0d25c8bf31d54c36` |
+| Current main-branch integration | v0.17.0 at `8b36455495668e3a0dab7706486eb195a196025a` |
