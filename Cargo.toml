@@ -32,11 +32,11 @@ serde_json = "1.0"
 sha2 = "0.10"
 
 # Xcelerator Toolkit 0.17.0; exact Git revision and Cargo.lock bind each run.
-xc-spectral = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "e7d2ed09940b9d46430b04b95e668efec46d9f77" }
-xc-zeta = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "e7d2ed09940b9d46430b04b95e668efec46d9f77" }
-xc-numerics = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "e7d2ed09940b9d46430b04b95e668efec46d9f77" }
-xc-cache = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "e7d2ed09940b9d46430b04b95e668efec46d9f77" }
-xc-core = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "e7d2ed09940b9d46430b04b95e668efec46d9f77" }
+xc-spectral = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "550df7246faece0a1b2fca6a0d25c8bf31d54c36" }
+xc-zeta = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "550df7246faece0a1b2fca6a0d25c8bf31d54c36" }
+xc-numerics = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "550df7246faece0a1b2fca6a0d25c8bf31d54c36" }
+xc-cache = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "550df7246faece0a1b2fca6a0d25c8bf31d54c36" }
+xc-core = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "550df7246faece0a1b2fca6a0d25c8bf31d54c36" }
 [profile.release]
 opt-level = 3
 lto = "thin"

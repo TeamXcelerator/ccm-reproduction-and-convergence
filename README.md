@@ -7,12 +7,12 @@ at arbitrary precision.
 **Author:** Ronnie Andrews, Jr.  
 **ORCID:** [0009-0003-9724-3104](https://orcid.org/0009-0003-9724-3104)  
 **Contact:** randrewsmath@gmail.com  
-**Release:** v2.6 (Xcelerator Toolkit v0.17.0)
+**Published tag:** v2.6; main includes unreleased software updates (package 2.6.0).
 
 The paper's computations were produced with release v2.5 and Toolkit 0.15.0.
-The current software integration pins Toolkit commit `e7d2ed09940b9d46430b04b95e668efec46d9f77` in
+The current software integration pins Toolkit commit `550df7246faece0a1b2fca6a0d25c8bf31d54c36` in
 [Cargo.toml](Cargo.toml) and [Cargo.lock](Cargo.lock). Every run journal preserves
-the build's lockfile. Cite the exact commit to distinguish amended software releases.
+the build's lockfile. Cite the exact commit to distinguish builds; the existing v2.6 tag retains its published source snapshot.
 Each claim script keeps its fixed published numerical configuration and reports
 **PASS** or **FAIL** for its documented checks.
 
@@ -189,7 +189,7 @@ identities. Changed identities are recomputed under new identities; old objects
 are preserved as historical evidence. Artifacts produced by toolkit releases
 before 0.16.0 are not reused. A changed identity is not evidence of corruption, and old
 certificates are not silently promoted to the current semantics. See the toolkit's
-[numerical compatibility guidance](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/e7d2ed09940b9d46430b04b95e668efec46d9f77/docs/NUMERICAL_COMPATIBILITY.md).
+[numerical compatibility guidance](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/550df7246faece0a1b2fca6a0d25c8bf31d54c36/docs/NUMERICAL_COMPATIBILITY.md).
 
 `XC_CACHE_ROOT` selects the managed cache root. To use only local cache lookup
 and local computation, disable remote lookup:

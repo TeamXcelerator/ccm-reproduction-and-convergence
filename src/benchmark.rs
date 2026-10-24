@@ -9,7 +9,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const BENCHMARK_SCHEMA_VERSION: u32 = 1;
 const TOOLKIT_VERSION: &str = "0.17.0";
-const TOOLKIT_REVISION: &str = "e7d2ed09940b9d46430b04b95e668efec46d9f77";
+const TOOLKIT_REVISION: &str = "550df7246faece0a1b2fca6a0d25c8bf31d54c36";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct BenchmarkOptions {
