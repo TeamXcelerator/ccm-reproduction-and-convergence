@@ -3,7 +3,7 @@
 The [aggregate record](research-evidence.json) records the configurations,
 source digests, numerical results, and proof scopes used in the revised paper.
 The v2.5 campaign used Toolkit v0.15.0 at
-`2bea90ec7cb23d4d615448c293c8af0f94e14119`; the current software integration pins Toolkit v0.17.0 at `8b36455495668e3a0dab7706486eb195a196025a`.
+`2bea90ec7cb23d4d615448c293c8af0f94e14119`; the current software integration pins Toolkit v0.17.0 at `2e4eadd321ea668faa10f1cd0025a32e362ff337`.
 Here C denotes the cutoff parameter lambda-squared, and the full matrix has
 dimension 2N+1. See the [manuscript](../paper.pdf) for definitions and proofs.
 

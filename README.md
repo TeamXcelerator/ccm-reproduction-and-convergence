@@ -10,7 +10,7 @@ at arbitrary precision.
 **Published tag:** v2.6; main includes unreleased software updates (package 2.6.0).
 
 The paper's computations were produced with release v2.5 and Toolkit 0.15.0.
-The current software integration pins Toolkit commit `8b36455495668e3a0dab7706486eb195a196025a` in
+The current software integration pins Toolkit commit `2e4eadd321ea668faa10f1cd0025a32e362ff337` in
 [Cargo.toml](Cargo.toml) and [Cargo.lock](Cargo.lock). Every run journal preserves
 the build's lockfile. Cite the exact commit to distinguish builds; the existing v2.6 tag retains its published source snapshot.
 Each claim script keeps its fixed published numerical configuration and reports
@@ -189,7 +189,7 @@ identities. Changed identities are recomputed under new identities; old objects
 are preserved as historical evidence. Artifacts produced by toolkit releases
 before 0.16.0 are not reused. A changed identity is not evidence of corruption, and old
 certificates are not silently promoted to the current semantics. See the toolkit's
-[numerical compatibility guidance](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/8b36455495668e3a0dab7706486eb195a196025a/docs/NUMERICAL_COMPATIBILITY.md).
+[numerical compatibility guidance](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/2e4eadd321ea668faa10f1cd0025a32e362ff337/docs/NUMERICAL_COMPATIBILITY.md).
 
 `XC_CACHE_ROOT` selects the managed cache root. To use only local cache lookup
 and local computation, disable remote lookup:

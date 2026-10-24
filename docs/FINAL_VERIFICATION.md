@@ -4,7 +4,7 @@ This supplement closes the analytic finite matrix-to-root chain at C=13 and
 records independent controls on assembly, entry precision, and prime response.
 The complete numeric reports are in [research-evidence.json](research-evidence.json).
 The paper's verification was performed with the v2.5 release (Toolkit v0.15.0);
-the current software integration pins Toolkit v0.17.0 at `8b36455495668e3a0dab7706486eb195a196025a`.
+the current software integration pins Toolkit v0.17.0 at `2e4eadd321ea668faa10f1cd0025a32e362ff337`.
 Here C is lambda-squared and the full matrix dimension is 2N+1. These results
 support the [v2.5 manuscript](../paper.pdf); the broader campaign and Critical-N
 measurements are described in [Research evidence](RESEARCH_EVIDENCE.md).

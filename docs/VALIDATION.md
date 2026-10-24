@@ -3,7 +3,7 @@
 ## Software pin
 
 This main-branch response-acceleration integration pins Xcelerator Toolkit 0.17.0 at
-`8b36455495668e3a0dab7706486eb195a196025a` using exact Git revisions in [Cargo.toml](../Cargo.toml)
+`2e4eadd321ea668faa10f1cd0025a32e362ff337` using exact Git revisions in [Cargo.toml](../Cargo.toml)
 and [Cargo.lock](../Cargo.lock). Every run journal preserves the build lockfile.
 The table distinguishes the initial v2.6 pin from this integration. Main includes unreleased software updates after the existing v2.6 tag; the package version remains 2.6.0 and the tag retains its published snapshot.
 
@@ -14,6 +14,11 @@ quadrature and parity settings, and refuses mismatches before private input
 preparation. Original primary results, roots, and journals remain unchanged.
 Secondary spectral preparation and tangent solves may still be needed; receipt
 completion and the mathematical scope of each bound are separate checks.
+
+Stored-point response arithmetic uses an admitted exact-product fallback after
+the established interval attempts, shares the configurable response guard
+policy for further interval work, and retains completed u-flow actions in
+validated local checkpoints for subsequent same-build attempts.
 
 Compatible artifacts remain reusable. See the Toolkit's numerical compatibility
 and release notes at the pinned source revision for identity changes and scope.
@@ -147,4 +152,4 @@ synthetic test fixtures are not substitutes for that input.
 | v2.5, paper campaign | 0.15.0 at `2bea90ec7cb23d4d615448c293c8af0f94e14119` |
 | v2.5, tag `v2.5` | v0.15.1 at `ec0f09cb1a0a133dfb62c7bceceff2c1669a429c` |
 | v2.6 (initial pin) | v0.16.0 at `c7fd3b7f12468bc8d989aa3662be206a591a5e5c` |
-| Current main-branch integration | v0.17.0 at `8b36455495668e3a0dab7706486eb195a196025a` |
+| Current main-branch integration | v0.17.0 at `2e4eadd321ea668faa10f1cd0025a32e362ff337` |
