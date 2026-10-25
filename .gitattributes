@@ -1,5 +1,5 @@
 # Shell scripts must be checked out with LF line endings, even on Windows,
-# so they execute correctly on Linux (Vast) without "bad interpreter" errors.
+# so they execute correctly on Linux without "bad interpreter" errors.
 *.sh text eol=lf
 
 # Rust / TOML / Markdown / lock files — let git auto-handle.
@@ -17,7 +17,6 @@ docs/CLAIM1C_CAPTURE.md text eol=lf
 docs/RESEARCH_EVIDENCE.md text eol=lf
 docs/FINAL_VERIFICATION.md text eol=lf
 docs/research-evidence.json text eol=lf
-docs/validation/manuscript-v2.5.json text eol=lf
 research/** text eol=lf
 
 # This existing proof input is hashed verbatim by the root-transfer report.

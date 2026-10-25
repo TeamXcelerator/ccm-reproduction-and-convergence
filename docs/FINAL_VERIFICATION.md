@@ -3,14 +3,16 @@
 This supplement closes the analytic finite matrix-to-root chain at C=13 and
 records independent controls on assembly, entry precision, and prime response.
 The complete numeric reports are in [research-evidence.json](research-evidence.json).
-The production harness and Toolkit v0.15.0 pin are unchanged.
+The verification reported in this supplement was performed with the v2.5 release (Toolkit v0.15.0);
+the current software integration pins Toolkit v0.17.1 at `e466a413713a23df0ae550b307c256e7b1313bea`.
 Here C is lambda-squared and the full matrix dimension is 2N+1. These results
-support the [v2.5 manuscript](../paper.pdf); the broader campaign and Critical-N
-measurements are described in [Research evidence](RESEARCH_EVIDENCE.md).
+were reported in the v2.5 manuscript and remain part of the
+[revised manuscript](../paper.pdf). The broader campaign, revised C=1200
+residual/gap measurement, and Critical-N measurements are described in
+[Research evidence](RESEARCH_EVIDENCE.md).
 
 The Python commands below require `python-flint`, `sympy`, and `mpmath`.
-The checked versions are recorded in
-[the manuscript validation record](validation/manuscript-v2.5.json).
+The checked versions are python-flint 0.8.0, sympy 1.14.0, and mpmath 1.3.0.
 
 ## Analytic root transfer
 
@@ -33,18 +35,18 @@ The first five N=10 matching depths remain 21.585, 16.335, 11.856, 5.163, and
 larger-cutoff headline root checks, including 1495.14 digits, retain their
 serialized-source scope. No continuum limit is asserted.
 
-First reproduce and independently verify the [finite sector certificates](../research/finite_certification/README.md)
+First reproduce and independently verify the [finite sector certificates](../verification/finite_certification/README.md)
 and the [small-source census](RESEARCH_EVIDENCE.md). Then, using unrounded
 decoded state payloads and the corresponding source-bound brackets:
 
 ```bash
-python3 research/certify_analytic_roots.py \
+python3 verification/certify_analytic_roots.py \
   --matrix /path/to/tau-n10.json \
   --sector-certificate /path/to/certificate-n10.json \
   --state /path/to/c13-n10-state.json \
   --brackets /path/to/small-census.json \
   --output /path/to/analytic-roots-n10.json
-python3 research/verify_analytic_roots.py \
+python3 verification/verify_analytic_roots.py \
   --matrix /path/to/tau-n10.json \
   --sector-certificate /path/to/certificate-n10.json \
   --state /path/to/c13-n10-state.json \
@@ -53,13 +55,13 @@ python3 research/verify_analytic_roots.py \
 ```
 
 For N=120, use its matrix, sector certificate, and state, and supply
-`research/headline-root-certificates.json` as the brackets file. The existing
+`verification/headline-root-certificates.json` as the brackets file. The existing
 certificate binds the exact retained state; a different state needs newly
 computed root brackets. Do not disable assertions with Python's `-O` option.
 
 ## Independent controls
 
-`research/check_assembly_integrals.py` integrates the defining CCM pole,
+`verification/check_assembly_integrals.py` integrates the defining CCM pole,
 archimedean, and prime terms using mpmath tanh-sinh quadrature. It checks all
 441 C=13, N=10 entries at 60 and 90 decimal digits and independently solves
 the full and parity-restricted matrices. Maximum entry differences are
@@ -67,7 +69,7 @@ the full and parity-restricted matrices. Maximum entry differences are
 are retained. This numerical check is distinct from an interval proof.
 The defining formulas are [CCM (3.14), (3.16), and (4.4)](https://arxiv.org/html/2511.22755v1#S4.SS3).
 
-`research/check_fixed_matrix_precision.py` rounds one fixed matrix to nine
+`verification/check_fixed_matrix_precision.py` rounds one fixed matrix to nine
 bit precisions and solves each rounded problem at 220 decimal digits. The
 24-bit ground state is odd and its even-source root comparison is marked
 inapplicable. At 53 and 64 bits the minimum eigenvalues are negative;
@@ -75,13 +77,13 @@ inapplicable. At 53 and 64 bits the minimum eigenvalues are negative;
 The script retains every outcome rather than hiding inadequate precision.
 
 ```bash
-python3 research/check_assembly_integrals.py \
+python3 verification/check_assembly_integrals.py \
   --matrix /path/to/tau-n10.json --output /path/to/integral-check.json
-python3 research/check_fixed_matrix_precision.py \
+python3 verification/check_fixed_matrix_precision.py \
   --matrix /path/to/tau-n10.json --output /path/to/precision-check.json
 ```
 
-`research/check_prime_response.py` independently solves A+tD_q at fixed
+`verification/check_prime_response.py` independently solves A+tD_q at fixed
 observation poles for all nine active prime powers at C=13, N=120. It uses
 centered steps 1e-90, 1e-100, and 1e-110, a different eigenpair solve, and
 root refinement. All 27 root/eigenvalue response comparisons pass. Final
@@ -89,7 +91,7 @@ relative root-response differences are below 1.1e-117. This deliberately
 uses approximate FLINT solves at 500 decimal digits and residual checks;
 the displayed Arb arithmetic does not make it an interval certificate.
 
-`research/check_response_decomposition.py` checks the one-sided prime-13
+`verification/check_response_decomposition.py` checks the one-sided prime-13
 matrix activation and reconciles full-precision, source-matched derivative
 channels. The aggregate moving-pole first-root derivative is about
 -4.61362e-53 after cancellation of components of order hundreds. This is
@@ -98,15 +100,15 @@ nonprime derivative. These matrix directions do not represent removing
 a prime or taking a finite cutoff step.
 
 ```bash
-python3 research/check_prime_response.py \
+python3 verification/check_prime_response.py \
   --matrix /path/to/tau-n120.json --state /path/to/c13-n120-state.json \
   --response /path/to/prime-response.json --output /path/to/prime-check.json
-python3 research/check_response_decomposition.py \
+python3 verification/check_response_decomposition.py \
   --prime-response /path/to/prime-response.json --u-flow /path/to/u-flow.json \
   --output /path/to/decomposition-check.json
 ```
 
-These standalone verification reports supplement the Ultra receipts.
+These standalone verification reports supplement the claim runs.
 Source-dependent checks use the exact inputs identified in each report;
 newly computed inputs require corresponding verification evidence.
 Earlier unsuccessful invocations remain unchanged.

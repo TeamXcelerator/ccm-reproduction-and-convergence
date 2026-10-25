@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const BENCHMARK_SCHEMA_VERSION: u32 = 1;
-const TOOLKIT_VERSION: &str = "0.15.1";
-const TOOLKIT_REVISION: &str = "ec0f09cb1a0a133dfb62c7bceceff2c1669a429c";
+const TOOLKIT_VERSION: &str = "0.17.1";
+const TOOLKIT_REVISION: &str = "e466a413713a23df0ae550b307c256e7b1313bea";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct BenchmarkOptions {

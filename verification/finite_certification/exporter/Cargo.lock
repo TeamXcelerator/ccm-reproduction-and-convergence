@@ -366,7 +366,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "paper1-interval-export"
+name = "ccm-interval-export"
 version = "2.5.0"
 dependencies = [
  "anyhow",

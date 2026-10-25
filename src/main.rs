@@ -21,6 +21,8 @@ use xc_spectral::ccm::{self, CcmParams, CcmResult};
 
 mod benchmark;
 mod capture;
+#[cfg(feature = "hp")]
+mod cohort;
 use benchmark::{BenchmarkComparisonMode, BenchmarkOptions, BenchmarkRecorder};
 
 #[derive(Debug, Parser)]
@@ -30,6 +32,9 @@ use benchmark::{BenchmarkComparisonMode, BenchmarkOptions, BenchmarkRecorder};
     version
 )]
 struct Cli {
+    /// Validate primary source admission without acquiring inputs or artifacts.
+    #[arg(long, global = true, hide = true)]
+    preflight_only: bool,
     #[command(flatten)]
     capture_journal: capture::CaptureJournalArgs,
     /// Recompute claim artifacts and compare them with the current reference cache.
@@ -93,7 +98,7 @@ enum ResearchCapture {
     /// sector-gap certificate is deliberately excluded --- it is a
     /// certification, not a data point, and it carries the interval-assembly
     /// and rational-inertia proof cost. Request it separately with
-    /// `--capture-sector-gap-certificate`.
+    /// `--sector-gap-certificate compact|full`.
     Ultra,
 }
 
@@ -103,6 +108,44 @@ enum RootValidation {
     Off,
     /// Certify the displayed ordinal range of the exact retained finite CCM point source.
     Certified,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum SectorGapCertificateStorage {
+    /// Retain results and a verified reconstruction recipe, without dense proof matrices.
+    Compact,
+    /// Retain the complete interval matrices and inertia witnesses (legacy format).
+    Full,
+}
+
+fn sector_gap_certificate_selection(
+    legacy_full: bool,
+    requested: Option<SectorGapCertificateStorage>,
+) -> Result<Option<SectorGapCertificateStorage>> {
+    if legacy_full && requested.is_some() {
+        anyhow::bail!("use only one sector-gap certificate option");
+    }
+    let selected = requested.or(legacy_full.then_some(SectorGapCertificateStorage::Full));
+    if selected == Some(SectorGapCertificateStorage::Compact)
+        && !cfg!(feature = "compact-sector-certificates")
+    {
+        anyhow::bail!(
+            "compact sector-gap certificates require a binary built with \
+             --features compact-sector-certificates and a compact-capable Toolkit; \
+             no claim computation was started"
+        );
+    }
+    Ok(selected)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum GroundIndex {
+    /// Admit the selected state only when the ground-index proof concludes.
+    Require,
+    /// Retain the selected state and record the proof's outcome. Reserved for
+    /// the frozen Claim 1c configuration, whose lowest stored sector
+    /// eigenvalues lie within the HP-1000 working-precision floor.
+    RecordOutcome,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -167,6 +210,74 @@ impl ResearchCapture {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    #[cfg(feature = "hp")]
+    /// Freeze an optional adjacent-pair cohort from explicitly selected journals.
+    PlanCohort {
+        #[arg(long, required = true, num_args = 2..)]
+        journal: Vec<PathBuf>,
+        #[arg(long, value_delimiter = ',', default_value = "1")]
+        root_indices: Vec<usize>,
+        /// Compare states/eigenvalues only, without loading root or secular payloads.
+        #[arg(long, conflicts_with = "root_indices")]
+        state_only: bool,
+        /// Also compute an embedded-state residual using each larger matrix.
+        #[arg(long)]
+        embedded_residual: bool,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    #[cfg(feature = "hp")]
+    /// Analyze an explicit retained cohort; never recompute a primary claim.
+    Cohort {
+        #[arg(long)]
+        plan: PathBuf,
+        /// A new directory for the plan, report, and independent completion status.
+        #[arg(long)]
+        output: PathBuf,
+    },
+    #[cfg(feature = "hp")]
+    /// Finalize an explicit retained publication queue without computation.
+    PublishStaged {
+        #[arg(long)]
+        staging_root: PathBuf,
+    },
+    #[cfg(feature = "hp")]
+    /// Recover supplemental captures from exact retained sources; never solve a primary.
+    RecoverCapture {
+        #[arg(long)]
+        journal: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        /// Relocated target with exactly the originally recorded bytes.
+        #[arg(long)]
+        target_spec_file: Option<PathBuf>,
+        /// Defaults to every non-completed diagnostic in the original receipt.
+        #[arg(long, value_delimiter = ',')]
+        diagnostics: Vec<String>,
+        /// Cumulative streamed scalar bytes for new supplemental inputs (1..=1 TiB); not a RAM limit.
+        #[arg(long, value_parser = clap::value_parser!(u64).range(1..=1_099_511_627_776))]
+        maximum_stream_scalar_bytes: Option<u64>,
+        /// Reuse authenticated completed preparation and supplemental diagnostics.
+        #[arg(long, conflicts_with = "publish_only")]
+        resume: bool,
+        /// Retry only publication of retained staging; never execute preparation or diagnostics.
+        #[arg(long, conflicts_with = "resume")]
+        publish_only: bool,
+    },
+    #[cfg(feature = "hp")]
+    #[command(hide = true)]
+    ReplayFinite {
+        #[arg(long)]
+        journal: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(
+            long,
+            value_delimiter = ',',
+            default_value = "constrained_l1_fit,directional_error_bound,finite_tail_bound,dimension_precision_budget,continuous_l1_bound,spectral_cluster_bound"
+        )]
+        diagnostics: Vec<String>,
+    },
     /// Run the CCM construction at given (lambda^2, N) and report eigenvalues
     /// vs Riemann zeros.
     Run {
@@ -241,11 +352,19 @@ enum Command {
         /// Off by default; no paper claim depends on it.
         #[arg(long, default_value_t = false)]
         capture_u_flow_response: bool,
-        /// Additionally retain the exact finite sector-gap certificate.
+        /// Legacy request for the full exact finite sector-gap certificate.
         /// Requires a research capture that keeps at least two parity-sector
         /// eigenpairs. Off by default; no paper claim depends on it.
-        #[arg(long, default_value_t = false)]
+        #[arg(
+            long,
+            default_value_t = false,
+            conflicts_with = "sector_gap_certificate"
+        )]
         capture_sector_gap_certificate: bool,
+        /// Optionally certify the analytic finite sector gap and select its storage format.
+        /// Off when omitted, including Ultra. Requires at least two sector eigenpairs.
+        #[arg(long, value_enum, value_name = "FORMAT")]
+        sector_gap_certificate: Option<SectorGapCertificateStorage>,
         /// Root acquisition policy. Paper claims default to reference-seeded refinement.
         #[arg(long, value_enum, default_value_t = RootAcquisitionMode::Seeded)]
         root_acquisition: RootAcquisitionMode,
@@ -276,9 +395,14 @@ enum Command {
         /// Defaults to display_digits and is independent of HP working precision.
         #[arg(long)]
         root_enclosure_digits: Option<u32>,
+        /// Ground-index admission of the primary state. `record-outcome` is
+        /// accepted only for lambda^2=1000, N=800, HP-1000 on the even-sector
+        /// route (Claim 1c).
+        #[arg(long, value_enum, default_value_t = GroundIndex::Require)]
+        ground_index: GroundIndex,
     },
     /// Measure the natural evenness of the smallest Weil eigenvector
-    /// (Claim 4: symmetry breakdown at large lambda).
+    /// (Claim 4: natural evenness of the ground state).
     CheckEvenness {
         /// lambda^2 value (e.g. 13, 100, 1000, 1200).
         #[arg(long, default_value_t = 13_u64)]
@@ -362,8 +486,65 @@ fn distance_capture_options(
     })
 }
 
+fn validate_publication_mode(cli: &Cli) -> Result<()> {
+    #[cfg(feature = "hp")]
+    let cohort_command = matches!(&cli.command, Command::Cohort { .. });
+    #[cfg(not(feature = "hp"))]
+    let cohort_command = false;
+    if cli.capture_journal.defer_publication {
+        anyhow::ensure!(
+            cfg!(feature = "hp")
+                && !cli.preflight_only
+                && (cohort_command || matches!(&cli.command,
+                    Command::Run { f64_only: false, .. } | Command::CheckEvenness { .. })),
+            "--defer-publication requires an HP run, check-evenness capture, or explicit cohort; it cannot be used with preflight or f64"
+        );
+    }
+    Ok(())
+}
+
+fn validate_capture_stream_scalar_mode(cli: &Cli) -> Result<()> {
+    if cli
+        .capture_journal
+        .capture_maximum_stream_scalar_bytes
+        .is_some()
+    {
+        anyhow::ensure!(
+            cfg!(feature = "hp") && matches!(&cli.command,
+                Command::Run { f64_only: false, research_capture: ResearchCapture::Ultra, .. }
+                | Command::CheckEvenness { research_capture: ResearchCapture::Ultra, .. }),
+            "--capture-maximum-stream-scalar-bytes requires an HP run or check-evenness with --research-capture ultra"
+        );
+    }
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    validate_capture_stream_scalar_mode(&cli)?;
+    validate_publication_mode(&cli)?;
+    if cli.preflight_only {
+        if !matches!(
+            &cli.command,
+            Command::Run { .. } | Command::CheckEvenness { .. }
+        ) {
+            anyhow::bail!("preflight-only supports run and check-evenness claims");
+        }
+        // Bypass runtime sessions, benchmark output, target preparation and
+        // output-validation finalization. The ordinary command parser and
+        // source configuration below remain shared with the real invocation.
+        let mut benchmark = BenchmarkRecorder::new(
+            BenchmarkOptions {
+                report_path: None,
+                baseline_path: None,
+                label: None,
+                parallel_gl_roots: false,
+                comparison_mode: BenchmarkComparisonMode::default(),
+            },
+            String::new(),
+        )?;
+        return run(cli, &mut benchmark);
+    }
     let process_started = std::time::Instant::now();
     let parallel_gl_roots = resolve_parallel_gl_roots(cli.parallel_gl_roots)?;
     let benchmark_options = BenchmarkOptions {
@@ -441,7 +622,7 @@ fn run_with_runtime_policy(
             ..xc_numerics::hp_runtime::HpRuntimePolicy::default()
         };
         eprintln!(
-            "  EXPERIMENTAL: GL root parallelism enabled; native-Linux qualification is required and WSL is unsupported"
+            "  EXPERIMENTAL: GL root parallelism enabled; qualified native Linux or Windows GNU/UCRT is required; WSL is unsupported"
         );
         xc_numerics::hp_runtime::run_hp_with_policy(&policy, || run(cli, benchmark))
             .map_err(anyhow::Error::from)
@@ -458,8 +639,56 @@ fn run_with_runtime_policy(
 }
 
 fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
+    validate_publication_mode(&cli)?;
     print_runtime_parallelism();
     match cli.command {
+        #[cfg(feature = "hp")]
+        Command::PlanCohort {
+            journal,
+            root_indices,
+            state_only,
+            embedded_residual,
+            output,
+        } => {
+            cohort::freeze(
+                &journal,
+                if state_only { &[] } else { &root_indices },
+                embedded_residual,
+                &output,
+            )?;
+        }
+        #[cfg(feature = "hp")]
+        Command::Cohort { plan, output } => {
+            cohort::execute(&plan, &output, cli.capture_journal.defer_publication)?;
+        }
+        #[cfg(feature = "hp")]
+        Command::PublishStaged { staging_root } => capture::publish_staged(&staging_root)?,
+        #[cfg(feature = "hp")]
+        Command::RecoverCapture {
+            journal,
+            output,
+            target_spec_file,
+            diagnostics,
+            maximum_stream_scalar_bytes,
+            resume,
+            publish_only,
+        } => {
+            capture::recover_capture_with_mode(
+                &journal,
+                &output,
+                target_spec_file.as_deref(),
+                &diagnostics,
+                resume,
+                publish_only,
+                maximum_stream_scalar_bytes,
+            )?;
+        }
+        #[cfg(feature = "hp")]
+        Command::ReplayFinite {
+            journal,
+            output,
+            diagnostics,
+        } => capture::replay_finite(&journal, &output, &diagnostics)?,
         Command::Run {
             lambda_sq,
             n_modes,
@@ -479,6 +708,7 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
             capture_prime_power_response,
             capture_u_flow_response,
             capture_sector_gap_certificate,
+            sector_gap_certificate,
             root_acquisition,
             root_report,
             minimum_match_digits,
@@ -487,7 +717,12 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
             allow_root_oversubscription,
             root_validation,
             root_enclosure_digits,
+            ground_index,
         } => {
+            let sector_gap_certificate = sector_gap_certificate_selection(
+                capture_sector_gap_certificate,
+                sector_gap_certificate,
+            )?;
             if lambda_sq < 2 {
                 anyhow::bail!("lambda_sq must be >= 2 (got {lambda_sq})");
             }
@@ -506,7 +741,7 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                 || capture_deviation_decomposition
                 || capture_prime_power_response
                 || capture_u_flow_response
-                || capture_sector_gap_certificate;
+                || sector_gap_certificate.is_some();
             if artifact_capture_requested && f64_only {
                 anyhow::bail!(
                     "research and sector artifact capture requires the HP tier; remove \
@@ -535,13 +770,13 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
             }
             let distance_resolution = distance_resolution.unwrap_or(4_000);
             let distance_profile_steps = distance_profile_steps.unwrap_or(1_000);
-            if capture_sector_gap_certificate
+            if sector_gap_certificate.is_some()
                 && research_capture
                     .sector_eigenpairs(research_sector_eigenpairs)
                     .is_none()
             {
                 anyhow::bail!(
-                    "--capture-sector-gap-certificate needs parity-sector eigenpairs; use \
+                    "sector-gap certification needs parity-sector eigenpairs; use \
                      --research-capture gap, maximum, or ultra"
                 );
             }
@@ -621,6 +856,9 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
             );
 
             if f64_only {
+                if cli.preflight_only {
+                    anyhow::bail!("preflight-only requires the HP tier");
+                }
                 if first_root_index != 1 {
                     anyhow::bail!("indexed root windows require the HP independent-discovery tier");
                 }
@@ -669,6 +907,22 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                         "  parity policy: {}",
                         cfg.effective_parity_policy().as_str()
                     );
+                    cfg.ground_index_policy =
+                        capture::ground_index_policy(cli.capture_journal.capture_policy);
+                    if ground_index == GroundIndex::RecordOutcome {
+                        if (lambda_sq, n_modes) != (1000, 800)
+                            || cfg.precision_bits != 3386
+                            || cfg.effective_parity_policy() != ccm::hp::CcmParityPolicy::EvenSector
+                        {
+                            anyhow::bail!(
+                                "--ground-index record-outcome is reserved for lambda^2=1000, N=800, HP-1000 (3386 bits) on the even-sector route"
+                            );
+                        }
+                        cfg.ground_index_policy = ccm::hp::CcmGroundIndexPolicy::RecordOutcome;
+                    }
+                    if cfg.ground_index_policy == ccm::hp::CcmGroundIndexPolicy::RecordOutcome {
+                        println!("  ground-index admission: record outcome (claim1c)");
+                    }
 
                     // Capture level never changes root acquisition semantics or
                     // expands an ordinal claim into a height window. A run is
@@ -760,32 +1014,72 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                             }
                         }
                     };
-                    let capture_options = ccm::hp::CcmResearchCaptureOptions {
-                        capture_evenness: sector_analysis.is_some(),
-                        sector_analysis,
-                        sector_gap_certification: capture_sector_gap_certificate.then(
+                    // Start from the common constructor so the original pinned Toolkit
+                    // and the additive compact-capable Toolkit share the same legacy fields.
+                    let mut capture_options =
+                        ccm::hp::CcmResearchCaptureOptions::maximum(research_sector_eigenpairs);
+                    capture_options.capture_evenness = sector_analysis.is_some();
+                    capture_options.sector_analysis = sector_analysis;
+                    capture_options.sector_gap_certification =
+                        sector_gap_certificate.is_some().then(
                             ccm::sector_gap_certificate::CcmSectorGapCertificationOptions::default,
-                        ),
-                        root_certification,
-                        // Maximum and Ultra enable distance automatically. The
-                        // journal preserves unavailable target inputs as outcomes.
-                        distance_capture: distance_capture_options(
-                            capture_distance,
+                        );
+                    capture_options.root_certification = root_certification;
+                    // Maximum and Ultra enable distance automatically. The
+                    // journal preserves unavailable target inputs as outcomes.
+                    capture_options.distance_capture = distance_capture_options(
+                        capture_distance,
+                        research_capture,
+                        distance_resolution,
+                        distance_profile_steps,
+                        capture_deviation_decomposition,
+                    );
+                    // Response artifacts are explicit under
+                    // every level below ultra. Ultra requests both, while
+                    // the individual flags compose with any lower level.
+                    // No paper claim depends on them and no reported value
+                    // changes when they are requested.
+                    capture_options.capture_prime_power_response =
+                        capture_prime_power_response || research_capture.includes_ultra();
+                    capture_options.capture_u_flow_response =
+                        capture_u_flow_response || research_capture.includes_ultra();
+                    #[cfg(feature = "compact-sector-certificates")]
+                    if sector_gap_certificate == Some(SectorGapCertificateStorage::Compact) {
+                        let source = ccm::sector_gap_certificate::compact::ReconstructionSourceIdentity::current(
+                            option_env!("XC_TOOLKIT_SOURCE_REVISION")
+                                .unwrap_or("paper1-compact-build-see-retained-cargo-lock"),
+                        );
+                        capture_options = capture_options.with_compact_sector_gap_certification(
+                            ccm::sector_gap_certificate::CcmSectorGapCertificationOptions::default(
+                            ),
+                            source,
+                        );
+                    }
+                    if let Some(format) = sector_gap_certificate {
+                        println!(
+                            "  sector-gap certification: {format:?} storage (explicit request)"
+                        );
+                    }
+                    if cli.preflight_only {
+                        capture::validate_configuration(
+                            &params,
+                            &cfg,
                             research_capture,
-                            distance_resolution,
-                            distance_profile_steps,
-                            capture_deviation_decomposition,
-                        ),
-                        // Response artifacts are explicit under
-                        // every level below ultra. Ultra requests both, while
-                        // the individual flags compose with any lower level.
-                        // No paper claim depends on them and no reported value
-                        // changes when they are requested.
-                        capture_prime_power_response: capture_prime_power_response
-                            || research_capture.includes_ultra(),
-                        capture_u_flow_response: capture_u_flow_response
-                            || research_capture.includes_ultra(),
-                    };
+                            research_sector_eigenpairs,
+                            &cli.capture_journal,
+                        )?;
+                        cfg.validate_source_admission(&params)?;
+                        println!(
+                            "SOURCE_ADMISSION {}",
+                            serde_json::json!({
+                                "status":"admitted", "lambda_squared":lambda_sq,
+                                "n_modes":n_modes,"precision_bits":cfg.precision_bits,
+                                "parity":cfg.effective_parity_policy().as_str(),
+                                "scope":"primary source admission; actual input ranges, solver convergence and optional diagnostics remain runtime checks"
+                            })
+                        );
+                        return Ok(());
+                    }
                     let captured_run = capture::execute(
                         &params,
                         &cfg,
@@ -793,6 +1087,7 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                         research_sector_eigenpairs,
                         &cli.capture_journal,
                         &capture_options,
+                        false,
                         |cache| match root_acquisition {
                             RootAcquisitionMode::Independent => {
                                 ccm::hp::capture_run::RetainedCcmRun::independent(
@@ -819,11 +1114,29 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                     // ε_N is displayed in HP — at λ² >= 100 it routinely
                     // underflows f64 (10^-308). All downstream display stays
                     // in HP via xc_numerics::fmt helpers.
+                    // A state admitted without an established ground index is
+                    // the selected stored state, not a proven smallest one.
+                    let eigenvalue_label = match &hp_result.ground_index_admission {
+                        Some(admission) if !admission.established => {
+                            "selected stored-state Weil eigenvalue"
+                        }
+                        _ => "smallest Weil eigenvalue",
+                    };
                     println!(
-                        "  built and solved in {:.3}s, smallest Weil eigenvalue epsilon_N = {}",
+                        "  built and solved in {:.3}s, {eigenvalue_label} epsilon_N = {}",
                         hp_result.elapsed_seconds,
                         xc_numerics::fmt::display_hp(&hp_result.weil_min_eigenvalue, 6)
                     );
+                    if let Some(admission) = &hp_result.ground_index_admission {
+                        if admission.established {
+                            println!("  ground index: established");
+                        } else {
+                            println!(
+                                "  ground index: not established ({})",
+                                admission.reason.as_deref().unwrap_or("reason not recorded")
+                            );
+                        }
+                    }
 
                     if hp_result.eigenvalues_pos.is_empty() && !allow_root_oversubscription {
                         anyhow::bail!("CCM root acquisition returned no roots");
@@ -1007,18 +1320,22 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                         }
                     }
 
-                    capture::write_measurements(
-                        &captured_run.directory,
-                        &serde_json::json!({
-                            "schema_version":1,"command":"run","lambda_squared":lambda_sq,"n_modes":n_modes,
-                            "precision_digits":precision_digits,"parity_policy":cfg.effective_parity_policy().as_str(),
-                            "root_precision_policy":cfg.root_precision_policy,
-                            "root_maximum_extra_precision_bits":cfg.root_maximum_extra_precision_bits,
-                            "root_verification_precision_bits":cfg.root_verification_precision_bits,
-                            "root_acquisition":format!("{root_acquisition:?}"),"epsilon_N":hp_result.weil_min_eigenvalue.to_string(),
-                            "roots":measurements,
-                        }),
-                    )?;
+                    let mut run_measurements = serde_json::json!({
+                        "schema_version":1,"command":"run","lambda_squared":lambda_sq,"n_modes":n_modes,
+                        "precision_digits":precision_digits,"parity_policy":cfg.effective_parity_policy().as_str(),
+                        "root_precision_policy":cfg.root_precision_policy,
+                        "root_maximum_extra_precision_bits":cfg.root_maximum_extra_precision_bits,
+                        "root_verification_precision_bits":cfg.root_verification_precision_bits,
+                        "root_acquisition":format!("{root_acquisition:?}"),"epsilon_N":hp_result.weil_min_eigenvalue.to_string(),
+                        "roots":measurements,
+                    });
+                    // Only under the record-outcome policy, so default reports
+                    // are unchanged.
+                    if let Some(admission) = &hp_result.ground_index_admission {
+                        run_measurements["ground_index_admission"] =
+                            serde_json::to_value(admission)?;
+                    }
+                    capture::write_measurements(&captured_run.directory, &run_measurements)?;
                     let claim_elapsed = run_started.elapsed();
                     benchmark.record_duration("claim_and_research_capture", claim_elapsed);
                     println!(
@@ -1040,12 +1357,14 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                         capture_prime_power_response,
                         capture_u_flow_response,
                         capture_sector_gap_certificate,
+                        sector_gap_certificate,
                         root_acquisition,
                         root_report,
                         minimum_match_digits,
                         reference_zero_limit,
                         root_validation,
                         root_enclosure_digits,
+                        ground_index,
                     );
                     anyhow::bail!(
                         "High-precision tier requires --features hp at build time.\n\
@@ -1085,6 +1404,29 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                 validate_research_capture(n_modes, research_capture, research_sector_eigenpairs)?;
                 let params = CcmParams::from_lambda_sq_integer(lambda_sq, n_modes);
                 let cfg = ccm::hp::HighPrecConfig::for_decimal_digits(precision_digits);
+                if cli.preflight_only {
+                    capture::validate_configuration(
+                        &params,
+                        &cfg,
+                        research_capture,
+                        research_sector_eigenpairs,
+                        &cli.capture_journal,
+                    )?;
+                    let mut natural = cfg.clone();
+                    natural.set_parity_policy(ccm::hp::CcmParityPolicy::Natural);
+                    natural.validate_source_admission(&params)?;
+                    cfg.validate_source_admission(&params)?;
+                    println!(
+                        "SOURCE_ADMISSION {}",
+                        serde_json::json!({
+                            "status":"admitted", "lambda_squared":lambda_sq,
+                            "n_modes":n_modes,"precision_bits":cfg.precision_bits,
+                            "parity":"natural_and_even_sector",
+                            "scope":"primary source admission; actual input ranges, solver convergence and optional diagnostics remain runtime checks"
+                        })
+                    );
+                    return Ok(());
+                }
                 println!(
                     "Measuring evenness: lambda^2={}, N={}, precision={} digits",
                     lambda_sq, n_modes, precision_digits
@@ -1092,7 +1434,7 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
 
                 let claim_started = std::time::Instant::now();
                 let toolkit_started = std::time::Instant::now();
-                let result = ccm::hp::measure_evenness(&params, &cfg)?;
+                let result = capture::measure_evenness(&params, &cfg, &cli.capture_journal)?;
                 benchmark.record_duration("toolkit_primary", toolkit_started.elapsed());
                 capture::write_evenness(
                     &cli.capture_journal,
@@ -1210,21 +1552,46 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                 let result = ccm::hp::analyze_sector_gap(&params, &cfg, eigenpairs)?;
                 benchmark.record_duration("toolkit_primary", toolkit_started.elapsed());
                 let show = |value: &rug::Float| xc_numerics::fmt::display_hp(value, display_digits);
+                // A conclusion the stored source does not resolve at this
+                // precision is shown as unresolved; the reasons follow.
+                let show_resolved = |value: &Option<rug::Float>| {
+                    value
+                        .as_ref()
+                        .map_or_else(|| "unresolved at this precision".to_owned(), show)
+                };
                 println!("  lambda_even             = {}", show(&result.lambda_even));
                 println!("  lambda_odd              = {}", show(&result.lambda_odd));
-                println!("  D_even                  = {}", show(&result.d_even));
-                println!("  D_odd                   = {}", show(&result.d_odd));
-                println!("  GapLog (D_even-D_odd)   = {}", show(&result.gap_log));
+                println!(
+                    "  D_even                  = {}",
+                    show_resolved(&result.d_even)
+                );
+                println!(
+                    "  D_odd                   = {}",
+                    show_resolved(&result.d_odd)
+                );
+                println!(
+                    "  GapLog (D_even-D_odd)   = {}",
+                    show_resolved(&result.gap_log)
+                );
                 println!(
                     "  lambda_odd-lambda_even  = {}",
                     show(&result.lambda_difference)
                 );
                 println!(
                     "  difference depth        = {}",
-                    show(&result.difference_depth)
+                    show_resolved(&result.difference_depth)
                 );
-                println!("  ordering                = {}", result.ordering);
+                println!(
+                    "  ordering                = {}",
+                    result.ordering.map_or_else(
+                        || "unresolved at this precision".to_owned(),
+                        |o| o.to_string()
+                    )
+                );
                 println!("  even ground state simple = {}", result.even_simple);
+                for reason in &result.unresolved {
+                    println!("  unresolved: {reason}");
+                }
                 println!(
                     "  even simplicity margin  = {}",
                     show(&result.even_simplicity_margin)
@@ -1750,6 +2117,10 @@ fn capture_supplemental_research_artifacts(
         params.n_modes + 1,
     )?
     .primary_options()?;
+    // The evenness claims report the even-state spectral isolation with the
+    // parity-sector separations; it needs the even-sector route.
+    let even_state_isolation = level != ResearchCapture::Claim
+        && cfg.effective_parity_policy() == ccm::hp::CcmParityPolicy::EvenSector;
     capture::execute(
         params,
         &cfg,
@@ -1757,6 +2128,7 @@ fn capture_supplemental_research_artifacts(
         count,
         journal,
         &options,
+        even_state_isolation,
         |cache| match acquisition {
             RootAcquisitionMode::Independent => ccm::hp::capture_run::RetainedCcmRun::independent(
                 params,
@@ -1831,6 +2203,107 @@ fn print_results_f64(result: &CcmResult, top: usize) -> Result<()> {
 
 #[cfg(test)]
 mod cli_tests {
+    #[cfg(feature = "hp")]
+    #[test]
+    fn cohort_selection_is_explicit_and_independent() {
+        let cli = Cli::try_parse_from([
+            "ccm-reproduction",
+            "plan-cohort",
+            "--journal",
+            "a",
+            "b",
+            "--state-only",
+            "--output",
+            "plan.json",
+        ])
+        .unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::PlanCohort {
+                state_only: true,
+                ..
+            }
+        ));
+        assert!(Cli::try_parse_from([
+            "ccm-reproduction",
+            "plan-cohort",
+            "--journal",
+            "a",
+            "b",
+            "--state-only",
+            "--root-indices",
+            "1",
+            "--output",
+            "plan.json"
+        ])
+        .is_err());
+        let cli = Cli::try_parse_from([
+            "ccm-reproduction",
+            "cohort",
+            "--plan",
+            "p.json",
+            "--output",
+            "out",
+            "--defer-publication",
+        ])
+        .unwrap();
+        assert!(validate_publication_mode(&cli).is_ok());
+    }
+    #[cfg(feature = "hp")]
+    #[test]
+    fn recovery_stream_scalar_limit_has_an_explicit_bounded_cli_domain() {
+        let parse = |value: &str| {
+            Cli::try_parse_from([
+                "ccm-reproduction",
+                "recover-capture",
+                "--journal",
+                "original",
+                "--output",
+                "supplement",
+                "--maximum-stream-scalar-bytes",
+                value,
+            ])
+        };
+        for value in ["1", "17179869184", "1099511627776"] {
+            let cli = parse(value).unwrap();
+            let Command::RecoverCapture {
+                maximum_stream_scalar_bytes,
+                ..
+            } = cli.command
+            else {
+                panic!("wrong command")
+            };
+            assert_eq!(maximum_stream_scalar_bytes, Some(value.parse().unwrap()));
+        }
+        for value in [
+            "0",
+            "-1",
+            "1.5",
+            "bytes",
+            "1099511627777",
+            "18446744073709551616",
+        ] {
+            assert!(parse(value).is_err(), "{value}");
+        }
+        let cli = Cli::try_parse_from([
+            "ccm-reproduction",
+            "recover-capture",
+            "--journal",
+            "original",
+            "--output",
+            "supplement",
+        ])
+        .unwrap();
+        let Command::RecoverCapture {
+            maximum_stream_scalar_bytes,
+            ..
+        } = cli.command
+        else {
+            panic!("wrong command")
+        };
+        assert_eq!(maximum_stream_scalar_bytes, None);
+    }
+
     #[test]
     fn comparison_limits_do_not_overstate_binary_or_reference_precision() {
         assert_eq!(super::comparison_digit_limit(53, 2500), 15);
@@ -2083,6 +2556,7 @@ mod cli_tests {
         let Command::Run {
             research_capture,
             capture_sector_gap_certificate,
+            sector_gap_certificate,
             ..
         } = cli.command
         else {
@@ -2090,6 +2564,55 @@ mod cli_tests {
         };
         assert_eq!(research_capture, ResearchCapture::Ultra);
         assert!(!capture_sector_gap_certificate);
+        assert_eq!(sector_gap_certificate, None);
+    }
+
+    #[test]
+    fn sector_certificate_runtime_selection_preserves_default_and_legacy_full() {
+        assert_eq!(sector_gap_certificate_selection(false, None).unwrap(), None);
+        assert_eq!(
+            sector_gap_certificate_selection(true, None).unwrap(),
+            Some(SectorGapCertificateStorage::Full)
+        );
+        for (name, expected) in [
+            ("compact", SectorGapCertificateStorage::Compact),
+            ("full", SectorGapCertificateStorage::Full),
+        ] {
+            let cli =
+                Cli::try_parse_from(["ccm-reproduction", "run", "--sector-gap-certificate", name])
+                    .unwrap();
+            let Command::Run {
+                sector_gap_certificate,
+                capture_sector_gap_certificate,
+                ..
+            } = cli.command
+            else {
+                panic!("expected run");
+            };
+            assert_eq!(sector_gap_certificate, Some(expected));
+            assert!(!capture_sector_gap_certificate);
+        }
+        assert!(Cli::try_parse_from([
+            "ccm-reproduction",
+            "run",
+            "--sector-gap-certificate",
+            "compact",
+            "--capture-sector-gap-certificate",
+        ])
+        .is_err());
+        assert!(Cli::try_parse_from([
+            "ccm-reproduction",
+            "run",
+            "--sector-gap-certificate",
+            "unknown",
+        ])
+        .is_err());
+        let compact =
+            sector_gap_certificate_selection(false, Some(SectorGapCertificateStorage::Compact));
+        assert_eq!(
+            compact.is_ok(),
+            cfg!(feature = "compact-sector-certificates")
+        );
     }
 
     #[test]

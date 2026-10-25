@@ -1,13 +1,72 @@
-# Research evidence for the revised v2.5 manuscript
+# Research evidence for the revised v2.6 manuscript
+
+## Revised C1200 residual/gap measurement
+
+The v2.6 revision changes the final residual/gap entry in the sector-separation
+table to **3.03494e-533**, for C=1200, N=970, HP-2000 (6708 working bits).
+It bounds `||Av-mu v||_2 / (||v||_2 g)` for the stored even-sector matrix and
+rounded normalized vector, with a finite-source gap lower bound `g`.
+The method uses correctly rounded normalization and parity conversion, directed
+residual arithmetic, and a source-matrix reduction allowance. It does not
+include analytic assembly or continuum-tail error.
+
+An independent directed MPFR evaluation at 13,544 bits reproduces the ratio
+`3.0349357865286771257e-533`. The published payloads' SHA-256 checks pass.
+The historical `2.00727003663e-533` used a nearest-rounded point residual and a
+different normalization path. On identical current sources, historical versus
+current normalization changes this precision-floor residual appreciably while
+the gap remains stable at the displayed digits. More guard bits do not recover
+the old value for the current derived vector.
+
+Claim 4d now checks the revised table value at six significant digits, as the
+sector-gap columns already do, and requires method
+`even_sector_simple_index_0_neighbor_cluster_sturm_source_allowance_directed_residual_v3`,
+status `isolated_simple`, even parity, and indices 0/1. This is a versioned
+measurement reproduction rule, not a general residual ceiling; an unrelated
+smaller ratio or a legacy method does not establish reproduction of this row.
+The original failed `<2.01e-533` check remains historical evidence. Claims
+4a-4c keep their existing acceptance rules.
+
+The `sector_separation_updates` section of [the evidence record](research-evidence.json)
+retains the complete directed isolation record, source digests, and audit result
+digest. Its `sector_separations` section and September campaign remain unchanged
+historical data. The original matrix/vector payloads were unavailable for a full
+replay of the old table producer; the audit does not claim to have disproved its
+reported point measurement. No primary solve, root solve, or campaign rerun is
+needed to assess the retained current record under the revised rule.
+
+## Current campaign and independent source audit
+
+The [current claim ledger](CLAIM_STATUS.md) accounts for all 15 registered routes
+and 93 planned invocations. It separates original outcomes, supplemental
+acquisition, and the revised Claim 4d acceptance rule. It does not relabel
+conditional or unresolved numerical assessments as proofs.
+
+An additional independent 8,000-bit analytic assembly check compared all
+942,841 entries of the C=1200, N=970 even-sector matrix. Its maximum entry
+error is below 2.182e-2016 and its operator-norm error is below 1.684e-2015.
+The saved vector is exactly even, and its normalization agrees with the
+component-rounding allowance. Its analytic-matrix residual is approximately
+4.484824e-2019, distinct from the stored-matrix residual used in the revised
+table. The audit meets its stated 1e-2000 absolute accuracy target.
+
+The `independent_even_matrix_audit` evidence section retains the complete
+summary and hashes. Its gap transfer relies on the retained source gap; it
+does not independently prove the full odd spectrum, ground-state index, or
+continuum tail. The audit trusts FLINT/Arb special functions and directed
+MPFR arithmetic. This is independent source verification, not a new primary
+solve or a replacement of historical artifacts.
+
+## Historical campaign
 
 The [aggregate record](research-evidence.json) records the configurations,
 source digests, numerical results, and proof scopes used in the revised paper.
-The production harness remains pinned to Toolkit v0.15.0 at
-`2bea90ec7cb23d4d615448c293c8af0f94e14119`.
+The v2.5 campaign used Toolkit v0.15.0 at
+`2bea90ec7cb23d4d615448c293c8af0f94e14119`; the current software integration pins Toolkit v0.17.1 at `e466a413713a23df0ae550b307c256e7b1313bea`.
 Here C denotes the cutoff parameter lambda-squared, and the full matrix has
 dimension 2N+1. See the [manuscript](../paper.pdf) for definitions and proofs.
 
-## Completed campaign
+## September 2026 campaign
 
 The author reconciled all 14 individual claim scripts, covering 53 capture
 journals, from the supplied numerical and publication summaries. All reported
@@ -65,7 +124,7 @@ finite result supplies a continuum tail estimate.
 
 ## Reproduce the finite matrix certificates
 
-See [the finite-certification instructions](../research/finite_certification/README.md).
+See [the finite-certification instructions](../verification/finite_certification/README.md).
 The exporter assembles interval matrices directly with the pinned toolkit;
 neither a retained eigenvector nor a zeta reference is needed. The supplied
 guide values select shifts only. The verifier proves their inertia counts.
@@ -80,20 +139,20 @@ decimal strings. Do not round the coefficients.
 
 ```bash
 mkdir -p target/research-verification
-python3 research/small_root_census.py \
+python3 verification/small_root_census.py \
   --input /path/to/c13-n10-state.json \
   --output target/research-verification/small-census.json
-python3 research/verify_small_roots.py \
+python3 verification/verify_small_roots.py \
   --input /path/to/c13-n10-state.json \
   --census target/research-verification/small-census.json \
   --output target/research-verification/small-replay.json
-python3 research/verify_headline_roots.py \
+python3 verification/verify_headline_roots.py \
   --inputs /path/to/decoded-states \
   --output target/research-verification/headline-replay.json
 ```
 
 For the headline replay, each input filename is `<state_manifest>.json`, as
-identified in [the proof brackets](../research/headline-root-certificates.json).
+identified in [the proof brackets](../verification/headline-root-certificates.json).
 The replay checks the exact payload SHA-256 before using it. It independently
 checks pole exclusion, endpoint signs and the interval derivative, and computes
 a new zeta reference at 3500 decimal digits. A different source requires new
@@ -101,23 +160,13 @@ brackets and must not be substituted into this certificate.
 
 ## Reproduce the Critical-N controls
 
-These controls test first-root convergence, so the small `claim` capture recipe
-is sufficient. They do not change the individual claim scripts' Ultra default.
-Build on Linux/WSL and use an isolated cache with publication disabled:
+These controls test first-root convergence. `scripts/claim7b_critical_brackets.sh`
+runs all forty configurations (every N in 31-40 and 51-60 at HP-200 and HP-1000)
+and checks the crossings, the table values and the agreement between the two
+precisions:
 
 ```bash
-cargo build --release --features hp --locked
-export XC_CACHE_ROOT="$PWD/target/critical-n-cache"
-export XC_CACHE_REMOTE=none XC_PUBLISH_TARGET=none XC_PUBLISH_EXECUTE=false
-for precision in 200 1000; do
-  for n in $(seq 31 40) $(seq 51 60); do
-    target/release/ccm-reproduction run \
-      --lambda-sq 13 --n-modes "$n" --precision-digits "$precision" \
-      --top 1 --display-digits 80 --research-capture claim \
-      --capture-output "$PWD/target/critical-n-journals/n${n}-p${precision}" \
-      --require-complete-capture || exit 1
-  done
-done
+bash scripts/claim7b_critical_brackets.sh
 ```
 
 The JSON measurements and status files are the assessment inputs. The selected

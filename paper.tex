@@ -26,47 +26,39 @@ of the Connes--Consani--Moscovici Zeta Spectral Triple}
 \author{Ronnie Andrews, Jr.\,\orcidlink{0009-0003-9724-3104}%
 \thanks{Correspondence: \texttt{randrewsmath@gmail.com}}}
 
-\date{June 2026\\[2pt]{\small Revised September 2026 (version 2.5)}}
+\date{June 2026\\[2pt]{\small Revised November 2026 (version 2.6)}}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-We independently implement the Connes--Consani--Moscovici (CCM)
-operator construction~\cite{CCM2025} in Rust at arbitrary precision
-(MPFR/GMP) and extend the first-zero comparison from 55 to
-\textbf{1495.14 measured matching decimal digits} at
-$(\lambda^2{=}1200,N{=}970)$ with 6708 working bits.
-At $(\lambda^2{=}1000,N{=}800)$, increasing requested precision from
-HP-1000 to HP-2000 improves agreement from 1019.0 to 1260.36 digits,
-separating arithmetic limitation from the resolved finite-configuration
-error.
-We characterize the construction's convergence empirically: accuracy
-follows a smoothly saturating basis-size ramp that is approximately
-linear over the observed early range, then approaches a first-zero
-plateau that tracks the Weil eigenvalue depth
-$-\log_{10}|\varepsilon_N|$ with a slowly varying conversion gap.
-Along the sampled cutoff-and-basis paths, $|\varepsilon_N|$ decreases
-by hundreds of decimal orders over the listed prime-count doublings,
-although the finite data do not determine an asymptotic decay class.
-Across the sampled fixed-$N$ cutoff sweep, first-zero accuracy grows
-monotonically with~$\lambda$ and closely tracks the eigenvalue depth
-$-\log_{10}|\varepsilon_N|$; no monotonicity claim is made outside
-that range. The unrestricted lowest state is essentially even at every tested
-above-floor configuration. At the five headline parity configurations,
-positive even--odd and internal even-sector gaps additionally support
-numerical simplicity. Analytic interval assembly and two independent
-inertia calculations certify positive, simple, even ground states at
-$\lambda^2=13$, $N=10$ and $N=120$. Propagating the analytic
-eigenstate error also certifies the finite-source root comparisons at
-these two configurations, including the 55-digit reproduction.
-A residual-to-gap bound explains the observed
-parity noise.
-A $21\times21$ matrix from six primes already yields
-$21.585$ matching digits; an exact reference-free census of its
-serialized secular source verifies the root count and spectral indexing. All results are reproducible from the
-accompanying source-available implementation. This work has been
-shared with the CCM authors and reviewed by the lead author,
+I independently reproduce the Connes--Consani--Moscovici (CCM)
+operator construction~\cite{CCM2025} and investigate what limits its
+agreement with the Riemann zeros. Prime cutoff, basis size, and
+arithmetic precision play distinct, coupled roles. At fixed cutoff
+and sufficient precision, increasing the basis size produces a
+smoothly saturating accuracy curve whose plateau tracks the depth
+of the smallest Weil eigenvalue. Paired-precision runs distinguish
+this finite-configuration limit from an arithmetic ceiling. Coordinating
+the three parameters extends the first-zero comparison to
+\textbf{1495.14 measured matching decimal digits}.
+
+The same distinction clarifies the parity observations. The
+unrestricted lowest state is essentially even at every tested
+above-floor configuration. Apparent symmetry breaking in
+precision-limited runs disappears when arithmetic resolution is
+increased; a residual-to-gap estimate explains the sensitivity of
+the recovered vector. For two finite configurations at $\lambda^2=13$,
+independent analytic interval assembly and inertia checks certify
+positive, simple, even ground states and, after eigenstate-error
+propagation, the corresponding finite-source root comparisons.
+
+These results guide the design of high-accuracy CCM computations:
+increasing matrix size or requested precision alone need not improve
+the result. The accompanying implementation separates measured
+agreement from certified finite conclusions. The observed convergence
+trends do not establish an asymptotic law or a continuum limit.
+This work has been shared with the CCM authors and reviewed by
 Professor Alain Connes.
 \end{abstract}
 
@@ -114,7 +106,7 @@ infimum, with a fitted leading constant. That proposal concerns a different
 limit and is not used here as an asymptotic law for the finite Galerkin
 quantity $\varepsilon_N(\lambda^2,N)$ or for secular-root error.
 
-In this paper we:
+In this paper I:
 \begin{enumerate}
 \item Independently reproduce the CCM headline result on a
 Rust + MPFR/GMP software stack;
@@ -126,7 +118,7 @@ from finite-configuration error;
 \item Systematically characterize the convergence behavior as a
 function of both $N$ (basis size) and $\lambda$ (prime cutoff);
 \item Test the simple-even ground-state condition using unrestricted
-eigenvectors and the low spectra of both parity sectors. We give a
+eigenvectors and the low spectra of both parity sectors. I give a
 residual-to-gap estimate for parity error and an exact reference-free
 root census for the small-matrix example.
 \end{enumerate}
@@ -137,7 +129,7 @@ implementation at
 
 \section{Mathematical Setup}
 
-We briefly recall the CCM construction, following the notation
+I briefly recall the CCM construction, following the notation
 of~\cite{CCM2025}.
 
 \subsection{The Weil Quadratic Form}
@@ -168,7 +160,7 @@ the von Mangoldt function $\Lambda(k) = \log p$ for $k = p^j$.
 
 Let $\varepsilon_N$ denote the smallest eigenvalue of $\tau$ and
 $\xi=(\xi_{-N},\ldots,\xi_N)$ the corresponding eigenvector. In the
-reproduction pipeline we analyze the even representative
+reproduction pipeline I analyze the even representative
 ($\xi_{-j}=\xi_j$) and normalize it so that
 $\sum_j\xi_j=\sqrt{L}$. Define the secular rational function
 \[
@@ -185,7 +177,7 @@ matching low zeta ordinates can lie above the largest pole $N^2$.
 The full perturbed scaling operator agrees with the unperturbed
 operator on $E_N^\perp$, retaining the lattice values
 $2\pi j/L$ for $|j|>N$~\cite[Proposition~5.7]{CCM2025}.
-We therefore distinguish the movable-root rank $r$, a reference-zero
+I therefore distinguish the movable-root rank $r$, a reference-zero
 label $k$, and the ordinal in the full positive spectrum. The tables
 compare the selected roots with the ordered positive ordinates
 $\gamma_k$ of $\zeta(1/2+i\gamma_k)=0$; identification by reference
@@ -203,7 +195,7 @@ directly with the original CCM headline result.
 
 \section{Implementation}
 
-Our implementation uses the Xcelerator
+My implementation uses the Xcelerator
 Toolkit,\footnote{\url{https://github.com/TeamXcelerator/xcelerator-toolkit}}
 a publicly available library of high-precision spectral methods for
 analytic number theory, pinned to a tagged release for reproducibility.
@@ -276,6 +268,22 @@ finite-frequency cutoff $T$ used in Groskin's implementation and studied
 there for truncation sensitivity~\cite{Groskin2026HighPrecision}.
 \end{enumerate}
 
+\paragraph{Requested, source, and evaluation precision.}
+For $d$ requested decimal digits, the pinned implementation uses
+$p_{\mathrm{req}}=\lceil 3.32193d\rceil$, an upward bound for
+$d\log_2 10$, and source precision $p_{\mathrm{src}}=p_{\mathrm{req}}+64$.
+This is an \emph{initial source reserve}, not a uniform guard budget.
+Current root refinement raises evaluation precision when convergence
+and directed confirmation require it, within configured limits;
+the requested target and stored coefficients stay fixed. Guarded
+solves derive precision from their inputs: the Krylov route uses
+$2p_{\mathrm{src}}+64$ bits within its precision and resource limits.
+Diagnostics also have their own guard ladders. Thus the recorded
+source bits are not the maximum internal precision. Extra evaluation
+bits can resolve cancellation, but cannot restore information lost
+in the stored matrix or vector. Historical comparisons retain their
+recorded source precisions and producer policies.
+
 \paragraph{Independent matrix assembly.}
 At $C=13$, $N=10$, a separate tanh--sinh integration of the defining
 CCM components~\cite[Equations (3.14), (3.16), and (4.4)]{CCM2025}
@@ -319,7 +327,7 @@ and supplemental numerical evidence are included in the repository's
 \subsection{Reproduction of the CCM Headline}
 \label{sec:headline}
 
-At $(\lambda^2{=}13,N{=}120,200\text{-digit precision})$, our first
+At $(\lambda^2{=}13,N{=}120,200\text{-digit precision})$, my first
 computed spectral ordinate is
 \[
 \nu_1=14.134725141734693790457251983562470270784257\ldots
@@ -339,7 +347,8 @@ than being limited by arithmetic precision.
 \begin{table}[!htbp]
 \centering
 \caption{Measured matching digits across configurations, all at an
-HP-1000 requested-precision target with a 64-bit internal guard reserve.
+HP-1000 requested-precision target and 3386-bit source precision,
+including the initial 64-bit reserve.
 At $\lambda^2{=}1000$ the reported agreement saturates guarded working
 precision; the construction's intrinsic ceiling is not resolved by this
 run.}
@@ -355,15 +364,15 @@ $\lambda^2{=}1000$, $N{=}800$ & $\mathbf{1019.0}$ & $\mathbf{1020.3}$ & HP-1000 
 \end{tabular}
 \end{table}
 
-Here HP-1000 denotes the requested accuracy contract, not the raw MPFR
-allocation. The implementation converts 1000 decimal digits to 3322
-requested bits and appends 64 guard bits, giving 3386 working bits, or
-approximately 1019.3 decimal digits. Root acceptance is tested against
-the 3322-bit requested target; the guard reserve protects that target
-from cancellation and accumulated rounding error. The matching-digits
-diagnostic, however, compares the final values at the full guarded
-precision, so a converged Halley iteration can expose agreement within
-the reserve: 1019.0 digits for the first zero in the latest run. The
+Here HP-1000 denotes the requested accuracy contract, not the maximum
+MPFR allocation. The implementation converts 1000 decimal digits to 3322
+requested bits and adds the initial 64-bit reserve, giving 3386 source
+bits, or approximately 1019.3 decimal digits. Root acceptance retains
+the 3322-bit target even when adaptive evaluation uses more bits.
+The reserve provides arithmetic headroom; it is not itself an error
+bound. The matching-digits diagnostic compares the retained values
+against a higher-precision reference and can expose agreement within
+the source reserve: 1019.0 digits for the first zero in the reported run. The
 20th-zero relative metric reaches 1020.3. The bit-to-decimal conversion
 describes significant arithmetic precision, not a strict upper bound on
 pointwise agreement: a representable result can lie unusually close to
@@ -426,7 +435,7 @@ configuration,
 D_{\varepsilon}:=-\log_{10}|\varepsilon_N|=58.458,
 \]
 so the first-zero plateau lies $2.694$ digits below the eigenvalue
-depth. We therefore call it the root-accuracy plateau associated with
+depth. I therefore call it the root-accuracy plateau associated with
 $\varepsilon_N$, not the eigenvalue depth itself.
 \end{enumerate}
 
@@ -601,7 +610,7 @@ decay is polynomial, exponential, or super-exponential. A rigorous
 two-parameter law for $\varepsilon_N(\lambda,N)$ remains open.
 
 For the five retained even sources at $(C,N)=(13,120)$, $(100,500)$,
-$(1000,800)$, $(1000,890)$, and $(1200,970)$, we additionally enclose
+$(1000,800)$, $(1000,890)$, and $(1200,970)$, I additionally enclose
 the first secular root using Arb and compare it with a freshly
 computed rigorous zeta-zero enclosure. An independent replay verifies
 opposite endpoint signs, pole exclusion, and a derivative that excludes
@@ -648,7 +657,7 @@ $\lambda^2$ & Primes & $\varepsilon_N$ at HP-1000 & HP-200 & HP-1000 & $C_{\math
 \end{table}
 
 For HP-200, the implementation converts the 200-decimal-digit request
-to 665 bits and adds 64 guard bits, yielding 729 working bits, or
+to 665 bits and adds the initial 64-bit reserve, yielding 729 source bits, or
 approximately 219.5 decimal digits. Root acceptance is still measured
 against the 665-bit requested target. The 211.29-digit result at
 $\lambda^2=100$ therefore uses part of the guard reserve without
@@ -696,7 +705,7 @@ Their basis requirements depend on the cutoff, the selected root, and
 the working precision; an accuracy threshold also depends on the
 requested matching depth.
 
-Here we report a target-accuracy threshold on a tested ladder
+Here I report a target-accuracy threshold on a tested ladder
 $\mathcal N$, holding cutoff and precision fixed. For root index $r$
 and requested depth $D_*$, define
 \[
@@ -731,7 +740,7 @@ $\lambda^2{=}100$, $N{=}400$ & $6.12702\times 10^{-423}$ & $419.28$ & $409.04$ \
 
 Table~\ref{tab:conv_N} supplies concrete sampled thresholds at
 $\lambda^2=13$. The coarse ladder first reaches 50 matching digits at
-$N=40$ and 55 digits at $N=60$. To resolve these crossings, we tested
+$N=40$ and 55 digits at $N=60$. To resolve these crossings, I tested
 every integer in $31\leq N\leq40$ and $51\leq N\leq60$ at both
 HP-200 and HP-1000 (40 additional computations). The denser ladder
 retains the 50-digit threshold at $N=40$ and refines the 55-digit
@@ -780,7 +789,7 @@ the joint basis, cutoff, and precision budget.
 The simple-even ground-state condition in the CCM program motivates
 two finite tests: the parity of the unrestricted lowest state and its
 separation from the lowest odd and next even states. Let $J$ denote
-the corresponding coefficient reversal, $(J\xi)_j=\xi_{-j}$. We
+the corresponding coefficient reversal, $(J\xi)_j=\xi_{-j}$. I
 measure the natural evenness $\|\xi-J\xi\|/\|\xi\|$ of the
 unforced smallest eigenvector at working precisions sufficient to
 resolve $\varepsilon_N$ above the floor:
@@ -812,8 +821,10 @@ be the first two even-sector eigenvalues and $o_0$ the lowest odd one.
 All five configurations have $e_0>0$, $o_0-e_0>0$, and $e_1-e_0>0$.
 The odd-to-even ground-value ratio ranges from $8.77\times10^3$ to
 $4.21\times10^5$. Independently retained HP Sturm brackets separate
-the first two even indices, and the even-state residual divided by
-that separation is below $2.01\times10^{-533}$ in every row.
+the first two even indices. The first four residual-to-separation
+measurements retain the September values. At $(\lambda^2,N)=(1200,970)$,
+the revised directed finite-source bound is $3.03494\times10^{-533}$,
+using correctly rounded normalization and even-basis conversion.
 The two sector spectra and the response record are bound to a common
 Tau source. Together with the unrestricted states, these measurements
 support both simplicity and evenness of the finite ground state.
@@ -823,8 +834,11 @@ support both simplicity and evenness of the finite ground state.
 \small
 \caption{Computed ground-state separations at the precisions of
 Table~\ref{tab:evenness}. The last column is the even-state absolute
-residual divided by the computed same-sector separation. These HP
-values are numerical evidence, not analytic-matrix interval certificates.}
+residual divided by the computed same-sector separation for the first four
+rows. The final row reports the revised directed bound
+$\|Av-\mu v\|_2/(\|v\|_2 g)$ for the stored even-sector matrix and vector,
+with a source-matrix gap lower bound $g$.
+These are finite-source results, not analytic-matrix interval certificates.}
 \label{tab:sector_separations}
 \begin{tabular}{@{}rrrrr@{}}
 \toprule
@@ -834,13 +848,25 @@ $\lambda^2$ & $N$ & $o_0-e_0$ & $e_1-e_0$ & Residual / gap \\
 100 & 500 & $1.79801\times10^{-458}$ & $1.78543\times10^{-453}$ & $2.70026\times10^{-567}$ \\
 1000 & 800 & $1.24493\times10^{-1258}$ & $2.05363\times10^{-1253}$ & $6.60626\times10^{-768}$ \\
 1000 & 890 & $5.42414\times10^{-1357}$ & $1.04167\times10^{-1351}$ & $1.55669\times10^{-669}$ \\
-1200 & 970 & $2.86128\times10^{-1493}$ & $6.55282\times10^{-1488}$ & $2.00727\times10^{-533}$ \\
+1200 & 970 & $2.86128\times10^{-1493}$ & $6.55282\times10^{-1488}$ & $3.03494\times10^{-533}$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+The previous final-row value, $2.00727\times10^{-533}$, was a
+nearest-rounded point measurement with a different normalization path.
+A retained-source audit reproduced the revised bound at higher precision;
+its gap agrees with the previous value to the displayed precision.
+Changing only normalization and basis-conversion rounding changes the
+residual at this scale. The revised row therefore supersedes that measurement,
+without claiming a reproduction of its final digits or changing the
+reported positive gaps. Reproduction checks compare the revised quantity
+at the six significant digits displayed here and require the same directed
+arithmetic method. The historical evidence and its original comparison
+outcome remain retained separately.
+
 \paragraph{Certified finite ground states.}
-At $C=13$, $N=10$ and $N=120$, we additionally assembled the analytic
+At $C=13$, $N=10$ and $N=120$, I additionally assembled the analytic
 cutoff-free matrix in interval arithmetic, using 512 and 1024 bits,
 respectively. Arb interval $LDL^T$ proves positive definiteness of
 the full matrix and encloses $e_0,e_1,o_0$ by shifted inertia.
@@ -874,8 +900,8 @@ $N$ & $e_0$ & $o_0$ & $e_1$ \\
 \end{tabular}
 \end{table}
 
-The $\lambda^2{=}100$, $N{=}500$ row was remeasured with the current
-64-bit guard reserve; the earlier 16-guard-bit calculation gave
+The $\lambda^2{=}100$, $N{=}500$ row was remeasured with a
+64-bit source reserve; the earlier 16-guard-bit calculation gave
 $5.102\times10^{-548}$. The additional 48 working bits supply
 approximately $48\log_{10}2=14.45$ decimal digits of arithmetic
 headroom, consistent with the roughly 15-order reduction to
@@ -895,7 +921,7 @@ $1.807\times10^{-660}$, respectively, so the two routes remain
 numerically equivalent to hundreds of decimal digits.
 
 The $\lambda^2{=}1200$, $N{=}970$ row was likewise remeasured with
-the 64-bit guard reserve. Its evenness deviation falls from
+the 64-bit source reserve. Its evenness deviation falls from
 $2.927\times10^{-514}$ to $2.948\times10^{-528}$, an improvement of
 approximately $14.0$ decimal orders. The natural and even-sector
 eigenvalues are numerically equivalent at the attainable relative
@@ -921,7 +947,7 @@ $\lambda^2{=}13$, $N{=}120$, HP-1000 reproduction, performed at 3386-bit
 working precision, their relative difference is
 $1.107 \times 10^{-962}$. The unrestricted states and the two positive gaps provide empirical
 support for the finite simple-even hypothesis at these five
-configurations. We conjecture the same structure throughout the finite
+configurations. I conjecture the same structure throughout the finite
 family: for every $\lambda>1$ and $N\geq1$, the lowest eigenspace of
 $QW_\lambda|_{E_N}$ is one-dimensional and even.
 
@@ -1009,7 +1035,7 @@ brackets. These are finite CCM results, without taking a continuum
 or increasing-cutoff limit.
 
 \paragraph{Fixed-matrix precision control.}
-We round one fixed $C=13$, $N=10$ matrix to 24, 53, 64, 80, 96,
+I round one fixed $C=13$, $N=10$ matrix to 24, 53, 64, 80, 96,
 128, 192, 256, and 384 bits, then solve each rounded problem at
 220 decimal digits. This separates matrix-entry rounding from
 assembly and solver precision. At 24 bits the lowest state is odd,
@@ -1037,14 +1063,14 @@ configuration collapses the apparent breakdown entirely: deviation
 $2.94 \times 10^{-748}$, with eigenvalues numerically equivalent at the
 reported precision. Thus the only
 variable in that controlled comparison is requested precision. The
-latest 64-guard-bit HP-2000 run uses 6708 working bits (approximately
+reported HP-2000 run with a 64-bit source reserve uses 6708 source bits (approximately
 2019.3 decimal digits, a floor ratio of approximately $1.60$) and
 reduces the residual symmetry noise further to
 $7.634 \times 10^{-763}$, again with numerically equivalent natural and
 even-sector eigenvalues at the reported precision.
 
 \paragraph{The even-sector restriction is empirically unnecessary.}
-To further test whether the eigenvector is naturally even, we ran
+To further test whether the eigenvector is naturally even, I ran
 the full CCM pipeline (eigenstate solve $\to$ eigenvector $\to$
 $R(s)$ zero-finding $\to$ Riemann-zero matching digits) with the
 unrestricted natural full-space policy at configurations spanning
@@ -1133,7 +1159,7 @@ the eigenvalue-decay law; matrix interactions and the simultaneous
 scaling of $N$ remain essential.
 
 \paragraph{Measured prime-power responses.}
-At $C=13$, $N=120$, we independently test each retained prime-power
+At $C=13$, $N=120$, I independently test each retained prime-power
 matrix direction $D_q$ by solving the perturbed family $A+tD_q$ with
 fixed observation poles. All nine directions pass at
 $t=10^{-90},10^{-100},10^{-110}$. Centered-difference errors decrease
@@ -1157,7 +1183,7 @@ or an asymptotic convergence law.
 
 \subsection{Implications for the Proof Strategy}
 
-Our findings have implications for the CCM proof strategy:
+My findings have implications for the CCM proof strategy:
 \begin{enumerate}
 \item The unrestricted evenness measurements and both spectral gaps
 (Tables~\ref{tab:evenness} and~\ref{tab:sector_separations}) support a
@@ -1181,7 +1207,7 @@ rigorous two-parameter law and the asymptotic decay class remain open.
 
 \section{Conclusion}
 
-We have independently reproduced and significantly extended the CCM
+I have independently reproduced and significantly extended the CCM
 zeta spectral triple construction, achieving 1495.14 measured matching
 digits on the first Riemann zero at $(C,N)=(1200,970)$ with
 6708 working bits. The 1019.0-to-1260.36-digit paired-precision
@@ -1253,18 +1279,20 @@ The complete paper-specific source code and reproduction scripts are
 available at:\\
 {\small\url{https://github.com/TeamXcelerator/ccm-reproduction-and-convergence}}
 
-\noindent The v2.4 tables originated with Toolkit 0.14.2; the completed
-September 2026 v2.5 campaign assessed all 14 individual claim scripts
-over 53 journals using the Toolkit 0.15.0 pin recorded in Cargo.lock.
-Numerical and publication summaries passed with the documented
-Claim~1c and Claim~8 applicability qualifications. The high-precision
-first-root column, parity-gap table, and exact small-source census
-augment the historical measurements. Source identities distinguish
-reused artifacts from fresh computation and bind the recovered
-high-precision diagnostics. Supporting code and aggregate evidence
-are supplied in the repository. The reproduction scripts reuse
-compatible cached artifacts when available and compute locally
-otherwise.
+\noindent The repository supplies independent verification programs,
+aggregate evidence, and source identities that distinguish reused artifacts
+from fresh computation. The v2.4 and v2.5 measurements retain their Toolkit
+0.14.2 and 0.15.0 provenance and documented applicability qualifications.
+Scripts reuse compatible cached artifacts or compute them locally.
+
+The current reconciliation covers 15 claim routes and 93 planned
+configuration, precision, and parity invocations, including retained-source
+recoveries; applicable acquisition and publication are complete. The revised
+Claim~4d comparison passes on its authenticated retained response. Its
+directed bound in Table~\ref{tab:sector_separations} is identified in
+\texttt{docs/research-evidence.json}; the earlier measurement and failed
+historical comparison remain preserved. Conditional bounds and deferred
+cross-configuration analyses retain their stated scope.
 
 \noindent The shared mathematical library and content-bound reference-zero
 dataset are supplied by the Xcelerator Toolkit at:\\

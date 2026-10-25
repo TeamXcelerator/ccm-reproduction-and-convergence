@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "Please cite the manuscript when using the scientific results; cite the exact software revision when reproducing a computation."
+type: software
+title: "Independent Reproduction and Convergence Analysis of the Connes–Consani–Moscovici Zeta Spectral Triple"
+version: 2.6.0
+authors:
+  - family-names: "Andrews, Jr."
+    given-names: Ronnie
+    orcid: "https://orcid.org/0009-0003-9724-3104"
+repository-code: "https://github.com/TeamXcelerator/ccm-reproduction-and-convergence"
+url: "https://github.com/TeamXcelerator/ccm-reproduction-and-convergence"
+abstract: "Independent high-precision reproduction and finite convergence analysis of the CCM zeta spectral triple, with source-bound numerical evidence and independent finite verification."
+keywords:
+  - Riemann zeta function
+  - spectral triple
+  - Weil quadratic form
+  - high-precision computation
+  - finite numerical verification

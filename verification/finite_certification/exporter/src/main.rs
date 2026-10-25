@@ -4,7 +4,7 @@ fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     anyhow::ensure!(
         args.len() == 4,
-        "Usage: paper1-interval-export N BITS OUTPUT.json"
+        "Usage: ccm-interval-export N BITS OUTPUT.json"
     );
     let modes: usize = args[1].parse()?;
     let bits: u32 = args[2].parse()?;

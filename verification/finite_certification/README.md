@@ -2,24 +2,24 @@
 
 These controls prove positive definiteness and a simple even ground state for
 the finite CCM matrices at **C=13, N=10 and N=120**. They use interval assembly
-from the pinned Toolkit v0.15.0, then two independent Python/Arb inertia
+from the exporter's own pin of Toolkit v0.15.0, then two independent Python/Arb inertia
 implementations. No retained source payload or reference zero is required.
 
 On Linux or WSL, install the toolkit's [Arb build prerequisites](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.15.0/README.md)
-and `python-flint`, then run from the Paper 1 repository root:
+and `python-flint`, then run from the repository root:
 
 ```bash
 mkdir -p target/finite-certification
 cargo build --release --locked \
-  --manifest-path research/finite_certification/exporter/Cargo.toml
-exporter=research/finite_certification/exporter/target/release/paper1-interval-export
+  --manifest-path verification/finite_certification/exporter/Cargo.toml
+exporter=verification/finite_certification/exporter/target/release/ccm-interval-export
 "$exporter" 10 512 target/finite-certification/tau-n10.json
 "$exporter" 120 1024 target/finite-certification/tau-n120.json
 for n in 10 120; do
-  python3 research/finite_certification/certify.py \
+  python3 verification/finite_certification/certify.py \
     --input "target/finite-certification/tau-n${n}.json" \
     --output "target/finite-certification/certificate-n${n}.json" || exit 1
-  python3 research/finite_certification/verify.py \
+  python3 verification/finite_certification/verify.py \
     --input "target/finite-certification/tau-n${n}.json" \
     --certificate "target/finite-certification/certificate-n${n}.json" \
     --output "target/finite-certification/replay-n${n}.json" || exit 1
@@ -27,7 +27,7 @@ done
 ```
 
 The executable path above assumes `CARGO_TARGET_DIR` is unset. When using a
-custom Cargo target directory, select its `release/paper1-interval-export`.
+custom Cargo target directory, select its `release/ccm-interval-export`.
 Do not use Python's `-O` option. Failure to establish definite pivot signs
 produces an unsuccessful verification, never a guessed sign or an acceptance
 based solely on a numerical guide.

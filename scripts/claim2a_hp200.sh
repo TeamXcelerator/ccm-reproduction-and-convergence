@@ -1,45 +1,31 @@
 #!/usr/bin/env bash
-# Claim 2a: λ-sweep at HP-200, N=120 (5 configs).
+# Claim 2a: λ-sweep at HP-200, N=120 (5 configurations).
 #
 # First half of the Claim 2 comparison. The 64 guard bits retain the reported
-# root accuracy even at λ²=100, while ε_N and GapLog approach the guarded
-# working-precision floor. Pair with claim2b_hp1000.sh.
-#
-# Designed to run independently on its own server alongside claim2b.
+# root accuracy even at λ²=100. Pair with claim2b_hp1000.sh.
+# Can run independently on a separate machine.
+
 set -euo pipefail
-
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
-N=${N:-120}
-PREC=${PREC:-200}
-DISPLAY_DIGITS=${DISPLAY_DIGITS:-50}
+claim_working_budget 16
 
-# FORCE_EVEN=false is the legacy alias for the unrestricted natural policy.
-EVEN_FLAG=""
-if [[ "${FORCE_EVEN:-true}" == "false" ]]; then
-  EVEN_FLAG="--no-force-even"
-  echo "  *** parity policy: natural full-space solve ***"
-fi
-
-echo "=== Claim 2a: λ-sweep at N=${N}, HP-${PREC} ==="
+echo "=== Claim 2a: λ-sweep at N=120, HP-200 ==="
 echo
-
-# lambda^2 values
 CONFIGS=(
-  "13"
-  "20"
-  "30"
-  "50"
-  "100"
+  "13  120  200"
+  "20  120  200"
+  "30  120  200"
+  "50  120  200"
+  "100 120  200"
 )
-
 for cfg in "${CONFIGS[@]}"; do
-  read -r LAMBDA_SQ <<< "$cfg"
+  read -r LAMBDA_SQ N PREC <<< "$cfg"
   echo "--- λ²=${LAMBDA_SQ}, N=${N}, HP-${PREC} ---"
-  run_research_claim run \
+  run_claim run \
     --lambda-sq "$LAMBDA_SQ" \
     --n-modes "$N" \
     --precision-digits "$PREC" \
-    --display-digits "$DISPLAY_DIGITS" \
-    --top 1 $EVEN_FLAG
+    --display-digits 50 \
+    --top 1
   echo
 done

@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-02",
+  "scope": "Author reconciliation of retained local numerical verification and supplied remote completion reports; no fresh campaign or independent audit of every remote payload.",
+  "routes": 15,
+  "planned_invocations": 93,
+  "applicable_acquisition_complete": true,
+  "applicable_publication_complete": true,
+  "revised_numerical_acceptance_complete": true,
+  "all_original_numerical_checks_pass": false,
+  "all_historical_printed_values_reproduced_identically": false,
+  "proof_scope": "Finite computations; conditional, unresolved, and finite-interpolant assessments retain their individual scope.",
+  "cohort_analysis": "deferred",
+  "sector_gap_certificates": "not_requested",
+  "claim4d": {
+    "original_check": "FAIL",
+    "original_ceiling": "2.01e-533",
+    "revised_table_value": "3.03494e-533",
+    "revised_retained_comparison": "PASS",
+    "original_verdict_preserved": true,
+    "primary_recomputed": false,
+    "root_recomputed": false
+  },
+  "evidence_record_sha256": "2c9dd018297472c7e34a3311aa7bd22f7505ff4b26cfaa167b74b43367a7139f",
+  "reconciliation_source_sha256": [
+    {
+      "role": "campaign reconciliation",
+      "sha256": "cfd49ecbee39f0567497d4dbb91336fdbaac23e0212bfb175eb67a627a86810a"
+    },
+    {
+      "role": "revised retained comparison",
+      "sha256": "2bddcfa7deae9bad4cdc4728da19a8b2906a60f2dc69562fdd56cfb704258350"
+    },
+    {
+      "role": "independent analytic matrix audit",
+      "sha256": "43279333f3b8a11fc070c1c9fafc070097da62129f1398cfc14437a20ba08b59"
+    }
+  ],
+  "claims": [
+    {
+      "claim": "1a",
+      "invocations": 1,
+      "numerical_acceptance": "PASS",
+      "completion_route": "original",
+      "applicable_acquisition": "complete",
+      "publication": "complete"
+    },
+    {
+      "claim": "1b",
+      "invocations": 1,
+      "numerical_acceptance": "PASS",
+      "completion_route": "original",
+      "applicable_acquisition": "complete",
+      "publication": "complete"
+    },
+    {
+      "claim": "1c",
+      "invocations": 1,
+      "numerical_acceptance": "PASS_WITH_PRECISION_FLOOR_SCOPE",
+      "completion_route": "original_and_supplements",
+      "applicable_acquisition": "complete",
+      "publication": "complete"
+    },
+    {
+      "claim": "2a",
+      "invocations": 5,
+      "numerical_acceptance": "PASS",
+      "completion_route": "original",
+      "applicable_acquisition": "complete",
+      "publication": "complete"
+    },
+    {
+      "claim": "2b",
+      "invocations": 5,
+      "numerical_acceptance": "PASS",
+      "completion_route": "original_and_five_supplements",
+      "applicable_acquisition": "complete",
+      "publication": "complete"
+    },
+    {
+      "claim": "3",
+      "invocations": 4,
+      "numerical_acceptance": "PASS",
+      "completion_route": "original",
+      "applicable_acquisition": "complete",
+      "publication": "complete"
+    },
+    {
+      "claim": "4a",
+      "invocations": 1,
+      "numerical_acceptance": "PASS",
+      "completion_route": "original",
+      "applicable_acquisition": "complete",
+      "publication": "complete"
+    },
+    {
+      "claim": "4b",
+      "invocations": 1,
+      "numerical_acceptance": "PASS",
+      "completion_route": "original",
+      "applicable_acquisition": "complete",
+      "publication": "complete"
+    },
+    {
+      "claim": "4c",
+      "invocations": 2,
+      "numerical_acceptance": "PASS",
+      "completion_route": "original_and_two_dimension_supplements",
+      "applicable_acquisition": "complete",
+      "publication": "complete"
+    },
+    {
+      "claim": "4d",
+      "invocations": 1,
+      "numerical_acceptance": "REVISED_COMPARISON_PASS",
+      "completion_route": "original_and_supplement_and_revised_reassessment",
+      "applicable_acquisition": "complete",
+      "publication": "complete"
+    },
+    {
+      "claim": "6",
+      "invocations": 3,
+      "numerical_acceptance": "PASS",
+      "completion_route": "original_and_supplement",
+      "applicable_acquisition": "complete",
+      "publication": "complete"
+    },
+    {
+      "claim": "6b",
+      "invocations": 6,
+      "numerical_acceptance": "PASS",
+      "completion_route": "five_original_rows_and_one_row_retry",
+      "applicable_acquisition": "complete",
+      "publication": "complete"
+    },
+    {
+      "claim": "7",
+      "invocations": 18,
+      "numerical_acceptance": "PASS",
+      "completion_route": "original",
+      "applicable_acquisition": "complete",
+      "publication": "complete"
+    },
+    {
+      "claim": "7b",
+      "invocations": 40,
+      "numerical_acceptance": "PASS",
+      "completion_route": "original_and_publication_recovery",
+      "applicable_acquisition": "complete",
+      "publication": "complete"
+    },
+    {
+      "claim": "8",
+      "invocations": 4,
+      "numerical_acceptance": "PASS",
+      "completion_route": "original_and_publication_recovery",
+      "applicable_acquisition": "complete",
+      "publication": "complete"
+    }
+  ]
+}

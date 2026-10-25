@@ -1,8 +1,8 @@
 [package]
 name = "ccm-reproduction"
-version = "2.5.0"
+version = "2.6.0"
 edition = "2021"
-rust-version = "1.98"
+rust-version = "1.99"
 description = "Independent reproduction and convergence analysis of the CCM Zeta Spectral Triple (arXiv:2511.22755)"
 authors = ["Ronnie Andrews, Jr. <5178942+TeamXceleratorDev@users.noreply.github.com>"]
 license-file = "LICENSE"
@@ -18,6 +18,8 @@ hp = ["xc-spectral/hp", "xc-zeta/hp", "xc-numerics/hp", "dep:rug"]
 # from ordinary HP computation. Ultra builds enable this feature for finite
 # transform enclosures; root/sector certification still requires an explicit request.
 root-certification = ["hp", "xc-spectral/arb"]
+# Optional compact-certificate integration; runtime selection is separate.
+compact-sector-certificates = ["root-certification"]
 # Local/native qualification surface for the Toolkit's default-off GL
 # root scheduler. Ordinary reproduction builds do not enable it.
 experimental-gl-root-parallel = ["hp"]
@@ -29,14 +31,14 @@ rayon = "1.10"
 rug = { version = "1.30", optional = true, default-features = false, features = ["float", "integer"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sha2 = "0.10"
 
-# Xcelerator Toolkit v0.15.1; the qualified commit and Cargo.lock bind each run.
-xc-spectral = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "ec0f09cb1a0a133dfb62c7bceceff2c1669a429c" }
-xc-zeta = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "ec0f09cb1a0a133dfb62c7bceceff2c1669a429c" }
-xc-numerics = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "ec0f09cb1a0a133dfb62c7bceceff2c1669a429c" }
-xc-cache = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "ec0f09cb1a0a133dfb62c7bceceff2c1669a429c" }
-xc-core = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "ec0f09cb1a0a133dfb62c7bceceff2c1669a429c" }
-
+# Xcelerator Toolkit 0.17.1; exact Git revision and Cargo.lock bind each run.
+xc-spectral = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "e466a413713a23df0ae550b307c256e7b1313bea" }
+xc-zeta = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "e466a413713a23df0ae550b307c256e7b1313bea" }
+xc-numerics = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "e466a413713a23df0ae550b307c256e7b1313bea" }
+xc-cache = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "e466a413713a23df0ae550b307c256e7b1313bea" }
+xc-core = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "e466a413713a23df0ae550b307c256e7b1313bea" }
 [profile.release]
 opt-level = 3
 lto = "thin"
