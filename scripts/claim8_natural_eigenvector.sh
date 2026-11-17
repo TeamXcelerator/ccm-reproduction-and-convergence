@@ -18,16 +18,12 @@ set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
 claim_working_budget 48
 
-PUBLISH_AFTER_COMPARISON=${XC_PUBLISH_EXECUTE:-false}
 CONFIGS=(
   "13   120  8a"
   "100  500  8b"
 )
 
 echo "=== Claim 8: natural full-space vs reduced even-sector eigenstate ==="
-if [[ "$PUBLISH_AFTER_COMPARISON" == "true" ]]; then
-  echo "Publication: staged throughout the comparison; one cumulative execution after 8b natural"
-fi
 echo
 for cfg in "${CONFIGS[@]}"; do
   read -r LAMBDA_SQ N LABEL <<< "$cfg"
@@ -36,11 +32,6 @@ for cfg in "${CONFIGS[@]}"; do
   echo "################################################################"
   for POLICY in even-sector natural; do
     echo "---- [${LABEL}] ${POLICY} ----"
-    if [[ "$LABEL" == "8b" && "$POLICY" == "natural" ]]; then
-      export XC_PUBLISH_EXECUTE="$PUBLISH_AFTER_COMPARISON"
-    else
-      export XC_PUBLISH_EXECUTE=false
-    fi
     run_claim run \
       --lambda-sq "$LAMBDA_SQ" \
       --n-modes "$N" \

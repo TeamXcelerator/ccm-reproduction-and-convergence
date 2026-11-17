@@ -26,7 +26,7 @@ of the Connes--Consani--Moscovici Zeta Spectral Triple}
 \author{Ronnie Andrews, Jr.\,\orcidlink{0009-0003-9724-3104}%
 \thanks{Correspondence: \texttt{randrewsmath@gmail.com}}}
 
-\date{June 2026\\[2pt]{\small Revised November 2026 (version 2.6)}}
+\date{June 2026\\[2pt]{\small Revised November 2026 (version 2.7)}}
 
 \begin{document}
 \maketitle
@@ -359,7 +359,7 @@ Configuration & First-zero digits & 20th-zero digits & Requested precision \\
 \midrule
 $\lambda^2{=}13$,   $N{=}120$ & $55.764$  & $25.339$   & HP-1000 \\
 $\lambda^2{=}100$,  $N{=}500$ & $460.09$ & $422.44$  & HP-1000 \\
-$\lambda^2{=}1000$, $N{=}800$ & $\mathbf{1019.0}$ & $\mathbf{1020.3}$ & HP-1000 \\
+$\lambda^2{=}1000$, $N{=}800$ & $\mathbf{1019.7}$ & $\mathbf{1020.3}$ & HP-1000 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -370,10 +370,10 @@ requested bits and adds the initial 64-bit reserve, giving 3386 source
 bits, or approximately 1019.3 decimal digits. Root acceptance retains
 the 3322-bit target even when adaptive evaluation uses more bits.
 The reserve provides arithmetic headroom; it is not itself an error
-bound. The matching-digits diagnostic compares the retained values
-against a higher-precision reference and can expose agreement within
-the source reserve: 1019.0 digits for the first zero in the reported run. The
-20th-zero relative metric reaches 1020.3. The bit-to-decimal conversion
+bound. For the first reference-seeded root, the stored point is the
+nearest 3386-bit number to the reference ordinate. Its relative error gives 1019.7
+matching digits under~\eqref{eq:matching-digits}. The 20th-zero relative
+metric reaches 1020.3. The bit-to-decimal conversion
 describes significant arithmetic precision, not a strict upper bound on
 pointwise agreement: a representable result can lie unusually close to
 the comparison value. Division by $|\gamma_{20}|$ alone does not
@@ -637,10 +637,9 @@ finite eigenvalue-to-root conversion gap.
 \begin{table}[!htbp]
 \centering
 \small
-\caption{First-zero accuracy vs.\ $\lambda^2$ at $N=120$, comparing
-HP-200 and HP-1000 requested precision. The final column shows the
-slowly varying conversion gap
-$C_{\mathrm{conv}}=D_{\varepsilon}-D_1$.}
+\caption{First-zero accuracy vs.\ $\lambda^2$ at $N=120$ for HP-200 and HP-1000.
+The gap $C_{\mathrm{conv}}=D_{\varepsilon}-D_1$ uses unrounded HP-1000 inputs
+and is reported to three decimal places.}
 \label{tab:lambda_sweep}
 \begin{tabular}{@{}rrlrrr@{}}
 \toprule
@@ -649,8 +648,8 @@ $\lambda^2$ & Primes & $\varepsilon_N$ at HP-1000 & HP-200 & HP-1000 & $C_{\math
 13  & 6  & $3.48399\times10^{-59}$  & $55.764$ & $55.764$ & $2.694$ \\
 20  & 8  & $2.50471\times10^{-96}$  & $92.817$ & $92.817$ & $2.784$ \\
 30  & 10 & $2.19404\times10^{-135}$ & $131.80$ & $131.80$ & $2.859$ \\
-50  & 15 & $6.89051\times10^{-174}$ & $170.19$ & $170.19$ & $2.972$ \\
-100 & 25 & $3.48656\times10^{-215}$ & $211.29$ & $211.29$ & $3.168$ \\
+50  & 15 & $6.89051\times10^{-174}$ & $170.19$ & $170.19$ & $2.976$ \\
+100 & 25 & $3.48656\times10^{-215}$ & $211.29$ & $211.29$ & $3.170$ \\
 \bottomrule
 \end{tabular}
 \normalsize
@@ -801,14 +800,15 @@ eigenvector, each measured at working precision sufficient to
 resolve $\varepsilon_N$ above the floor. At every configuration
 tested, the natural eigenvector is essentially even and the
 natural and even-sector eigenvalues agree to hundreds of decimal
-digits.}
+digits. The entries describe the retained reference eigenpairs. Other
+solves can differ at the arithmetic floor.}
 \label{tab:evenness}
 \begin{tabular}{@{}rrrlll@{}}
 \toprule
 $\lambda^2$ & $N$ & Precision & Evenness deviation & Eigenvalue rel.\ diff. & Verdict \\
 \midrule
-13    & 120  & HP-1000  & $2.126 \times 10^{-966}$  & $1.107 \times 10^{-962}$ & essentially even \\
-100   & 500  & HP-1000  & $6.665 \times 10^{-563}$  & $2.444 \times 10^{-559}$ & essentially even \\
+13    & 120  & HP-1000  & $6.447 \times 10^{-967}$  & $4.501 \times 10^{-963}$ & essentially even \\
+100   & 500  & HP-1000  & $6.786 \times 10^{-565}$  & $1.420 \times 10^{-558}$ & essentially even \\
 1000  & 800  & HP-2000  & $7.634 \times 10^{-763}$  & $1.559 \times 10^{-758}$ & essentially even \\
 1000  & 890  & HP-2000  & $1.563 \times 10^{-664}$  & $1.807 \times 10^{-660}$ & essentially even \\
 1200  & 970  & HP-2000  & $2.948 \times 10^{-528}$  & $7.927 \times 10^{-526}$ & essentially even \\
@@ -900,15 +900,17 @@ $N$ & $e_0$ & $o_0$ & $e_1$ \\
 \end{tabular}
 \end{table}
 
-The $\lambda^2{=}100$, $N{=}500$ row was remeasured with a
-64-bit source reserve; the earlier 16-guard-bit calculation gave
-$5.102\times10^{-548}$. The additional 48 working bits supply
-approximately $48\log_{10}2=14.45$ decimal digits of arithmetic
-headroom, consistent with the roughly 15-order reduction to
-$6.665\times10^{-563}$. This change lowers the residual symmetry noise
-without changing the smallest eigenvalue, its sign, or the
-``essentially even'' conclusion; the natural and even-sector
-eigenvalues differ by only $2.444\times10^{-559}$ in relative terms.
+At $\lambda^2{=}100$, $N{=}500$, increasing the source reserve from
+16 to 64 bits reduced the reflection defect in the earlier solves
+from $5.102\times10^{-548}$ to $6.665\times10^{-563}$.
+An independent solve at the same stated precision reproduced the
+reference pair in Table~\ref{tab:evenness} from an empty cache.
+Compared with the earlier 64-bit-reserve pair, the natural and
+even-sector eigenvalues are respectively about 152 and 131 times
+closer to an independent enclosure of the finite ground eigenvalue.
+The two earlier energies shared a larger error of the same sign and
+therefore agreed more closely with each other. Both pairs give
+$\varepsilon_N=9.56481\times10^{-464}$ at the displayed precision.
 
 The $\lambda^2{=}1000$ rows show the same guard-reserve effect. At
 $N{=}800$ the deviation falls from the earlier
@@ -942,10 +944,10 @@ At every configuration tested above the precision floor --- including
 $\lambda^2 = 1200$, far beyond the range previously reported --- the
 natural smallest eigenvector is even to hundreds of digits of precision,
 and the natural and even-sector solves converge to numerically
-indistinguishable eigenvalues at the reported accuracy. In the current
+indistinguishable eigenvalues at the reported accuracy. In the reference
 $\lambda^2{=}13$, $N{=}120$, HP-1000 reproduction, performed at 3386-bit
 working precision, their relative difference is
-$1.107 \times 10^{-962}$. The unrestricted states and the two positive gaps provide empirical
+$4.501 \times 10^{-963}$. The unrestricted states and the two positive gaps provide empirical
 support for the finite simple-even hypothesis at these five
 configurations. I conjecture the same structure throughout the finite
 family: for every $\lambda>1$ and $N\geq1$, the lowest eigenspace of
@@ -1210,7 +1212,7 @@ rigorous two-parameter law and the asymptotic decay class remain open.
 I have independently reproduced and significantly extended the CCM
 zeta spectral triple construction, achieving 1495.14 measured matching
 digits on the first Riemann zero at $(C,N)=(1200,970)$ with
-6708 working bits. The 1019.0-to-1260.36-digit paired-precision
+6708 working bits. The 1019.7-to-1260.36-digit paired-precision
 experiment at $(C,N)=(1000,800)$ exposes the transition
 from arithmetic limitation to resolved finite-configuration error. The key
 findings are:
@@ -1285,9 +1287,10 @@ from fresh computation. The v2.4 and v2.5 measurements retain their Toolkit
 0.14.2 and 0.15.0 provenance and documented applicability qualifications.
 Scripts reuse compatible cached artifacts or compute them locally.
 
-The current reconciliation covers 15 claim routes and 93 planned
+The November 2 reconciliation covered 15 claim routes and 93 planned
 configuration, precision, and parity invocations, including retained-source
-recoveries; applicable acquisition and publication are complete. The revised
+recoveries. Applicable acquisition and publication were complete under
+that campaign's rules. The revised
 Claim~4d comparison passes on its authenticated retained response. Its
 directed bound in Table~\ref{tab:sector_separations} is identified in
 \texttt{docs/research-evidence.json}; the earlier measurement and failed

@@ -1,6 +1,6 @@
 [package]
 name = "ccm-reproduction"
-version = "2.6.0"
+version = "2.7.0"
 edition = "2021"
 rust-version = "1.99"
 description = "Independent reproduction and convergence analysis of the CCM Zeta Spectral Triple (arXiv:2511.22755)"
@@ -12,7 +12,10 @@ default = []
 # High-precision tier via rug (MPFR/GMP). Required for meaningful results.
 # Build: cargo build --release --features hp
 # Requires: sudo apt install build-essential m4 libgmp-dev libmpfr-dev libmpc-dev
-hp = ["xc-spectral/hp", "xc-zeta/hp", "xc-numerics/hp", "dep:rug"]
+hp = ["xc-spectral/hp", "xc-zeta/hp", "xc-numerics/hp", "dep:rug", "dep:sha2"]
+# Qualified native Windows GNU/UCRT arithmetic and its ABI/TLS checks.
+# This selects shared GMP/MPFR/FLINT without requesting root certification.
+native-windows = ["hp", "xc-numerics/arb"]
 # Optional FLINT/Arb-backed certification of independently indexed roots from
 # the exact retained finite CCM point source. This is deliberately separate
 # from ordinary HP computation. Ultra builds enable this feature for finite
@@ -31,14 +34,18 @@ rayon = "1.10"
 rug = { version = "1.30", optional = true, default-features = false, features = ["float", "integer"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sha2 = "0.10"
+sha2 = { version = "0.10", optional = true }
 
-# Xcelerator Toolkit 0.17.1; exact Git revision and Cargo.lock bind each run.
-xc-spectral = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "e466a413713a23df0ae550b307c256e7b1313bea" }
-xc-zeta = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "e466a413713a23df0ae550b307c256e7b1313bea" }
-xc-numerics = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "e466a413713a23df0ae550b307c256e7b1313bea" }
-xc-cache = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "e466a413713a23df0ae550b307c256e7b1313bea" }
-xc-core = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "e466a413713a23df0ae550b307c256e7b1313bea" }
+# Xcelerator Toolkit 0.17.2; exact Git revision and Cargo.lock bind each run.
+xc-spectral = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "8a1df4c33a53b8fd898211da971612f9a3804281" }
+xc-zeta = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "8a1df4c33a53b8fd898211da971612f9a3804281" }
+xc-numerics = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "8a1df4c33a53b8fd898211da971612f9a3804281" }
+xc-cache = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "8a1df4c33a53b8fd898211da971612f9a3804281" }
+xc-core = { git = "https://github.com/TeamXcelerator/xcelerator-toolkit", rev = "8a1df4c33a53b8fd898211da971612f9a3804281" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp"] }
+
 [profile.release]
 opt-level = 3
 lto = "thin"

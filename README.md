@@ -7,7 +7,7 @@ at arbitrary precision.
 **Author:** Ronnie Andrews, Jr.  
 **ORCID:** [0009-0003-9724-3104](https://orcid.org/0009-0003-9724-3104)  
 **Contact:** randrewsmath@gmail.com  
-**Software release:** v2.6 (package 2.6.0).
+**Software release:** v2.7 (package 2.7.0).
 
 This repository contains the manuscript, numerical evidence, and scripts for
 reproducing individual claims. Each script runs its documented numerical
@@ -40,18 +40,20 @@ bounded kernel measurements do not establish a full-claim speedup.
 
 The `recover-capture` command can acquire missing diagnostics from authenticated
 retained sources without repeating primary or root calculations. It writes a
-new supplemental journal and preserves the original verdict. See
+new supplemental journal and preserves the original verdict. When Claim 1c requests
+directional response and root transport, each must resolve every expected row
+before recovery can finalize publication. See
 `ccm-reproduction recover-capture --help` for its arguments.
 
 ## Read the paper and evidence
 
-- [Paper (PDF)](paper.pdf): the revised v2.6 manuscript, including the updated finite-source residual/gap measurement.
+- [Paper (PDF)](paper.pdf) includes the revised HP-1000 first-zero measurement, cutoff conversion gaps, and Claim 4 reference-state measurements.
 - [Research evidence](docs/RESEARCH_EVIDENCE.md): campaign coverage, Critical-N
   measurements, spectral indexing, and source provenance.
 - [Finite root certification and numerical controls](docs/FINAL_VERIFICATION.md):
   analytic root transfer, independent matrix assembly, precision, and prime response.
 - [Claim status](docs/CLAIM_STATUS.md): current coverage and numerical qualifications.
-- [Release notes](docs/RELEASE_NOTES.md): v2.6 changes, compatibility, and execution controls.
+- [Release notes](docs/RELEASE_NOTES.md): v2.7 Windows integration, compatibility, and execution controls.
 - [Aggregate results](docs/research-evidence.json): numerical reports and source hashes.
 
 ## Headline Results
@@ -59,7 +61,7 @@ new supplemental journal and preserves the original verdict. See
 | Finding | Value |
 |---|---|
 | First Riemann zero accuracy (λ²=1200, N=970, HP-2000) | **1495.14 matching digits**, with a retained-source interval check |
-| Paired precision at λ²=1000, N=800 | **1019.0 → 1260.36 digits**, HP-1000 → HP-2000 |
+| Paired precision at λ²=1000, N=800 | **1019.7 → 1260.36 digits**, HP-1000 → HP-2000 |
 | Finite ground-state certificates (λ²=13, N=10 and 120) | **Positive definite; simple, even ground state**, independently verified |
 | Analytic finite-source root certificates (λ²=13) | **All ten N=10 movable roots; a unique N=120 root matching the first zeta zero to 55.76356 digits**, with eigenstate error included |
 | First-zero Critical N at λ²=13 | **50 digits at N=40; 55 digits at N=56**, adjacent-integer brackets at two precisions |
@@ -72,21 +74,80 @@ new supplemental journal and preserves the original verdict. See
 
 ## Run one claim
 
-Use Linux or the Toolkit's qualified native Windows GNU/UCRT environment for
-the high-precision tier. On Linux, install Rust stable (minimum 1.99), Python 3,
-and the MPFR/GMP build prerequisites:
+Linux and native Windows use the same claim scripts, numerical configurations,
+and command-line options. Complete the setup for your platform, then use the
+shared Bash commands below. A GPU is optional.
+
+### Linux setup
+
+Install Rust using [rustup](https://rust-lang.org/install). The repository's
+`rust-toolchain.toml` selects Rust 1.100.0. On Ubuntu 24.04, install Git, Python,
+and the native build dependencies, including FLINT for Ultra and certificates:
 
 ```bash
-sudo apt-get install build-essential m4 libgmp-dev libmpfr-dev libmpc-dev
+sudo apt-get update
+sudo apt-get install git python3 build-essential m4 pkg-config libgmp-dev libmpfr-dev libmpc-dev libflint-dev
+git clone https://github.com/TeamXcelerator/ccm-reproduction-and-convergence.git
+cd ccm-reproduction-and-convergence
+export CCM_FEATURES=hp
+```
+
+On other Linux distributions, install the equivalent packages. The claim scripts
+require Python 3.8 or newer. The pinned scientific verifiers require Python
+3.11 or newer. Ultra capture and certificates require FLINT 3 with compatible
+shared GMP/MPFR libraries. See the Toolkit's [native library requirements](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.17.2/docs/THIRD_PARTY_REVIEW.md#native-library-linkage).
+
+### Native Windows setup
+
+Install Git and add Python 3.11 or newer to PATH to run both the claim scripts
+and the scientific verifiers. The Toolkit setup supplies the native Rust
+compiler, arithmetic libraries, and Bash. Use a working directory without
+spaces, such as `C:\src`.
+From PowerShell in that directory:
+
+```powershell
+git clone https://github.com/TeamXcelerator/ccm-reproduction-and-convergence.git
+git clone --branch v0.17.2 --depth 1 https://github.com/TeamXcelerator/xcelerator-toolkit.git
+powershell.exe -NoProfile -ExecutionPolicy Bypass
+```
+
+In the new PowerShell session, install the native dependencies once, initialize
+the environment, and enter Bash in the paper repository:
+
+```powershell
+.\xcelerator-toolkit\tools\windows-bootstrap.ps1
+. .\xcelerator-toolkit\tools\windows-env.ps1
+cd .\ccm-reproduction-and-convergence
+$env:CARGO_TARGET_DIR = Join-Path $PWD 'target'
+$env:CCM_FEATURES = 'native-windows'
+bash --noprofile --norc
+```
+
+For later sessions, reopen the child PowerShell session from the same parent
+directory and repeat the second block, omitting `windows-bootstrap.ps1`. Keep
+this Bash session for the commands below so it inherits the native compiler
+and library paths. See the Toolkit's
+[Windows guide](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.17.2/docs/WINDOWS.md)
+for setup details and custom installation locations.
+
+### Run a claim on either platform
+
+From the repository root in Bash, inspect the options, check admission without
+starting numerical work, then run the claim:
+
+```bash
+bash scripts/claim1a_lambda13.sh --help
+bash scripts/claim1a_lambda13.sh --preflight-only
 bash scripts/claim1a_lambda13.sh
 ```
 
-On Windows, follow the Toolkit's [native setup](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.17.1/docs/WINDOWS.md),
-then initialize its `tools/windows-env.ps1` in the same PowerShell session before
-building or invoking this executable. The high-precision binary runs natively;
-WSL is not required. The `.sh` claim wrappers additionally need Bash and Python 3
-for orchestration and summary checks. Numerical computation remains in Rust
-with the pinned native MPFR/GMP and FLINT libraries.
+The wrappers select `hp` on Linux and `native-windows` on Windows automatically,
+and add certificate features when requested. `CCM_FEATURES` is only a convenience
+for the direct Cargo examples later in this README. Python is detected as
+`python3` or `python`; set `CLAIM_PYTHON` to an executable path if needed. Use
+forward slashes for Windows paths in Bash, for example `C:/Python313/python.exe`.
+The independent scientific verifiers' additional Python dependencies are listed
+in [verification/requirements.txt](verification/requirements.txt).
 
 The script builds the current locked executable, then runs the published
 lambda-squared=13, N=120, HP-1000 configuration with seeded root refinement on
@@ -111,20 +172,33 @@ substantial matrix data. Run the individual claim you need.
 | `claim7b_critical_brackets.sh` | Every N in 31-40 and 51-60 at HP-200 and HP-1000 | First root | 16 GiB |
 | `claim8_natural_eigenvector.sh` | Natural/even-sector comparisons at 13 and 100 | Roots 1-25, ε_N, both routes | 48 GiB |
 
-Memory is the working budget each script declares for the toolkit's primary
-admission (Tau and source assembly and the ground-index proof). It covers the
-conservative admission estimate of every configuration in the claim, so run a
-claim on a machine with at least that much memory available; actual peaks are
-lower. By default, inherited `XC_RESEARCH_*` and `XC_TARGET_*` settings are
-cleared and do not affect a claim. Explicit Ultra capture can need a larger
-working budget; set `XC_CLAIM_MEMORY_GIB` to the available budget for that run.
+The Memory column lists each script's historical default Toolkit working
+budget. Set `XC_CLAIM_MEMORY_GIB` to the available budget for your run; this
+explicitly overrides the script default for primary computation and requested
+Ultra diagnostics. Toolkit admission uses the selected budget. Measured memory
+and runtime depend on the configuration and diagnostics. By default, inherited
+`XC_RESEARCH_*` and `XC_TARGET_*` settings are cleared and do not affect a claim.
 
 Scripts that test a sweep or a paired comparison run those configurations
-together because the comparison itself is the claim. A failed configuration
-does not skip later independent configurations; the script returns a nonzero
-status after its summary if any execution or check failed. The configurations
-are fixed; `--help` lists the publication, journal, cache-verification,
-preflight, benchmark, and explicit Ultra controls.
+together because the comparison itself is the claim. With `--publish`, the
+wrapper stops at the first failed invocation and holds the staging queues.
+Without publication, it continues later independent configurations. A failed
+execution or check produces a nonzero exit. Use `--help` for the publication,
+journal, cache-verification, preflight, benchmark, and Ultra options.
+
+For all 15 claims, the summary reads the numerical tables in `paper.tex` and
+compares each applicable measurement at the precision printed in its cell.
+A different rounded value, a missing measurement, or a lower bound in place
+of a point value fails the review and blocks publication. The JSON summary
+records the observed value, printed value and verdict for each comparison.
+Four historical point residuals in Claims 4a–4c are labeled
+`DIFFERENT_QUANTITY` when compared with today's directed upper bounds.
+Their bound checks still apply. Claim 4d compares its directed bound directly.
+
+For Claim 4, the [evidence record](docs/research-evidence.json) identifies
+the reference eigenpairs. Publication also requires replaying the measurements
+from the submitted eigenstates and checking their finite residual estimates.
+An independently computed pair must reproduce both printed evenness columns.
 
 The evenness claims (4a-4d) measure the natural smallest eigenvector's evenness
 and both eigenvalues, the low even and odd parity-sector eigenvalues (giving
@@ -133,6 +207,65 @@ residual bound over the Sturm gap separating the first two even-sector
 eigenvalues. Claim 1c's frozen HP-1000 configuration lies at the precision
 floor, where the ground-index proof cannot conclude; it retains the selected
 state and records that proof's outcome (`--ground-index record-outcome`).
+
+### Optional CPU tuning
+
+Portable CPU execution is the default on Linux and Windows. For a workload
+built and run on the same machine, set `$env:RUSTFLAGS = '-C target-cpu=native'`
+in PowerShell, or prefix the Linux build command with
+`RUSTFLAGS='-C target-cpu=native'`. Optional `XC_CPU_PRODUCT_KERNEL=auto` and
+`XC_RESIDUE_LAYOUT=flat` select exact runtime-dispatched CPU products and
+contiguous input residues; they preserve numerical inputs and cache identities.
+These options are independent of GPU selection. Keep generic binaries when
+sharing them across different processors, and measure performance before
+adopting a setting. See the Toolkit's [CPU execution guide](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/v0.17.2/docs/CPU_EXECUTION.md)
+for Windows syntax, runtime overrides, resource limits and qualification.
+
+Set runtime options explicitly in the shell that launches the claim:
+
+```bash
+# Linux or the configured Windows Bash session
+export XC_CPU_PRODUCT_KERNEL=auto
+export XC_RESIDUE_LAYOUT=flat
+```
+
+The equivalent PowerShell settings, before entering Bash, are:
+
+```powershell
+$env:XC_CPU_PRODUCT_KERNEL = 'auto'
+$env:XC_RESIDUE_LAYOUT = 'flat'
+```
+
+Omit these settings for the portable kernel and nested residue storage.
+`auto` checks the CPU's supported instructions at runtime; a wider instruction
+set is not necessarily faster. Optional build settings
+`CARGO_PROFILE_RELEASE_LTO=fat` and `CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1`
+can also be measured locally. None of these settings changes claim
+configurations, precision, GPU selection or artifact reuse.
+
+### Memory and GPU selection on either platform
+
+Set environment variables in the same Bash session before running a claim.
+For example, to select a 96 GiB working budget on a machine with that memory
+available:
+
+```bash
+export XC_CLAIM_MEMORY_GIB=96
+```
+
+For GPU execution, install a compatible NVIDIA driver and CUDA 12 or 13 runtime
+and cuBLAS libraries. If discovery needs an explicit location, set
+`XC_CUDA_LIB_DIR` to their directory. To require CUDA for both dense arithmetic
+and prime-response work:
+
+```bash
+export XC_DENSE_BACKEND=cuda
+export XC_PRIME_RESPONSE_BACKEND=cuda
+```
+
+For CPU execution, set both values to `cpu`. These settings work the same way
+in Linux Bash and the initialized Windows Bash session. They select execution
+resources while keeping the claim's numerical configuration and checks fixed.
 
 ## Read the summary
 
@@ -145,14 +278,21 @@ Claim claim1a_lambda13: PASS
 Summary: ...summary.json
 ```
 
-`PASS` means every stated finite numerical check passed. It does not mean a
-conjecture is proved or a quantity is certified. The acceptance rules are
-explicit in [scripts/claim_summary.py](scripts/claim_summary.py):
+`PASS` requires both the finite numerical checks and agreement with every
+comparable manuscript value at its printed precision. The JSON summary lists
+each measurement, its manuscript table and the rounded result. The following
+numerical checks also apply.
 
-- Headline checks require converged first and twentieth roots and at least the
-  reported matching digits, allowing 0.05 digit for rounded finite-cutoff values
-  and one digit for the HP-1000 arithmetic-floor headline.
+- Headline checks require converged first and twentieth roots. Claims 1a and 1b
+  allow 0.05 digit below the printed measurements. Claim 1c retains its minimum
+  scores of 1018.0 and 1019.3 at the HP-1000 arithmetic floor. Its measured
+  scores must also round to
+  **1019.7** and **1020.3**, respectively.
 - Lambda and N sweeps compare the tabulated matching digits within 0.05 digit.
+  Claim 2b also checks the HP-1000 eigenvalue to six significant digits and
+  the conversion gap to three decimal places at each cutoff. It subtracts
+  the unrounded first-root accuracy from the unrounded eigenvalue depth.
+  The first-root accuracies must also match the printed cells.
   The N sweep also checks agreement between HP-200 and HP-1000.
 - Critical-N checks require the reported first/fifth-root accuracy and increasing
   accuracy across each N pair. They do not locate exact minimum basis sizes.
@@ -197,12 +337,15 @@ under `.xcelerator-cache/claim-logs/`; set `CLAIM_LOG_ROOT` to change that
 location. A missing final status is never success. Run journals should remain
 outside version control.
 
-Within a toolkit release, compatible parents are reused under their exact
-identities. Changed identities are recomputed under new identities; old objects
-are preserved as historical evidence. Artifacts produced by toolkit releases
-before 0.16.0 are not reused. A changed identity is not evidence of corruption, and old
-certificates are not silently promoted to the current semantics. See the toolkit's
-[numerical compatibility guidance](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/e466a413713a23df0ae550b307c256e7b1313bea/docs/NUMERICAL_COMPATIBILITY.md).
+Reference projections use a stable ordering of the reference data's JSON fields.
+For compact sector-gap certificates, the Toolkit authenticates the original
+certificate bytes and keys the transform enclosure and finite root budget on
+the proof contents. Two builds can reuse those results when their proofs
+agree. A request under a new key may require one recomputation. Earlier
+objects remain available as historical evidence. The minimum Toolkit producer
+version for reuse is 0.16.0, and individual artifact families also have
+compatibility requirements. See the Toolkit's
+[numerical compatibility guidance](https://github.com/TeamXcelerator/xcelerator-toolkit/blob/8a1df4c33a53b8fd898211da971612f9a3804281/docs/NUMERICAL_COMPATIBILITY.md).
 
 `XC_CACHE_ROOT` selects the managed cache root. To use only local cache lookup
 and local computation, disable remote lookup:
@@ -232,12 +375,23 @@ Existing artifacts remain readable and are not converted.
 Compact storage requires a binary built with `compact-sector-certificates`.
 Claim scripts select that build feature automatically when requested. Add
 `--research-capture ultra --sector-gap-certificate compact` to a supported
-root-producing claim script. This changes certificate storage, not the claim's
-numerical configuration or its mathematical scope. Reconstruction saves retained
-storage; it does not eliminate the certification work or its peak working memory.
+root-producing claim script. The claim runs at its configured precision. If a
+compact certificate's inertia counts are inconclusive, the Toolkit increases
+the certificate assembly precision automatically. A repeat run can reuse a
+cached certificate at its recorded precision. Reconstruction saves disk space
+and still requires working memory for the proof matrices.
 
-The `check-evenness` scripts reject these proof
-switches. Ultra builds also enable `root-certification` for
+For example, this command is identical on Linux and native Windows:
+
+```bash
+bash scripts/claim1a_lambda13.sh --research-capture ultra --research-sector-eigenpairs 8 --root-validation certified --sector-gap-certificate compact
+```
+
+For Claims 4a through 4d, `--sector-gap-certificate compact` adds the
+certificate to the evenness supplemental journal. The separate
+`--root-validation` switch applies only to `run`. With Ultra, omitting
+sector certification also excludes the finite root budget that requires it.
+Ultra builds also enable `root-certification` for
 finite transform enclosures. Private target preparation remains external; when
 `XC_TARGET_SPEC_DIR` is configured, each configuration selects its
 `c<C>-d<DIGITS>.json` target file and refuses a missing file. Research coverage and
@@ -255,9 +409,29 @@ existing inputs and defaults, including the 16 GiB Toolkit default.
 Every individual claim script accepts Ultra. Claim 1c automatically selects its
 `claim1c-hp1000` applicability policy, which records the known precision-limited
 diagnostics as excluded and rejects an explicit sector-gap certificate request.
-Its directional-error, finite-tail, and spectral-cluster bounds remain requested:
-the Toolkit admits their matrix dimensions against the configured working budget
-and reports unresolved finite premises explicitly.
+For this configuration the runner checks the two source eigenvalue intervals
+before requesting u-flow. If their finite endpoints overlap, the journal binds
+the endpoints to the primary matrix and state and excludes the two diagnostics
+that require a single-state derivative. A memory refusal or missing input stops
+the run. The resolved request records which diagnostics applied. Claim 1c
+also requests the directional-error, finite-tail and spectral-cluster bounds.
+The Toolkit checks their matrix dimensions against the working budget and
+reports any unresolved finite premises.
+
+For every Ultra policy that requests `directional_response_full` or
+`root_transport`, strict completion requires a positive expected row count and
+a resolved measurement for every row. Recovery applies the same rule to the
+effective original or supplemental measurement.
+For a seeded root certificate the reference label selects the retained point.
+The certificate independently counts finite roots and reports the rank of the
+enclosure containing that point. The two indices can differ.
+Fresh runs and retained recovery also preserve the declared sector exclusion
+for `spectral_cluster_full`, bound to the same primary state, matrix and request.
+If individual cluster vectors are unavailable, this records `partial_unresolved`
+and retained-state measurements without retrying the excluded sector solve.
+It does not certify a sector gap or a cluster projector. Unexpected missing
+inputs and mismatched sources still fail. The policy is applied before and
+after optional input preparation, including when no preparer is configured.
 Claim 8 selects `claim8-natural` on its unrestricted route and `full` on its
 paired even-sector route. All other configurations use `full`. These policies
 preserve each claim's numerical configuration; exclusions and their reasons
@@ -307,13 +481,23 @@ Destinations are fixed per claim: Claim 1a publishes to the public and private
 caches, and every other claim publishes to the private caches only.
 With `--publish`, every configuration retains its full staging queue and marks
 publication pending. The shared launcher finalizes the authenticated cumulative
-queue once after all configurations, before reporting the claim summary. This
-avoids repeating remote publication for each configuration; it does not change
-numerical settings, diagnostics, artifact identities, or fixed destinations.
+queue once the numerical summary passes for the complete claim. The summary
+checks each invocation's cutoff, basis, precision, command and, for root runs,
+its parity, acquisition mode and reference ordinals. Each direct evenness
+measurement carries a receipt identifying its supplemental journal and the
+SHA-256 digests of the evidence used for the separation and isolation checks.
 Natural-evenness measurements use the same deferred session contract, so an
 unavailable publication destination cannot prevent saving their computed values.
 `--publish-plan` keeps its existing per-configuration planning behavior.
-`--publication-per-configuration` selects the previous finalization policy.
+`--publication-per-configuration` stages each configuration in its own directory
+and publishes each queue separately after the same claim-wide checks pass.
+Authors can set `CLAIM_PREPUBLICATION_CHECK` to a Python script for an additional
+check. It receives the claim script name and summary file path. A nonzero exit
+holds all drafts for inspection and leaves them ineligible for publication retry.
+
+A deferred claim publication requires every requested invocation to finish and
+writes a completion record binding the destination and the exact staged drafts.
+A completed claim with an empty queue has nothing to publish.
 
 Deferred publication uses a fresh draft queue. An explicitly configured
 `XC_PUBLISH_STAGING_ROOT` may contain launcher identity/head files and empty
@@ -324,20 +508,30 @@ failed, or completed publication separately from numerical acceptance; collector
 retain it with the other claim logs. The final Toolkit inventory and successful
 execution reports together establish publication completion for verification.
 
-A failed numerical configuration still leaves useful artifacts for that final
-publication, and its failure remains a failure afterward. A publication failure
-also fails the script. Unexpected failure or interruption starts no final remote
-work and retains staging. To retry only publication with the same author/cache/
-destination environment, use the HP binary explicitly:
+A failed configuration retains its artifacts for inspection and prevents the
+automatic final publication. Explicit Ultra requires every applicable requested
+capture to complete; otherwise the command fails after preserving its journal.
+A publication failure also fails the script and preserves staging. In
+per-configuration mode, earlier queues may already have published. Restore the
+original author email, credentials and cache settings, then run the printed
+retry commands in order. The following Bash example retries one sealed private
+queue. Set `queue` to its staging directory. For Claim 1a, set
+`XC_PUBLISH_TARGET=both`.
 
 ```bash
-ccm-reproduction publish-staged --staging-root RETAINED_STAGING_ROOT
+XC_RUN_PROFILE=author XC_PUBLISH_EXECUTE=true XC_PUBLISH_REPLACE=false XC_PUBLISH_TARGET=private \
+  XC_PUBLISH_AUTHOR_EMAIL="${XC_PUBLISH_AUTHOR_EMAIL:?set the original author email}" \
+  XC_PUBLISH_STAGING_ROOT="$queue" ccm-reproduction publish-staged --staging-root "$queue"
 ```
 
-This command authenticates the retained queue and dependency closure and uses the
-normal publication authorization and compare-and-swap checks. It has no numerical
-producer callbacks. Direct HP captures can opt into the same staging behavior
-with `--defer-publication`; unsupported, f64, and preflight paths reject that flag.
+This command authenticates the retained queue and its dependencies and uses the
+normal publication authorization and compare-and-swap checks. When compact
+certificates have the same request and producer version but different bytes,
+use a build with `compact-sector-certificates` for the retry. It replays both
+proofs before reusing the published certificate and preserves the exact
+producer cited by each receipt. Direct HP captures can opt into the same
+staging behavior with `--defer-publication`. Unsupported, f64 and preflight
+paths reject that flag.
 
 `XC_PUBLICATION_FAMILY_WORKERS` controls concurrent destination families
 (positive integer, default four). Use one on a workstation with a tight
@@ -355,12 +549,15 @@ across deliberately changed identities or repair historical records by relabelin
 
 ## Direct CLI and performance
 
+The setup above sets `CCM_FEATURES` to `hp` on Linux or `native-windows` on
+Windows. From that same Bash session, use these commands on either platform:
+
 ```bash
-cargo run --release --features hp --locked -- run \
+cargo run --release --features "$CCM_FEATURES" --locked -- run \
   --lambda-sq 13 --n-modes 120 --precision-digits 1000 --top 25 \
   --root-acquisition seeded
 
-cargo run --release --features hp --locked -- check-evenness \
+cargo run --release --features "$CCM_FEATURES" --locked -- check-evenness \
   --lambda-sq 13 --n-modes 120 --precision-digits 1000 \
   --research-capture gap --root-acquisition seeded
 ```
@@ -377,26 +574,33 @@ adds a workload-bound report; compare only the same workload and policy using
 GNU/UCRT builds and is unsupported on WSL; ordinary builds keep it off.
 
 ```bash
-cargo test --locked
-cargo test --features root-certification --locked
-cargo clippy --all-targets --features root-certification --locked -- -D warnings
+cargo test --features "$CCM_FEATURES" --locked
+cargo test --features "${CCM_FEATURES},root-certification" --locked
+cargo clippy --all-targets --features "${CCM_FEATURES},root-certification" --locked -- -D warnings
+"${CLAIM_PYTHON:-python3}" -m unittest discover -s tests
 ```
 
-The `root-certification` feature (FLINT 3; Ubuntu 24.04 provides
-`libflint-dev`) enables the binary's optional Arb-backed root certification and
+The `root-certification` feature uses FLINT 3, supplied by the platform setup
+above. It enables the binary's optional Arb-backed root certification and
 finite transform enclosures; claim scripts enable it only with explicit Ultra.
-The claim summaries check configuration coverage, numerical tolerances, and
-publication completion. The public scientific verification methods are
+The claim summary reports configuration coverage, numerical checks and
+agreement with the manuscript at its printed precision.
+Publication also verifies the root ordinals and input values in a retained
+assembly-error analysis against the primary journal. The summary records any
+declared mathematical limitation on exact-form root enclosures.
+The separate publication status records whether the queues finished publishing.
+The public scientific verification methods are
 documented in [verification/](verification/README.md).
 
 ## Completed claims and release contents
 
-All 15 registered claim routes are accounted for across 93 planned invocations.
+The historical campaign accounts for all 15 registered routes across 93 planned invocations.
 Applicable acquisition and publication are complete, including source-linked
-recoveries. Claim 4d passes its revised directed residual/gap comparison; its
-original historical comparison remains a recorded failure. This does not mean
-every research bound is resolved or every historical printed value is identical.
-See [the claim ledger](docs/CLAIM_STATUS.md) and [v2.6 release notes](docs/RELEASE_NOTES.md).
+recoveries under the rules in force for that campaign. Historical Claim 1c
+completion predates the response-row checks required for a new v2.7 run.
+Claim 4d passes its revised directed residual/gap comparison. The ledger also
+records its original failed comparison and the scope of the research bounds.
+See [the claim ledger](docs/CLAIM_STATUS.md) and [release notes](docs/RELEASE_NOTES.md).
 
 The public repository contains the manuscript, reproduction executable and
 claim scripts, aggregate evidence, and independent scientific verification tools
@@ -421,7 +625,7 @@ tested ladder.
   author = {Andrews, Ronnie Jr.},
   title = {Independent Reproduction and Convergence Analysis of the CCM Zeta Spectral Triple},
   year = {2026},
-  note = {Version 2.6; revised directed residual bound and completed claim reconciliation},
+  note = {Version 2.7, revised HP-1000 first-zero measurement},
   url = {https://github.com/TeamXcelerator/ccm-reproduction-and-convergence}
 }
 ```

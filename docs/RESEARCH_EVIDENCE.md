@@ -1,4 +1,52 @@
-# Research evidence for the revised v2.6 manuscript
+# Research evidence for the manuscript
+
+## Claim 4 reference states
+
+The reflection defect depends on the saved natural eigenvector. The relative
+eigenvalue difference depends on both the natural and forced-even eigenpairs.
+The `sector_separations` rows in [the evidence record](research-evidence.json)
+identify the source payloads and preserve the measurements behind all five
+printed rows. Independent solves can give different values at the rounding
+scale. Publication checks replay both measurements from the current sources,
+check them against finite residual and gap estimates, and require agreement
+at the printed precision for every pair. The two sector-separation
+columns and the directed Claim 4d residual retain their printed-value checks.
+
+At cutoff 13, N = 120 and HP-1000, independent replay of the two retained
+states gives a reflection defect of 6.447e-967 and a relative eigenvalue
+difference of 4.501e-963. An independent 6,656-bit interval assembly of
+the finite matrix gives relative ground-energy errors of 3.89e-962
+and 4.34e-962 for the natural and even states. A third archived eigenvalue
+and its recorded distance from the earlier natural state place both earlier
+errors between 1.78e-960 and 1.83e-960 for either sign of each distance.
+
+At cutoff 100, N = 500 and HP-1000, an empty-cache solve reproduced the two
+reference eigenpairs byte for byte. The printed reflection defect is
+6.786e-565 and the relative difference between eigenvalues is 1.420e-558.
+The row's nested `evenness_reference` identifies the pair used for these two
+columns. The September pair and its point residual are recorded alongside it.
+
+An independent interval assembly of the finite analytic matrix used 4,608
+and 5,120 bits. Rayleigh quotients and residuals of an even trial vector and
+an even projection of the natural vector, together with a certified lower
+bound for the next even eigenvalue, gave overlapping Temple enclosures.
+The new natural and even eigenvalue estimates have relative errors of
+8.61e-558 and 1.00e-557. The earlier pair's errors were both about 1.31e-555
+and had the same sign. All four estimates round to 9.56481e-464.
+
+## Claim 1c first-root measurement
+
+At λ² = 1000, N = 800 and HP-1000, the reference-seeded solve uses
+3,386 source bits. Evaluating the stored first and twentieth roots
+against the 2,500-digit references gives 1019.7472033678 and
+1020.3093939622 matching digits. Two Linux runs and a Windows run
+retained identical points at both reference labels.
+
+The earlier first-root measurement of 1019.0 came from a stored point
+two representable steps above the current one. A replay traced the shift
+to the selected eigenvector and rounding of the pole spacing. The current
+first root lies about 0.307 of one representable step below the reference.
+These scores measure pointwise agreement at the stated precision.
 
 ## Revised C1200 residual/gap measurement
 
@@ -24,13 +72,14 @@ sector-gap columns already do, and requires method
 status `isolated_simple`, even parity, and indices 0/1. This is a versioned
 measurement reproduction rule, not a general residual ceiling; an unrelated
 smaller ratio or a legacy method does not establish reproduction of this row.
-The original failed `<2.01e-533` check remains historical evidence. Claims
-4a-4c keep their existing acceptance rules.
+The original failed `<2.01e-533` check remains historical evidence. For
+Claims 4a–4c the reviewer identifies the historical point residual and checks
+the current directed bound separately.
 
 The `sector_separation_updates` section of [the evidence record](research-evidence.json)
 retains the complete directed isolation record, source digests, and audit result
-digest. Its `sector_separations` section and September campaign remain unchanged
-historical data. The original matrix/vector payloads were unavailable for a full
+digest. The original sector measurements and September campaign records remain
+available. The original matrix/vector payloads were unavailable for a full
 replay of the old table producer; the audit does not claim to have disproved its
 reported point measurement. No primary solve, root solve, or campaign rerun is
 needed to assess the retained current record under the revised rule.
@@ -62,7 +111,7 @@ solve or a replacement of historical artifacts.
 The [aggregate record](research-evidence.json) records the configurations,
 source digests, numerical results, and proof scopes used in the revised paper.
 The v2.5 campaign used Toolkit v0.15.0 at
-`2bea90ec7cb23d4d615448c293c8af0f94e14119`; the current software integration pins Toolkit v0.17.1 at `e466a413713a23df0ae550b307c256e7b1313bea`.
+`2bea90ec7cb23d4d615448c293c8af0f94e14119`; the current software integration pins Toolkit v0.17.2 at `8a1df4c33a53b8fd898211da971612f9a3804281`.
 Here C denotes the cutoff parameter lambda-squared, and the full matrix has
 dimension 2N+1. See the [manuscript](../paper.pdf) for definitions and proofs.
 
@@ -151,6 +200,8 @@ python3 verification/verify_headline_roots.py \
   --output target/research-verification/headline-replay.json
 ```
 
+The public repository includes the five headline bracket rows. Replaying all
+five requires the original decoded state payloads, which are not bundled here.
 For the headline replay, each input filename is `<state_manifest>.json`, as
 identified in [the proof brackets](../verification/headline-root-certificates.json).
 The replay checks the exact payload SHA-256 before using it. It independently

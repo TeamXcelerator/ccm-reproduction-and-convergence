@@ -2,7 +2,8 @@ cff-version: 1.2.0
 message: "Please cite the manuscript when using the scientific results; cite the exact software revision when reproducing a computation."
 type: software
 title: "Independent Reproduction and Convergence Analysis of the Connes–Consani–Moscovici Zeta Spectral Triple"
-version: 2.6.0
+version: 2.7.0
+date-released: 2026-11-17
 authors:
   - family-names: "Andrews, Jr."
     given-names: Ronnie

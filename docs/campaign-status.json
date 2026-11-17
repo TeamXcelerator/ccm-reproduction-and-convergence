@@ -57,6 +57,7 @@
       "claim": "1c",
       "invocations": 1,
       "numerical_acceptance": "PASS_WITH_PRECISION_FLOOR_SCOPE",
+      "policy_scope": "Historical acceptance; current response-row requirements have not been verified.",
       "completion_route": "original_and_supplements",
       "applicable_acquisition": "complete",
       "publication": "complete"

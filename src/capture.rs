@@ -46,8 +46,9 @@ pub struct CaptureJournalArgs {
 
 #[cfg(feature = "hp")]
 pub use hp::{
-    execute, ground_index_policy, measure_evenness, publish_staged, recover_capture_with_mode,
-    replay_finite, validate_configuration, write_evenness, write_measurements,
+    bind_evenness, execute, ground_index_policy, measure_evenness, publish_staged,
+    recover_capture_with_mode, replay_finite, validate_configuration, write_evenness,
+    write_measurements,
 };
 
 #[cfg(feature = "hp")]
@@ -57,6 +58,44 @@ mod hp {
         include!("capture_recovery.rs");
     }
     pub use recovery::recover_capture_with_mode;
+    fn component_preparation_error(status: &serde_json::Value) -> Option<String> {
+        (status["status"] == "prepared"
+            && status["component_preparation"] != "retained_independent_components_prepared")
+            .then(|| format!("component preparation: {}", status["component_preparation"]))
+    }
+
+    fn unresolved_response_diagnostics(
+        claim1c: bool,
+        original: &xc_cache::CaptureArtifact,
+        supplement: Option<&xc_cache::CaptureArtifact>,
+    ) -> Vec<&'static str> {
+        ["directional_response_full", "root_transport"]
+            .into_iter()
+            .filter(|id| {
+                claim1c
+                    || original
+                        .requested_diagnostics
+                        .iter()
+                        .any(|name| name == *id)
+                    || supplement
+                        .is_some_and(|s| s.requested_diagnostics.iter().any(|name| name == *id))
+            })
+            .filter(|id| {
+                let effective = supplement
+                    .filter(|s| s.requested_diagnostics.iter().any(|name| name == *id))
+                    .unwrap_or(original);
+                !effective.numerical_coverage.get(*id).is_some_and(|row| {
+                    row.expected_rows.is_some_and(|expected| {
+                        expected > 0
+                            && row.retained_rows == expected
+                            && row.resolved_rows == expected
+                    }) && row.unresolved_rows == 0
+                        && row.qualified_rows == 0
+                })
+            })
+            .collect()
+    }
+
     /// Ground-index admission of the primary state under a capture policy.
     ///
     /// The lowest stored sector eigenvalues of the frozen Claim 1c configuration
@@ -95,42 +134,148 @@ mod hp {
         CcmParams,
     };
 
+    const RESPONSE_DIAGNOSTICS: [&str; 2] = ["directional_response_full", "root_transport"];
+    const OVERLAP_REASON: &str = "the retained source intervals overlap at HP-1000; the single-state u-flow derivative is unavailable";
+
+    // Only the direct isolation check may provide this evidence. Operational
+    // failures and the other numerical refusal modes propagate to the caller.
+    fn response_overlap_evidence(error: &anyhow::Error) -> Result<serde_json::Value> {
+        let bounds = error
+            .downcast_ref::<serde_json::Value>()
+            .with_context(|| format!("{error:#}"))?;
+        validate_overlap_bounds(bounds)?;
+        Ok(bounds.clone())
+    }
+
+    fn validate_overlap_bounds(bounds: &serde_json::Value) -> Result<()> {
+        anyhow::ensure!(
+            bounds["schema"] == "ccm-response-overlapping-source-intervals-v1"
+                && bounds["precision_bits"] == 3386,
+            "wrong response isolation precision"
+        );
+        let endpoint = |key: &str| -> Result<rug::Float> {
+            let s = bounds[key].as_str().context("missing isolation endpoint")?;
+            anyhow::ensure!(s.len() <= 1200, "invalid isolation endpoint length");
+            let value = rug::Float::with_val(3386, rug::Float::parse(s)?);
+            anyhow::ensure!(value.is_finite(), "nonfinite isolation endpoint");
+            Ok(value)
+        };
+        anyhow::ensure!(
+            endpoint("neighbor_lower")? <= endpoint("selected_upper")?,
+            "response isolation endpoints are separated"
+        );
+        Ok(())
+    }
+
+    fn response_sources(sources: &[xc_cache::ArtifactManifest]) -> Result<serde_json::Value> {
+        let mut bindings = serde_json::Map::new();
+        for kind in ["ccm_tau_matrix", "ccm_weil_eigenpair"] {
+            let mut hits = sources.iter().filter(|s| s.key.kind == kind);
+            let source = hits.next().context("missing response isolation source")?;
+            anyhow::ensure!(
+                hits.next().is_none() && source.content_digest.validate(),
+                "ambiguous or invalid isolation source"
+            );
+            bindings.insert(kind.into(), serde_json::json!(source.content_digest));
+        }
+        Ok(bindings.into())
+    }
+    fn overlap_bound_to_primary(
+        configuration: &serde_json::Value,
+        sources: &[xc_cache::ArtifactManifest],
+    ) -> Result<bool> {
+        let policy = &configuration["applicability"];
+        let witness = &policy["response_isolation_overlap"];
+        let excluded = &policy["excluded_diagnostics"];
+        if witness.is_null() {
+            anyhow::ensure!(
+                RESPONSE_DIAGNOSTICS
+                    .iter()
+                    .all(|id| excluded[*id].is_null()),
+                "response exclusion is missing its isolation evidence"
+            );
+            return Ok(false);
+        }
+        anyhow::ensure!(
+            policy["policy"] == "claim1c-hp1000"
+                && configuration["lambda_squared"] == 1000
+                && configuration["n_modes"] == 800
+                && configuration["precision_bits"] == 3386
+                && configuration["parity_policy"] == "even-sector"
+                && RESPONSE_DIAGNOSTICS
+                    .iter()
+                    .all(|id| excluded[*id] == OVERLAP_REASON),
+            "response exclusion outside its numerical policy"
+        );
+        validate_overlap_bounds(&witness["bounds"])?;
+        anyhow::ensure!(
+            witness["sources"] == response_sources(sources)?,
+            "response exclusion belongs to different primary sources"
+        );
+        Ok(true)
+    }
+
+    fn capture_completion_required(
+        args: &CaptureJournalArgs,
+        target: xc_core::PublicationTarget,
+    ) -> bool {
+        args.require_complete_capture || target != xc_core::PublicationTarget::None
+    }
+
     fn validate_deferred_publication(config: &xc_cache::ManagedArtifactCacheConfig) -> Result<()> {
         anyhow::ensure!(
             config.profile == xc_cache::ManagedRunProfile::Author
                 && config.execute_remote_mutations
                 && config.publication_target != xc_core::PublicationTarget::None
                 && config.staging_root.is_some()
+                && !config.replace_existing_publication
+                && config.cache_mode.may_stage_for_publication()
                 && config.output_validation.is_none(),
             "deferred publication requires an explicit author staging root, execution, destination and no output validation"
         );
         Ok(())
     }
 
-    /// Preserve the natural-space measurement before a campaign publishes its
-    /// retained drafts. The ordinary Toolkit entry point finalizes immediately.
+    /// Keep the publication session until the caller has saved the measurement
+    /// and completed all requested supplemental diagnostics.
     pub fn measure_evenness(
         params: &CcmParams,
         cfg: &HighPrecConfig,
         args: &CaptureJournalArgs,
-    ) -> Result<xc_spectral::ccm::hp::EvennessResult> {
-        if !args.defer_publication {
-            return xc_spectral::ccm::hp::measure_evenness(params, cfg);
+    ) -> Result<(
+        xc_spectral::ccm::hp::EvennessResult,
+        Option<xc_cache::ManagedArtifactCacheSession>,
+    )> {
+        let Some(config) = xc_cache::ManagedArtifactCacheConfig::from_environment()? else {
+            anyhow::ensure!(
+                !args.defer_publication,
+                "deferred evenness requires a managed cache"
+            );
+            return Ok((xc_spectral::ccm::hp::measure_evenness(params, cfg)?, None));
+        };
+        if args.defer_publication {
+            validate_deferred_publication(&config)?;
         }
-        let config = xc_cache::ManagedArtifactCacheConfig::from_environment()?
-            .context("deferred evenness requires explicit managed cache configuration")?;
-        validate_deferred_publication(&config)?;
         let managed = xc_cache::ManagedArtifactCacheSession::new_with_resources(
             config,
             xc_cache::managed_resource_policy_from_environment()?,
         )?;
-        xc_spectral::ccm::hp::measure_evenness_via_cache(params, cfg, &managed.context())
+        let result =
+            xc_spectral::ccm::hp::measure_evenness_via_cache(params, cfg, &managed.context())?;
+        Ok((result, (!args.defer_publication).then_some(managed)))
     }
 
     /// Publish only authenticated retained drafts; no numerical callback exists.
     pub fn publish_staged(staging_root: &Path) -> Result<()> {
         let config = xc_cache::ManagedArtifactCacheConfig::from_environment()?
             .context("publish-staged requires explicit managed cache configuration")?;
+        publish_completed_staging(staging_root, config)
+    }
+
+    fn publish_completed_staging(
+        staging_root: &Path,
+        config: xc_cache::ManagedArtifactCacheConfig,
+    ) -> Result<()> {
         validate_deferred_publication(&config)?;
         anyhow::ensure!(
             fs::symlink_metadata(staging_root)?.file_type().is_dir()
@@ -142,9 +287,58 @@ mod hp {
                     == staging_root.canonicalize()?,
             "publish-staged requires the exact configured ordinary staging directory"
         );
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Completion {
+            schema_version: u32,
+            invocations: usize,
+            target: xc_core::PublicationTarget,
+            drafts: std::collections::BTreeMap<String, String>,
+        }
+        let completed: Completion = serde_json::from_reader(
+            std::fs::File::open(staging_root.join("claim-complete.json"))
+                .context("publication requires a completed claim inventory")?,
+        )?;
+        anyhow::ensure!(
+            completed.schema_version == 1
+                && completed.invocations > 0
+                && completed.target == config.publication_target,
+            "claim publication destination or completion differs"
+        );
         let managed = xc_cache::ManagedArtifactCacheSession::new_with_resources(
             config,
             xc_cache::managed_resource_policy_from_environment()?,
+        )?;
+        let root = staging_root.canonicalize()?;
+        let mut actual = std::collections::BTreeMap::new();
+        for draft in managed.staged_drafts()? {
+            let path = draft
+                .staged_parts_root
+                .parent()
+                .context("invalid staged artifact path")?
+                .join("draft.json")
+                .canonicalize()?;
+            let relative = path
+                .strip_prefix(&root)?
+                .to_str()
+                .context("invalid draft path")?
+                .replace('\\', "/");
+            let digest = xc_cache::ContentDigest::sha256(&std::fs::read(&path)?);
+            actual.insert(relative, digest.0);
+        }
+        anyhow::ensure!(
+            actual == completed.drafts,
+            "staging differs from the completed claim"
+        );
+        if actual.is_empty() {
+            println!("Claim complete: no staged artifacts to publish.");
+            return Ok(());
+        }
+        xc_cache::atomic_replace_cache_file(
+            &root.join("publication-retry-scope.json"),
+            &serde_json::to_vec(
+                &serde_json::json!({"target":completed.target, "drafts":completed.drafts}),
+            )?,
         )?;
         let inventory = managed
             .retry_retained_publication()?
@@ -227,6 +421,26 @@ mod hp {
     /// planned diagnostic.
     const EXPLICIT_EXCLUSIONS: [&str; 1] = ["sector_gap_certificate"];
 
+    const NO_SECTOR_CERTIFICATE: &str =
+        "finite root transfer requires an explicitly requested analytic sector-gap certificate";
+
+    fn apply_sector_selection(
+        excluded: &mut std::collections::BTreeMap<String, String>,
+        level: ResearchCapture,
+        certificate: bool,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            !certificate || !excluded.contains_key("sector_gap_certificate"),
+            "the selected applicability policy excludes the requested sector-gap certificate"
+        );
+        if level == ResearchCapture::Ultra && !certificate {
+            excluded
+                .entry("finite_root_budget".into())
+                .or_insert_with(|| NO_SECTOR_CERTIFICATE.into());
+        }
+        Ok(())
+    }
+
     fn requested_diagnostics(
         plan: &CcmCapturePlan,
         reduction: bool,
@@ -250,6 +464,13 @@ mod hp {
         requested.retain(|id| !excluded.contains_key(id));
         requested.sort();
         Ok(requested)
+    }
+
+    fn filtered_execution_order(requested: &[String]) -> Vec<String> {
+        let mut ordered = requested.to_vec();
+        // A checkpoint consumes the output of the prefix ladder.
+        ordered.sort_by_key(|id| id.starts_with("prefix_checkpoint_"));
+        ordered
     }
 
     fn save(path: &Path, value: &impl Serialize) -> Result<()> {
@@ -452,12 +673,12 @@ mod hp {
             &serde_json::json!({"capture_complete":complete,"primary_recomputed":false,
             "numerical_coverage":record.value.numerical_coverage,"assurance":"supplemental finite analysis; original claim verdict unchanged"}),
         )?;
-        managed.finalize_publication_inventory()?;
         println!("Supplemental journal: {}", output.display());
         anyhow::ensure!(
             complete,
             "supplemental acquisition incomplete; retained receipts explain each failure"
         );
+        managed.finalize_publication_inventory()?;
         Ok(())
     }
 
@@ -489,7 +710,7 @@ mod hp {
         Ok(())
     }
 
-    pub fn write_evenness(args: &CaptureJournalArgs, value: &impl Serialize) -> Result<()> {
+    pub fn write_evenness(args: &CaptureJournalArgs, value: &impl Serialize) -> Result<PathBuf> {
         fs::create_dir_all(&args.capture_output)?;
         let directory = args.capture_output.join(format!(
             "evenness-{}-{}",
@@ -497,7 +718,30 @@ mod hp {
             std::process::id()
         ));
         fs::create_dir(&directory)?;
-        write_measurements(&directory, value)
+        write_measurements(&directory, value)?;
+        Ok(directory)
+    }
+
+    pub fn bind_evenness(direct: &Path, journal: &Path) -> Result<()> {
+        let hash = |path: PathBuf| -> Result<String> {
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            std::io::copy(&mut fs::File::open(path)?, &mut hasher)?;
+            Ok(format!("{:x}", hasher.finalize()))
+        };
+        save(
+            &direct.join("supplemental-journal.json"),
+            &serde_json::json!({
+                "schema_version": 1,
+                "measurement_directory": direct.file_name().and_then(|name| name.to_str()),
+                "journal_directory": journal.file_name().and_then(|name| name.to_str()),
+                "measurement_sha256": hash(direct.join("claim-measurements.json"))?,
+                "request_sha256": hash(journal.join("request.json"))?,
+                "inventory_sha256": hash(journal.join("primary-sources.json"))?,
+                "capture_sha256": hash(journal.join("capture.json"))?,
+                "isolation_sha256": hash(journal.join("spectral-isolation.json"))?,
+            }),
+        )
     }
 
     fn event(file: &mut std::fs::File, value: &impl Serialize) -> Result<()> {
@@ -646,7 +890,12 @@ mod hp {
         }
     }
 
-    struct PreparerProcess(std::process::Child);
+    struct PreparerProcess(
+        std::process::Child,
+        #[cfg(windows)]
+        #[allow(dead_code)]
+        crate::windows_process::Job,
+    );
     impl Drop for PreparerProcess {
         fn drop(&mut self) {
             // Every descendant that retains the child's process group is
@@ -672,8 +921,8 @@ mod hp {
     ) -> Result<PreparedInputs> {
         use std::process::{Command, Stdio};
         anyhow::ensure!(
-            cfg!(unix),
-            "private input preparation requires Unix process-group supervision"
+            cfg!(any(unix, windows)),
+            "private input preparation requires process-tree supervision"
         );
         #[cfg(unix)]
         anyhow::ensure!(
@@ -725,19 +974,24 @@ mod hp {
             use std::os::unix::process::CommandExt;
             command.process_group(0);
         }
-        let mut child = PreparerProcess(
-            command
-                .args(&preparer.argv[1..])
-                .arg("--request")
-                .arg(&request_path)
-                .arg("--output")
-                .arg(&output_path)
-                .stdin(Stdio::null())
-                .stdout(stdout)
-                .stderr(stderr)
-                .spawn()
-                .context("starting private input preparer")?,
-        );
+        command
+            .args(&preparer.argv[1..])
+            .arg("--request")
+            .arg(&request_path)
+            .arg("--output")
+            .arg(&output_path)
+            .stdin(Stdio::null())
+            .stdout(stdout)
+            .stderr(stderr);
+        #[cfg(windows)]
+        let mut child = {
+            let (process, job) = crate::windows_process::spawn(&mut command)
+                .context("starting supervised private input preparer")?;
+            PreparerProcess(process, job)
+        };
+        #[cfg(not(windows))]
+        let mut child =
+            PreparerProcess(command.spawn().context("starting private input preparer")?);
         let started = Instant::now();
         progress.emit("process_started")?;
         let status = loop {
@@ -862,23 +1116,151 @@ mod hp {
         Ok(input)
     }
 
-    fn apply_run_stream_scalar_override(
+    /// A predeclared sector exclusion is provenance for unavailable cluster
+    /// vectors, never a replacement vector or a successful gap certificate.
+    /// Fresh captures and recovery use this same source-bound policy.
+    fn cluster_policy_inputs(
+        mut input: Option<xc_spectral::ccm::extended_research::ExternalResearchInputs>,
+        resolved: &serde_json::Value,
+        sources: &[xc_cache::ArtifactManifest],
+        configuration_digest: &xc_cache::ContentDigest,
+        cluster_requested: bool,
+    ) -> Result<Option<xc_spectral::ccm::extended_research::ExternalResearchInputs>> {
+        use xc_spectral::ccm::extended_research::ClusterPreparationAssessment;
+        let exclusion = &resolved["applicability"]["excluded_diagnostics"]["sector_analysis"];
+        if !cluster_requested || exclusion.is_null() {
+            return Ok(input);
+        }
+        let reason = exclusion
+            .as_str()
+            .context("invalid sector exclusion reason")?;
+        let source = |kind: &str| -> Result<&xc_cache::ArtifactManifest> {
+            let matches: Vec<_> = sources.iter().filter(|m| m.key.kind == kind).collect();
+            anyhow::ensure!(
+                matches.len() == 1,
+                "cluster policy requires one retained {kind}"
+            );
+            Ok(matches[0])
+        };
+        let state = source("ccm_weil_eigenpair")?;
+        let matrix = source("ccm_tau_matrix")?;
+        // These manifests come from the admitted primary run (or authenticated
+        // recovery sources). Bind consumed payloads here; published adapters
+        // need not carry legacy dependency edges or the same provenance keys.
+        // Toolkit's checked setter validates against the actual state and Tau.
+        let assessment = ClusterPreparationAssessment {
+            source_eigenpair: state.content_digest.clone(),
+            source_matrix: matrix.content_digest.clone(),
+            source_precision_bits: u32::try_from(
+                resolved["precision_bits"]
+                    .as_u64()
+                    .context("cluster policy requires source precision")?,
+            )?,
+            requested_eigenpairs_per_sector: usize::try_from(
+                resolved["capture"]["sector_eigenpairs"]
+                    .as_u64()
+                    .context("cluster policy requires the original sector request")?,
+            )?,
+            // CcmCapturePlan::primary_options uses complete_qr for Ultra.
+            eigenvalue_route: "complete_qr".into(),
+            origin: "declared_prior_capture_policy".into(),
+            evidence_digest: configuration_digest.clone(),
+            reason: reason.into(),
+        };
+        if input.is_none() {
+            input = Some(serde_json::from_value(serde_json::json!({
+                "schema_version":1,"source_eigenpair":state.content_digest,
+                "lambda_squared":resolved["lambda_squared"].as_u64().context("cluster policy requires the retained cutoff")?.to_string(),
+                "n_modes":resolved["n_modes"],"precision_bits":resolved["precision_bits"],
+                "convention_id":"capture-cluster-preparation-policy-v1",
+                "definition_digest":xc_cache::ContentDigest::sha256(b"capture-cluster-preparation-policy-v1"),
+                "approximation_scope":"retained primary source; declared sector exclusion only"
+            }))?);
+        }
+        let admitted = input.as_mut().unwrap();
+        anyhow::ensure!(
+            admitted.source_eigenpair == state.content_digest,
+            "cluster policy belongs to another retained eigenpair"
+        );
+        if let Some(existing) = &admitted.cluster_preparation_assessment {
+            anyhow::ensure!(
+                existing.source_eigenpair == assessment.source_eigenpair
+                    && existing.source_matrix == assessment.source_matrix
+                    && existing.source_precision_bits == assessment.source_precision_bits,
+                "cluster assessment belongs to another retained source"
+            );
+            if existing.origin == "automatic_sector_attempt" && admitted.cluster.is_empty() {
+                admitted.cluster_preparation_assessment = Some(assessment);
+            } else if existing.origin == "declared_prior_capture_policy" {
+                anyhow::ensure!(
+                    existing == &assessment,
+                    "cluster assessment conflicts with the declared capture policy"
+                );
+            }
+        } else if admitted.cluster.is_empty() {
+            admitted.cluster_preparation_assessment = Some(assessment);
+        }
+        admitted.validate()?;
+        Ok(input)
+    }
+
+    fn fresh_capture_inputs(
+        input: Option<xc_spectral::ccm::extended_research::ExternalResearchInputs>,
+        resolved: &serde_json::Value,
+        sources: &[xc_cache::ArtifactManifest],
+        maximum_stream_scalar_bytes: Option<u64>,
+    ) -> Result<Option<xc_spectral::ccm::extended_research::ExternalResearchInputs>> {
+        let input = stream_scalar_inputs(input, resolved, sources, maximum_stream_scalar_bytes)?;
+        let requested = resolved["applicability"]["requested_diagnostics"]
+            .as_array()
+            .is_some_and(|ids| {
+                ids.iter()
+                    .any(|id| id == "spectral_cluster" || id == "spectral_cluster_full")
+            });
+        // Match save(request.json) exactly, so fresh and recovery assessments
+        // name the same frozen evidence, including its trailing newline.
+        let mut bytes = serde_json::to_vec_pretty(resolved)?;
+        bytes.push(b'\n');
+        cluster_policy_inputs(
+            input,
+            resolved,
+            sources,
+            &xc_cache::ContentDigest::sha256(&bytes),
+            requested,
+        )
+    }
+
+    fn apply_run_capture_input_policy(
         run: &mut RetainedCcmRun,
         resolved: &serde_json::Value,
         maximum_stream_scalar_bytes: Option<u64>,
-    ) -> Result<()> {
-        if maximum_stream_scalar_bytes.is_some() {
-            let base = run.prepare_extended_research_inputs()?;
-            let input = stream_scalar_inputs(
+    ) -> Result<Option<String>> {
+        let mut rejected = None;
+        let cluster_excluded =
+            !resolved["applicability"]["excluded_diagnostics"]["sector_analysis"].is_null();
+        if maximum_stream_scalar_bytes.is_some() || cluster_excluded {
+            let base = match run.prepare_extended_research_inputs() {
+                Ok(base) => base,
+                Err(error) if cluster_excluded && maximum_stream_scalar_bytes.is_none() => {
+                    // The exclusion belongs to the frozen primary request. Build its
+                    // assessment from that source even if optional external data is unusable.
+                    eprintln!("optional capture inputs unavailable: {error:#}");
+                    rejected = Some(format!("{error:#}"));
+                    None
+                }
+                Err(error) => return Err(error),
+            };
+            let input = fresh_capture_inputs(
                 base,
                 resolved,
                 &run.primary_sources(),
                 maximum_stream_scalar_bytes,
-            )?
-            .context("explicit stream scalar override produced no input")?;
-            run.set_extended_research_inputs(input)?;
+            )?;
+            if let Some(input) = input {
+                run.set_extended_research_inputs(input)?;
+            }
         }
-        Ok(())
+        Ok(rejected)
     }
 
     /// Reference-jet preparation may invalidate inputs after initial admission.
@@ -913,29 +1295,25 @@ mod hp {
         maximum_stream_scalar_bytes: Option<u64>,
     ) -> Result<serde_json::Value> {
         let base = run.prepare_extended_research_inputs()?;
-        let base = stream_scalar_inputs(
+        let base = fresh_capture_inputs(
             base,
             resolved,
             &run.primary_sources(),
             maximum_stream_scalar_bytes,
         )?;
-        // Supplemental failures do not stop subsequent captures. Install the
-        // source-checked base policy first so a failed preparer cannot leave
-        // those captures using the default limit behind an overridden request.
-        if maximum_stream_scalar_bytes.is_some() {
-            run.set_extended_research_inputs(
-                base.clone()
-                    .context("stream scalar override input unavailable")?,
-            )?;
+        // Admit both resource policy and declared cluster absence before the
+        // external preparer. Its failure must not discard those source checks.
+        if let Some(input) = &base {
+            run.set_extended_research_inputs(input.clone())?;
         }
         let request = serde_json::json!({"schema_version":1,
             "configuration":resolved,"primary_sources":run.primary_sources(),
             "base_inputs":base,"target_spec_file":std::env::var("XC_TARGET_SPEC_FILE").ok(),
             "output_visibility":"private_only","primary_recomputation":false});
         let prepared = invoke_preparer(directory, &request, configuration)?;
-        // The preparer may replace its base options. Enforce the requested cap
-        // again, preserving input_sha256 as the digest of the exact producer bytes.
-        let input = stream_scalar_inputs(
+        // The preparer may replace its base options. Reapply capture policy,
+        // preserving input_sha256 as the digest of the exact producer bytes.
+        let input = fresh_capture_inputs(
             Some(prepared.input),
             resolved,
             &run.primary_sources(),
@@ -975,9 +1353,11 @@ mod hp {
         level: ResearchCapture,
         count: usize,
         args: &CaptureJournalArgs,
+        sector_certificate: bool,
     ) -> Result<()> {
         let plan = recipe(level, count, params.n_modes + 1, args, cfg.precision_bits)?;
-        let excluded = exclusions(args.capture_policy, level, params, cfg, args)?;
+        let mut excluded = exclusions(args.capture_policy, level, params, cfg, args)?;
+        apply_sector_selection(&mut excluded, level, sector_certificate)?;
         requested_diagnostics(&plan, level == ResearchCapture::Ultra, &excluded)?;
         Ok(())
     }
@@ -1013,7 +1393,12 @@ mod hp {
                 distance.profile_steps = replacement.profile_steps;
             }
         }
-        let excluded = exclusions(args.capture_policy, level, params, cfg, args)?;
+        let mut excluded = exclusions(args.capture_policy, level, params, cfg, args)?;
+        apply_sector_selection(
+            &mut excluded,
+            level,
+            options.sector_gap_certification.is_some(),
+        )?;
         // An excluded sector analysis is not formed for other diagnostics
         // either; they record its absence as an unavailable input.
         if excluded.contains_key("sector_analysis") {
@@ -1051,8 +1436,47 @@ mod hp {
                 (cfg.precision_bits.saturating_sub(48) as usize * 3 / 10).max(1)
             ),
         });
-        let requested = requested_diagnostics(&plan, reduction.is_some(), &excluded)?;
-        let applicability = serde_json::json!({"schema_version":1,"policy":args.capture_policy,"requested_diagnostics":requested,"excluded_diagnostics":excluded});
+        let mut requested = requested_diagnostics(&plan, reduction.is_some(), &excluded)?;
+        // Explicit requests below their named capture level and certificates
+        // receive their own source-bound receipt, with no hidden policy change.
+        let mut extra = Vec::new();
+        for (id, wanted) in [
+            ("prime_power_response", options.capture_prime_power_response),
+            ("u_flow_response", options.capture_u_flow_response),
+            ("root_certificate", options.root_certification.is_some()),
+            (
+                "sector_gap_certificate",
+                options.sector_gap_certification.is_some(),
+            ),
+            ("distance_profile", options.distance_capture.is_some()),
+            ("target_distance", options.distance_capture.is_some()),
+            (
+                "distance_resolution",
+                options
+                    .distance_capture
+                    .as_ref()
+                    .is_some_and(|d| d.capture_resolution_evidence),
+            ),
+            (
+                "target_residual_analysis",
+                options
+                    .distance_capture
+                    .as_ref()
+                    .is_some_and(|d| d.capture_residual_analysis),
+            ),
+            (
+                "deviation_decomposition",
+                options
+                    .distance_capture
+                    .as_ref()
+                    .is_some_and(|d| d.capture_deviation_decomposition),
+            ),
+        ] {
+            if wanted && !requested.iter().any(|name| name == id) && !excluded.contains_key(id) {
+                extra.push(id.to_string());
+            }
+        }
+        let mut applicability = serde_json::json!({"schema_version":1,"policy":args.capture_policy,"requested_diagnostics":requested,"excluded_diagnostics":excluded});
         println!(
             "  capture applicability: {} ({} requested, {} excluded)",
             serde_json::to_value(args.capture_policy)?
@@ -1064,12 +1488,10 @@ mod hp {
         for (id, reason) in &excluded {
             println!("  [EXCLUDED] {id}: {reason}");
         }
-        let resolved = serde_json::json!({"schema_version":1,"paper_version":env!("CARGO_PKG_VERSION"),"toolkit_release":"0.17.1","arb_enabled":cfg!(feature="root-certification"),"research_inputs":research_input_inventory(),"capture":plan,"applicability":applicability,"retained_reduction":reduction,"lambda_squared":params.lambda_sq_int(),"n_modes":params.n_modes,"precision_bits":cfg.precision_bits,"root_precision_policy":cfg.root_precision_policy,"root_maximum_extra_precision_bits":cfg.root_maximum_extra_precision_bits,"root_verification_precision_bits":cfg.root_verification_precision_bits,"parity_policy":cfg.effective_parity_policy().as_str(),"distance":options.distance_capture.as_ref().map(|d|serde_json::json!({"alpha":d.alpha,"rules":d.rules.iter().map(|r|serde_json::json!({"family":r.family(),"rule":r.rule(),"variable":r.variable().as_str(),"resolution":r.resolution()})).collect::<Vec<_>>(),"profile_steps":d.profile_steps})),"source_policy":"resolve compatible identities; preserve historical artifacts","assurance":"capture completeness is separate from numerical acceptance"});
+        let resolved = serde_json::json!({"schema_version":1,"paper_version":env!("CARGO_PKG_VERSION"),"toolkit_release":crate::benchmark::TOOLKIT_VERSION,"arb_enabled":cfg!(feature="root-certification"),"research_inputs":research_input_inventory(),"capture":plan,"applicability":applicability,"retained_reduction":reduction,"lambda_squared":params.lambda_sq_int(),"n_modes":params.n_modes,"precision_bits":cfg.precision_bits,"root_precision_policy":cfg.root_precision_policy,"root_maximum_extra_precision_bits":cfg.root_maximum_extra_precision_bits,"root_verification_precision_bits":cfg.root_verification_precision_bits,"parity_policy":cfg.effective_parity_policy().as_str(),"distance":options.distance_capture.as_ref().map(|d|serde_json::json!({"alpha":d.alpha,"rules":d.rules.iter().map(|r|serde_json::json!({"family":r.family(),"rule":r.rule(),"variable":r.variable().as_str(),"resolution":r.resolution()})).collect::<Vec<_>>(),"profile_steps":d.profile_steps})),"source_policy":"resolve compatible identities; preserve historical artifacts","assurance":"capture completeness is separate from numerical acceptance"});
         let mut resolved = resolved;
-        #[cfg(feature = "compact-sector-certificates")]
-        {
-            resolved["toolkit_release"] = serde_json::json!("0.17.1");
-        }
+        resolved["explicit_diagnostics"] = serde_json::json!(extra);
+        resolved["requires_spectral_isolation"] = serde_json::json!(even_state_isolation);
         if options.sector_gap_certification.is_some() {
             #[cfg(feature = "compact-sector-certificates")]
             {
@@ -1107,19 +1529,30 @@ mod hp {
             "semantics":"retained_private_input_preparation_v1",
             "configured":std::env::var_os("XC_RESEARCH_PREPARER").is_some(),
             "phase":"after_primary_acquisition","visibility":"private_only"});
-        save(&directory.join("request.json"), &resolved)?;
+        let conditional_response = args.capture_policy == CapturePolicy::Claim1cHp1000;
+        save(
+            &directory.join(if conditional_response {
+                "planned-request.json"
+            } else {
+                "request.json"
+            }),
+            &resolved,
+        )?;
         // Preserve the exact dependency lockfile with each run, including the
         // qualified Git commit after a release tag has been amended.
         save(
             &directory.join("build.json"),
             &serde_json::json!({"cargo_lock":include_str!("../Cargo.lock"),
+                "paper_source_sha256":option_env!("XC_PAPER_SOURCE_DIGEST"),
+                "paper_executable_sha256":recovery::bounded_file_digest(&std::env::current_exe()?)?,
                 "toolkit_working_source_digest":option_env!("XC_TOOLKIT_SOURCE_DIGEST"),
-                "toolkit_source_revision":option_env!("XC_TOOLKIT_SOURCE_REVISION"),
+                "toolkit_source_revision":crate::benchmark::TOOLKIT_REVISION,
                 "compact_sector_certificates_enabled":cfg!(feature="compact-sector-certificates"),
                 "local_qualification":option_env!("XC_TOOLKIT_SOURCE_DIGEST").is_some()}),
         )?;
         let managed_config = xc_cache::ManagedArtifactCacheConfig::from_environment()?
             .context("managed cache required")?;
+        let require_complete = capture_completion_required(args, managed_config.publication_target);
         if args.defer_publication {
             validate_deferred_publication(&managed_config)?;
         }
@@ -1142,8 +1575,6 @@ mod hp {
                 return Err(error);
             }
         };
-        // Only requested diagnostics may be computed ahead of their turn.
-        run.set_lookahead_requests(requested.iter().cloned());
         save(
             &directory.join("primary.json"),
             &PortableHighPrecResult::from_runtime(run.primary())?,
@@ -1152,6 +1583,36 @@ mod hp {
             &directory.join("primary-sources.json"),
             &run.primary_sources(),
         )?;
+        let mut overlap = false;
+        if conditional_response {
+            if let Err(error) = run.even_state_spectral_isolation(&cache) {
+                let bounds = match response_overlap_evidence(&error) {
+                    Ok(bounds) => bounds,
+                    Err(reason) => {
+                        save(
+                            &directory.join("status.json"),
+                            &serde_json::json!({
+                        "status":"capture_incomplete","primary_saved":true,"capture_complete":false,
+                        "response_isolation_error":format!("{error:#}")}),
+                        )?;
+                        return Err(reason).context("response isolation preflight failed");
+                    }
+                };
+                requested.retain(|id| !RESPONSE_DIAGNOSTICS.contains(&id.as_str()));
+                for id in RESPONSE_DIAGNOSTICS {
+                    applicability["excluded_diagnostics"][id] = OVERLAP_REASON.into();
+                    println!("  [EXCLUDED] {id}: {OVERLAP_REASON}");
+                }
+                applicability["requested_diagnostics"] = serde_json::json!(requested);
+                applicability["response_isolation_overlap"] = serde_json::json!({"bounds":bounds,
+                    "sources":response_sources(&run.primary_sources())?});
+                resolved["applicability"] = applicability.clone();
+                overlap = overlap_bound_to_primary(&resolved, &run.primary_sources())?;
+                run.defer_automatic_u_flow_response()?;
+            }
+            save(&directory.join("request.json"), &resolved)?;
+        }
+        run.set_lookahead_requests(requested.iter().cloned());
         // Source-bound observations are outputs of primary acquisition. They
         // never require a second dimension or a future run to start this one.
         let observation = xc_spectral::ccm::convergence_capture::finite_capture::RetainedFiniteSources::from_manifests(
@@ -1172,25 +1633,38 @@ mod hp {
         // admission fails. An explicit streaming cap must never silently fall
         // back to defaults on that route: preserve the primary and stop before
         // any diagnostic callback if its source-bound policy cannot be installed.
+        let mut external_inputs_ok = true;
         if level == ResearchCapture::Ultra {
-            if let Err(error) = apply_run_stream_scalar_override(
+            match apply_run_capture_input_policy(
                 &mut run,
                 &resolved,
                 args.capture_maximum_stream_scalar_bytes,
             ) {
-                let status = serde_json::json!({"status":"failed","phase":"stream_scalar_policy_admission",
+                Ok(Some(reason)) => {
+                    external_inputs_ok = false;
+                    let status = serde_json::json!({"status":"rejected","phase":"capture_input_policy_admission","reason":reason,"primary_preserved":true});
+                    save(
+                        &directory.join("external-research-inputs-status.json"),
+                        &status,
+                    )?;
+                    event(&mut events, &status)?;
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    let status = serde_json::json!({"status":"failed","phase":"capture_input_policy_admission",
                     "reason":format!("{error:#}"),"primary_preserved":true});
-                save(&directory.join("input-preparation-status.json"), &status)?;
-                event(&mut events, &status)?;
-                save(
-                    &directory.join("status.json"),
-                    &serde_json::json!({
+                    save(&directory.join("input-preparation-status.json"), &status)?;
+                    event(&mut events, &status)?;
+                    save(
+                        &directory.join("status.json"),
+                        &serde_json::json!({
                     "status":"capture_incomplete","primary_saved":true,"capture_complete":false,
                     "input_preparation_error":format!("{error:#}")}),
-                )?;
-                return Err(error).context(
-                    "explicit stream scalar policy could not be admitted; primary preserved",
-                );
+                    )?;
+                    return Err(error).context(
+                        "explicit capture input policy could not be admitted; primary preserved",
+                    );
+                }
             }
         }
         let preparation_error = if level == ResearchCapture::Ultra {
@@ -1213,7 +1687,10 @@ mod hp {
                     };
                     save(&directory.join("input-preparation-status.json"), &status)?;
                     event(&mut events, &status)?;
-                    prepared.err().map(|e| format!("{e:#}"))
+                    match prepared {
+                        Err(error) => Some(format!("{error:#}")),
+                        Ok(value) => component_preparation_error(&value),
+                    }
                 }
                 Err(std::env::VarError::NotPresent) => None,
                 Err(error) => Some(error.to_string()),
@@ -1240,6 +1717,7 @@ mod hp {
             .as_ref()
             .err()
             .map(|e| format!("runtime target unavailable: {e}"));
+        let primary_sources = run.primary_sources();
         let mut execute = |id: &str| {
             let timer = Instant::now();
             println!("  capture {id}: started");
@@ -1308,9 +1786,13 @@ mod hp {
         } else {
             // The persisted receipt binds both the effective request and every
             // exclusion reason. Excluded work never enters the callback.
+            let mut checkpoint_exports: Option<(
+                Vec<xc_spectral::ccm::prefix::CheckpointExport>,
+                Vec<xc_cache::ArtifactManifest>,
+            )> = None;
             xc_cache::capture_and_persist(
                 &resolved,
-                requested.clone(),
+                filtered_execution_order(&requested),
                 |id| {
                     if id == "prefix_ladder" {
                         let (matrix, eigenpairs) =
@@ -1326,8 +1808,30 @@ mod hp {
                             .as_ref()
                             .or(result.reused_manifest.as_ref())
                             .map(|m| vec![m.clone()])
-                            .unwrap_or_else(|| vec![matrix.manifest().clone()]);
-                        return xc_cache::CapturedDiagnostic::new(&result.value, sources)
+                            .unwrap_or_else(|| {
+                                std::iter::once(matrix.manifest())
+                                    .chain(primary_sources.iter().filter(|m| !eigenpairs.is_empty()
+                                        && m.key.kind == "ccm_weil_eigenpair"))
+                                    .cloned().collect()
+                            });
+                        let diagnostic = xc_cache::CapturedDiagnostic::new(&result.value, sources.clone())
+                            .map_err(CaptureFailure::failed)?;
+                        checkpoint_exports = Some((result.value.checkpoints, sources));
+                        return Ok(diagnostic);
+                    }
+                    if let Some(dimension) = id.strip_prefix("prefix_checkpoint_") {
+                        let (checkpoints, sources) = checkpoint_exports.as_ref().ok_or_else(|| CaptureFailure::Blocked {
+                            reason: "prefix ladder unavailable".into(),
+                        })?;
+                        let dimension = dimension.parse::<usize>().map_err(CaptureFailure::failed)?;
+                        let checkpoint = checkpoints.iter().find(|row| row.dimension == dimension)
+                            .ok_or_else(|| CaptureFailure::Missing { reason: "requested checkpoint not reached".into() })?;
+                        if checkpoint.eigenpair_source.is_none() {
+                            return Err(CaptureFailure::Missing {
+                                reason: "checkpoint eigenstate unavailable; partial export retained in prefix ladder".into(),
+                            });
+                        }
+                        return xc_cache::CapturedDiagnostic::new(checkpoint, sources.clone())
                             .map_err(CaptureFailure::failed);
                     }
                     if id != "retained_reduction" {
@@ -1385,49 +1889,15 @@ mod hp {
             &record.value,
             &cache,
         )?;
+        let unresolved_response = unresolved_response_diagnostics(
+            args.capture_policy == CapturePolicy::Claim1cHp1000 && !overlap,
+            &record.value,
+            None,
+        );
         let mut complete = record.value.receipt.is_complete()
+            && unresolved_response.is_empty()
             && observation_error.is_none()
             && preparation_error.is_none();
-        // Explicit requests below their named capture level and certificates
-        // receive their own source-bound receipt, with no hidden policy change.
-        let mut extra = Vec::new();
-        let present = record.value.receipt.outcomes();
-        for (id, wanted) in [
-            ("prime_power_response", options.capture_prime_power_response),
-            ("u_flow_response", options.capture_u_flow_response),
-            ("root_certificate", options.root_certification.is_some()),
-            (
-                "sector_gap_certificate",
-                options.sector_gap_certification.is_some(),
-            ),
-            ("distance_profile", options.distance_capture.is_some()),
-            ("target_distance", options.distance_capture.is_some()),
-            (
-                "distance_resolution",
-                options
-                    .distance_capture
-                    .as_ref()
-                    .is_some_and(|d| d.capture_resolution_evidence),
-            ),
-            (
-                "target_residual_analysis",
-                options
-                    .distance_capture
-                    .as_ref()
-                    .is_some_and(|d| d.capture_residual_analysis),
-            ),
-            (
-                "deviation_decomposition",
-                options
-                    .distance_capture
-                    .as_ref()
-                    .is_some_and(|d| d.capture_deviation_decomposition),
-            ),
-        ] {
-            if wanted && !present.contains_key(id) && !excluded.contains_key(id) {
-                extra.push(id.to_string());
-            }
-        }
         if !extra.is_empty() {
             let extra_record = xc_cache::capture_and_persist(
                 &serde_json::json!({"paper_capture":resolved,"explicit_diagnostics":extra}),
@@ -1435,7 +1905,8 @@ mod hp {
                 &mut execute,
                 &cache,
             )?;
-            complete &= extra_record.value.receipt.is_complete();
+            complete &= extra_record.value.receipt.is_complete()
+                && unresolved_response_diagnostics(false, &extra_record.value, None).is_empty();
             save(
                 &directory.join("capture-explicit.json"),
                 &extra_record.value,
@@ -1451,11 +1922,21 @@ mod hp {
         if level == ResearchCapture::Ultra {
             match run.prepare_extended_research_inputs() {
                 Ok(Some(input)) => save(&directory.join("external-research-inputs.json"), &input)?,
+                Ok(None) if resolved["private_input_preparation"]["configured"] == true => {
+                    external_inputs_ok = false;
+                    save(
+                        &directory.join("external-research-inputs-status.json"),
+                        &serde_json::json!({"status":"missing","reason":"configured research inputs unavailable at export"}),
+                    )?;
+                }
                 Ok(None) => {}
-                Err(error) => save(
-                    &directory.join("external-research-inputs-status.json"),
-                    &serde_json::json!({"status":"failed","reason":format!("{error:#}")}),
-                )?,
+                Err(error) => {
+                    external_inputs_ok = false;
+                    save(
+                        &directory.join("external-research-inputs-status.json"),
+                        &serde_json::json!({"status":"failed","reason":format!("{error:#}")}),
+                    )?;
+                }
             }
         }
         if level == ResearchCapture::Ultra {
@@ -1497,25 +1978,26 @@ mod hp {
         } else {
             None
         };
-        complete &= isolation_error.is_none();
-        if args.defer_publication {
+        complete &= isolation_error.is_none() && external_inputs_ok;
+        let publication_blocked = isolation_error.is_some() || (!complete && require_complete);
+        if publication_blocked {
+            println!("  publication blocked: required capture incomplete; staging preserved");
+        } else if args.defer_publication {
             println!("  publication deferred: retained staging awaits publish-staged");
         } else {
             managed.finalize_publication_inventory()?;
         }
         save(
             &directory.join("status.json"),
-            &serde_json::json!({"status":if complete{"capture_complete"}else{"capture_incomplete"},"primary_saved":true,"capture_complete":complete,"publication_status":if args.defer_publication{"deferred"}else{"not_deferred"},"applicability":applicability,"convergence_observation_error":observation_error,"input_preparation_error":preparation_error,"numerical_acceptance":"inspect primary and measurement payloads; completion is not validity","elapsed_seconds":started.elapsed().as_secs_f64()}),
+            &serde_json::json!({"status":if complete{"capture_complete"}else{"capture_incomplete"},"primary_saved":true,"capture_complete":complete,"publication_status":if publication_blocked{"blocked_incomplete"}else if args.defer_publication{"deferred"}else{"not_deferred"},"applicability":applicability,"convergence_observation_error":observation_error,"input_preparation_error":preparation_error,"unresolved_response_diagnostics":unresolved_response,"numerical_acceptance":"inspect primary and measurement payloads; completion is not validity","elapsed_seconds":started.elapsed().as_secs_f64()}),
         )?;
         println!(
             "  capture journal saved: {} ({})",
             directory.display(),
-            if args.defer_publication {
-                if complete {
-                    "capture complete; publication pending"
-                } else {
-                    "capture incomplete; publication pending; see receipt reasons"
-                }
+            if publication_blocked {
+                "capture incomplete; publication blocked; see receipt reasons"
+            } else if args.defer_publication {
+                "capture complete; publication pending"
             } else if complete {
                 "complete"
             } else {
@@ -1528,7 +2010,7 @@ mod hp {
                 directory.display()
             );
         }
-        if args.require_complete_capture && !complete {
+        if require_complete && !complete {
             anyhow::bail!(
                 "capture incomplete; primary and receipts preserved in {}",
                 directory.display()
@@ -1544,6 +2026,198 @@ mod hp {
     mod tests {
         use super::*;
         use clap::Parser;
+
+        #[test]
+        fn fresh_cluster_exclusion_matches_recovery_and_preserves_available_vectors() {
+            use xc_cache::*;
+            let resolver = CacheResolver::new(vec![CacheLayer {
+                precedence: 0,
+                store: Box::new(EphemeralCacheStore::new(256 << 20).unwrap()),
+            }]);
+            let policy = CachePolicy {
+                current_toolkit_version: ToolkitVersion::parse("0.17.2").unwrap(),
+                minimum_quality: CacheQuality::Validated,
+                accepted_schema_versions: vec![1],
+                allow_deprecated: false,
+                allow_quarantined: false,
+                allowed_visibilities: vec![CacheVisibility::Local],
+            };
+            let cache = ArtifactCacheContext {
+                resolver: Some(&resolver),
+                reference_resolver: None,
+                acceptance: Some(&policy),
+                ordered_overlays: vec!["ephemeral".into()],
+                mode: ArtifactExecutionCacheMode::PreferReuse,
+                write_on_miss: true,
+                write_visibility: CacheVisibility::Local,
+                requested_assurance: xc_core::AssuranceLevel::Computed,
+                certification_failure_policy: CertificationFailurePolicy::RetainComputedFailRun,
+                production_sink: None,
+            };
+            let params = CcmParams::from_lambda_sq_integer(13, 16);
+            let mut cfg = HighPrecConfig::for_decimal_digits(40);
+            cfg.n_eigenvalues = 1;
+            cfg.quad_points = 32;
+            let dataset = xc_zeta::zeros::bundled_dataset_identity().unwrap();
+            let seeds = xc_zeta::zeros::bundled_first_n_strings(1)
+                .unwrap()
+                .iter()
+                .map(|s| rug::Float::with_val(cfg.precision_bits, rug::Float::parse(s).unwrap()))
+                .collect::<Vec<_>>();
+            let mut run =
+                RetainedCcmRun::seeded(&params, &cfg, 1, &seeds, &dataset, &cache).unwrap();
+            let sources = run.primary_sources();
+            let resolved = serde_json::json!({"lambda_squared":13,"n_modes":16,"precision_bits":cfg.precision_bits,
+                "capture":{"sector_eigenpairs":2},"applicability":{
+                    "requested_diagnostics":["spectral_cluster_full"],
+                    "excluded_diagnostics":{"sector_analysis":"explicit acquisition exclusion; individual vectors unavailable"}}});
+            let input = fresh_capture_inputs(None, &resolved, &sources, None)
+                .unwrap()
+                .unwrap();
+            let assessment = input.cluster_preparation_assessment.clone().unwrap();
+            assert_eq!(assessment.origin, "declared_prior_capture_policy");
+            // Check against the exact persisted journal bytes used by recovery.
+            let directory = std::env::temp_dir().join(format!(
+                "paper-cluster-policy-{}-{}",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            fs::create_dir(&directory).unwrap();
+            save(&directory.join("request.json"), &resolved).unwrap();
+            let digest = ContentDigest::sha256(&fs::read(directory.join("request.json")).unwrap());
+            assert_eq!(assessment.evidence_digest, digest);
+            // Empty legacy dependency lists and a different store alias do not
+            // change the consumed payloads or the policy assessment. Admission
+            // of the actual sources remains Toolkit's responsibility.
+            let mut remote_sources = sources.clone();
+            for remote in &mut remote_sources {
+                remote.dependencies.clear();
+                remote.key.logical_key = format!("cache-alias/{}", remote.key.logical_key);
+            }
+            let remote = fresh_capture_inputs(None, &resolved, &remote_sources, None)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                serde_json::to_value(&remote).unwrap(),
+                serde_json::to_value(&input).unwrap()
+            );
+            fs::remove_dir_all(&directory).unwrap();
+            let mut producer = input.clone();
+            producer.cluster_preparation_assessment = None;
+            let recovered =
+                cluster_policy_inputs(Some(producer.clone()), &resolved, &sources, &digest, true)
+                    .unwrap()
+                    .unwrap();
+            // A preparer may omit the assessment; the fresh post-preparer path
+            // must restore exactly the same evidence as retained recovery.
+            let fresh = fresh_capture_inputs(Some(producer.clone()), &resolved, &sources, None)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                serde_json::to_value(&fresh).unwrap(),
+                serde_json::to_value(&recovered).unwrap()
+            );
+            assert_eq!(
+                serde_json::to_value(&fresh).unwrap(),
+                serde_json::to_value(&input).unwrap()
+            );
+            apply_run_capture_input_policy(&mut run, &resolved, None).unwrap();
+            assert_eq!(
+                run.prepare_extended_research_inputs()
+                    .unwrap()
+                    .unwrap()
+                    .cluster_preparation_assessment,
+                Some(assessment.clone())
+            );
+            let mut options = CcmCapturePlan::ultra(2, 17)
+                .unwrap()
+                .primary_options()
+                .unwrap();
+            options.sector_analysis = None;
+            options.capture_prime_power_response = false;
+            options.capture_u_flow_response = false;
+            let result = run
+                .capture_diagnostic_outcome("spectral_cluster_full", &options, &cache)
+                .unwrap();
+            assert_eq!(result.value["data"]["outcome"], "partial_unresolved");
+            assert_eq!(result.value["data"]["values"]["sector_attempted"], "0");
+            assert_eq!(
+                result.value["data"]["values"]["certifies_spectral_cluster"],
+                "0"
+            );
+            assert_eq!(
+                serde_json::to_value(run.primary_sources()).unwrap(),
+                serde_json::to_value(&sources).unwrap()
+            );
+
+            let mut ordinary = resolved.clone();
+            ordinary["applicability"]["excluded_diagnostics"] = serde_json::json!({});
+            assert!(fresh_capture_inputs(None, &ordinary, &[], None)
+                .unwrap()
+                .is_none());
+            ordinary = resolved.clone();
+            ordinary["applicability"]["requested_diagnostics"] =
+                serde_json::json!(["energy_allowance"]);
+            assert!(fresh_capture_inputs(None, &ordinary, &[], None)
+                .unwrap()
+                .is_none());
+            assert!(fresh_capture_inputs(None, &resolved, &[], None).is_err());
+            let mut foreign = sources.clone();
+            foreign
+                .iter_mut()
+                .find(|m| m.key.kind == "ccm_tau_matrix")
+                .unwrap()
+                .content_digest = ContentDigest::sha256(b"another matrix");
+            assert!(fresh_capture_inputs(Some(input.clone()), &resolved, &foreign, None).is_err());
+            let mut duplicate = sources.clone();
+            duplicate.push(
+                sources
+                    .iter()
+                    .find(|m| m.key.kind == "ccm_tau_matrix")
+                    .unwrap()
+                    .clone(),
+            );
+            assert!(
+                fresh_capture_inputs(Some(input.clone()), &resolved, &duplicate, None).is_err()
+            );
+            for reason in [serde_json::json!(true), serde_json::json!("")] {
+                let mut invalid = resolved.clone();
+                invalid["applicability"]["excluded_diagnostics"]["sector_analysis"] = reason;
+                assert!(fresh_capture_inputs(None, &invalid, &sources, None).is_err());
+            }
+            let mut invalid = resolved.clone();
+            invalid["capture"]["sector_eigenpairs"] = serde_json::json!(0);
+            assert!(fresh_capture_inputs(None, &invalid, &sources, None).is_err());
+            let mut conflict = input.clone();
+            conflict
+                .cluster_preparation_assessment
+                .as_mut()
+                .unwrap()
+                .reason = "different exclusion".into();
+            assert!(fresh_capture_inputs(Some(conflict), &resolved, &sources, None).is_err());
+            // Available vectors take the ordinary full cluster route. Their
+            // payload is not replaced by a declared absence assessment.
+            let mut coefficients = vec!["0".to_owned(); 33];
+            coefficients[16] = "1".into();
+            producer
+                .cluster
+                .push(xc_spectral::ccm::extended_research::ClusterVector {
+                    source_digest: assessment.source_matrix,
+                    n_modes: 16,
+                    precision_bits: cfg.precision_bits,
+                    eigenvalue: "1".into(),
+                    coefficients,
+                    assembly_policy: "synthetic unit-vector fixture".into(),
+                });
+            let before = serde_json::to_value(&producer).unwrap();
+            let available = fresh_capture_inputs(Some(producer), &resolved, &sources, None)
+                .unwrap()
+                .unwrap();
+            assert_eq!(serde_json::to_value(available).unwrap(), before);
+        }
 
         #[test]
         fn fresh_stream_scalar_override_preserves_absent_identity_and_inputs() {
@@ -1600,13 +2274,18 @@ mod hp {
                 .unwrap()
                 .primary_options()
                 .unwrap();
-            validate_configuration(&params, &cfg, ResearchCapture::Ultra, 2, &args).unwrap();
+            validate_configuration(&params, &cfg, ResearchCapture::Ultra, 2, &args, false).unwrap();
             for cap in [0, 1_099_511_627_777, u64::MAX] {
                 args.capture_maximum_stream_scalar_bytes = Some(cap);
-                assert!(
-                    validate_configuration(&params, &cfg, ResearchCapture::Ultra, 2, &args)
-                        .is_err()
-                );
+                assert!(validate_configuration(
+                    &params,
+                    &cfg,
+                    ResearchCapture::Ultra,
+                    2,
+                    &args,
+                    false
+                )
+                .is_err());
                 assert!(execute(
                     &params,
                     &cfg,
@@ -1737,11 +2416,11 @@ mod hp {
                 RetainedCcmRun::seeded(&params, &cfg, 1, &seeds, &dataset, &cache).unwrap();
             let resolved = serde_json::json!({"lambda_squared":13,"n_modes":16,"precision_bits":cfg.precision_bits});
             let sources_before = run.primary_sources();
-            apply_run_stream_scalar_override(&mut run, &resolved, None).unwrap();
+            apply_run_capture_input_policy(&mut run, &resolved, None).unwrap();
             assert!(run.prepare_extended_research_inputs().unwrap().is_none());
             // No preparer and no external data: the explicit cap still reaches
             // the source-checked input used by the finite diagnostics.
-            apply_run_stream_scalar_override(&mut run, &resolved, Some(274_877_906_944)).unwrap();
+            apply_run_capture_input_policy(&mut run, &resolved, Some(274_877_906_944)).unwrap();
             let input = run.prepare_extended_research_inputs().unwrap().unwrap();
             assert_eq!(
                 input
@@ -1756,7 +2435,7 @@ mod hp {
             foreign.source_eigenpair = ContentDigest::sha256(b"foreign primary");
             assert!(run.set_extended_research_inputs(foreign).is_err());
             let before = serde_json::to_vec(&input).unwrap();
-            apply_run_stream_scalar_override(&mut run, &resolved, None).unwrap();
+            apply_run_capture_input_policy(&mut run, &resolved, None).unwrap();
             assert_eq!(
                 serde_json::to_vec(&run.prepare_extended_research_inputs().unwrap().unwrap())
                     .unwrap(),
@@ -1827,7 +2506,7 @@ mod hp {
             );
             let failed_directory = directory.join("failed-preparer");
             fs::create_dir(&failed_directory).unwrap();
-            apply_run_stream_scalar_override(&mut run, &resolved, Some(2048)).unwrap();
+            apply_run_capture_input_policy(&mut run, &resolved, Some(2048)).unwrap();
             let failing = serde_json::json!({"argv":["/bin/sh","-c","exit 7","fixture"],"timeout_seconds":30}).to_string();
             assert!(prepare_after_acquisition(
                 &mut run,
@@ -1852,7 +2531,7 @@ mod hp {
                 run.prepare_extended_research_inputs()
             })
             .unwrap();
-            apply_run_stream_scalar_override(&mut run, &resolved, Some(2048)).unwrap();
+            apply_run_capture_input_policy(&mut run, &resolved, Some(2048)).unwrap();
             assert!(
                 validate_current_stream_scalar_override(Some(274_877_906_944), || run
                     .prepare_extended_research_inputs())
@@ -2081,9 +2760,21 @@ mod hp {
         }
 
         #[test]
-        fn deferred_publication_requires_explicit_mutating_author_route() {
+        fn publication_always_requires_complete_capture() {
+            use xc_core::PublicationTarget::{Both, None, Private, Public};
+            let mut options = args();
+            for requested in [false, true] {
+                options.require_complete_capture = requested;
+                assert_eq!(capture_completion_required(&options, None), requested);
+                for target in [Private, Public, Both] {
+                    assert!(capture_completion_required(&options, target));
+                }
+            }
+        }
+
+        fn author_publication_config() -> xc_cache::ManagedArtifactCacheConfig {
             use xc_cache::*;
-            let valid = ManagedArtifactCacheConfig {
+            ManagedArtifactCacheConfig {
                 profile: ManagedRunProfile::Author,
                 requested_assurance: xc_core::AssuranceLevel::Computed,
                 certification_failure_policy: CertificationFailurePolicy::RetainComputedFailRun,
@@ -2096,15 +2787,62 @@ mod hp {
                 replace_existing_publication: false,
                 execute_remote_mutations: true,
                 output_validation: None,
-            };
+            }
+        }
+
+        #[test]
+        fn publish_staged_accepts_only_the_bound_empty_inventory() {
+            let root = std::env::temp_dir().join(format!(
+                "ccm-completed-staging-{}-{}",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            fs::create_dir(&root).unwrap();
+            let mut config = author_publication_config();
+            config.cache_root = root.join("cache");
+            let staging = root.join("staging");
+            fs::create_dir(&staging).unwrap();
+            config.staging_root = Some(staging.clone());
+            let path = staging.join("claim-complete.json");
+            assert!(publish_completed_staging(&staging, config.clone()).is_err());
+            let completed = serde_json::json!({
+                "schema_version": 1, "invocations": 1, "target":"private", "drafts":{}
+            });
+            for (field, invalid) in [
+                ("target", serde_json::json!("public")),
+                ("invocations", serde_json::json!(0)),
+                (
+                    "drafts",
+                    serde_json::json!({"drafts/missing/draft.json":"removed"}),
+                ),
+            ] {
+                let mut altered = completed.clone();
+                altered[field] = invalid;
+                save(&path, &altered).unwrap();
+                assert!(publish_completed_staging(&staging, config.clone()).is_err());
+                fs::remove_file(&path).unwrap();
+            }
+            save(&path, &completed).unwrap();
+            publish_completed_staging(&staging, config).unwrap();
+            fs::remove_dir_all(root).unwrap();
+        }
+
+        #[test]
+        fn deferred_publication_requires_explicit_mutating_author_route() {
+            use xc_cache::*;
+            let valid = author_publication_config();
             validate_deferred_publication(&valid).unwrap();
-            for index in 0..4 {
+            for index in 0..5 {
                 let mut rejected = valid.clone();
                 match index {
                     0 => rejected.profile = ManagedRunProfile::Normal,
                     1 => rejected.execute_remote_mutations = false,
                     2 => rejected.publication_target = xc_core::PublicationTarget::None,
-                    _ => rejected.staging_root = None,
+                    3 => rejected.staging_root = None,
+                    _ => rejected.cache_mode = ArtifactExecutionCacheMode::Disabled,
                 }
                 assert!(validate_deferred_publication(&rejected).is_err());
             }
@@ -2140,18 +2878,38 @@ mod hp {
                     "data":{"diagnostic":id,"outcome":"computed","rows":[{
                         "label":id,"outcome":"point_measurement"}],
                         "result":{"exact_fixture":"1/3","identity":id}}});
+                let kind = "ccm_finite_diagnostic_analysis";
+                let revision = artifact_identity_contract(kind).unwrap().value_revision;
+                let semantic = SemanticKeyEnvelope {
+                    schema_version: 1,
+                    artifact_kind: kind.into(),
+                    mathematical_semantics_version: format!("{kind}/value-v{revision}"),
+                    resolved_mathematical_parameters: serde_json::json!({"diagnostic":id}),
+                    normalization: None,
+                    target: None,
+                    subspace: None,
+                    algorithm_semantics: None,
+                    source_data_identities: Default::default(),
+                };
                 let draft = ArtifactDraft {
                     schema_version: 1,
-                    key: ArtifactKey::new("ccm_finite_diagnostic_analysis", id, id.as_bytes())
-                        .unwrap(),
-                    producer_toolkit_version: ToolkitVersion::parse("0.16.0").unwrap(),
+                    key: ArtifactKey {
+                        kind: kind.into(),
+                        logical_key: id.into(),
+                        parameters_digest: semantic.digest().unwrap(),
+                    },
+                    producer_toolkit_version: current_toolkit_version().unwrap(),
                     minimum_reader_version: ToolkitVersion::parse("0.16.0").unwrap(),
                     maximum_reader_version: None,
                     quality: CacheQuality::Validated,
                     visibility: CacheVisibility::Local,
                     immutable: true,
                     dependencies: vec![],
-                    tags: Default::default(),
+                    tags: [(
+                        SEMANTIC_KEY_MANIFEST_TAG.into(),
+                        serde_json::to_string(&semantic).unwrap(),
+                    )]
+                    .into(),
                     provenance_digest: None,
                 };
                 assert!(!artifact_kind_admitted_to_destination(
@@ -2190,7 +2948,7 @@ mod hp {
                 store: Box::new(store),
             }]);
             let policy = CachePolicy {
-                current_toolkit_version: ToolkitVersion::parse("0.16.0").unwrap(),
+                current_toolkit_version: current_toolkit_version().unwrap(),
                 minimum_quality: CacheQuality::Validated,
                 accepted_schema_versions: vec![1],
                 allow_deprecated: false,
@@ -2209,6 +2967,20 @@ mod hp {
                 certification_failure_policy: CertificationFailurePolicy::RetainComputedFailRun,
                 production_sink: None,
             };
+            super::recovery::verify_retained_values(&record, &[], &cache).unwrap();
+            let mut forged = record.clone();
+            let id = "finite_root_budget";
+            forged
+                .measurements
+                .get_mut(id)
+                .unwrap()
+                .value_reference
+                .as_mut()
+                .unwrap()
+                .coverage
+                .resolved_rows = 0;
+            assert!(super::recovery::verify_retained_values(&forged, &[], &cache).is_err());
+            super::recovery::verify_retained_values(&forged, &[id.into()], &cache).unwrap();
             let path = std::env::temp_dir().join(format!(
                 "paper-capture-export-{}-{}.json",
                 std::process::id(),
@@ -2243,6 +3015,29 @@ mod hp {
                 .value_digest = "0".repeat(64);
             assert!(save_reviewed_values(&path, &record, &cache).is_err());
             assert!(!path.exists());
+        }
+
+        #[test]
+        fn only_finite_overlapping_response_intervals_qualify() {
+            let check = |body: &str| {
+                let mut bounds: serde_json::Value = serde_json::from_str(body).unwrap();
+                bounds["schema"] = "ccm-response-overlapping-source-intervals-v1".into();
+                response_overlap_evidence(
+                    &anyhow::anyhow!("gap").context(bounds).context("overlap"),
+                )
+            };
+            assert!(check(
+                r#"{"precision_bits":3386,"selected_upper":"1e-1000","neighbor_lower":"-1e-1000"}"#
+            )
+            .is_ok());
+            for bad in [
+                r#"{"precision_bits":3386,"selected_upper":"-1","neighbor_lower":"1"}"#,
+                r#"{"precision_bits":3386,"selected_upper":"NaN","neighbor_lower":"0"}"#,
+                r#"{"precision_bits":3000,"selected_upper":"1","neighbor_lower":"0"}"#,
+            ] {
+                assert!(check(bad).is_err());
+            }
+            assert!(response_overlap_evidence(&anyhow::anyhow!("memory budget exceeded")).is_err());
         }
 
         #[test]
@@ -2359,7 +3154,7 @@ mod hp {
                     if fail && id == "root_conditioning" {
                         return Err(CaptureFailure::failed("unexpected source failure"));
                     }
-                    xc_cache::CapturedDiagnostic::new(&serde_json::json!({"test":true}), vec![])
+                    xc_cache::CapturedDiagnostic::new(&serde_json::json!({"expected_rows":1,"rows":[{"outcome":"point_measurement"}]}), vec![])
                         .map_err(CaptureFailure::failed)
                 })
                 .unwrap();
@@ -2367,6 +3162,43 @@ mod hp {
                 assert_eq!(record.receipt.is_complete(), !fail);
                 assert_eq!(record.receipt.outcomes().len(), requested.len());
             }
+        }
+
+        #[test]
+        fn filtered_capture_executes_the_ladder_before_every_requested_checkpoint() {
+            let plan = CcmCapturePlan::ultra(8, 121)
+                .unwrap()
+                .with_prefix_checkpoints(vec![32, 121])
+                .unwrap();
+            let mut excluded = std::collections::BTreeMap::new();
+            apply_sector_selection(&mut excluded, ResearchCapture::Ultra, false).unwrap();
+            let requested = requested_diagnostics(&plan, true, &excluded).unwrap();
+            let ordered = filtered_execution_order(&requested);
+            let ladder = ordered.iter().position(|id| id == "prefix_ladder").unwrap();
+            for id in ["prefix_checkpoint_32", "prefix_checkpoint_121"] {
+                assert!(ordered.iter().position(|entry| entry == id).unwrap() > ladder);
+            }
+            assert!(!ordered.iter().any(|id| id == "finite_root_budget"));
+            let mut sorted = ordered;
+            sorted.sort();
+            assert_eq!(sorted, requested);
+        }
+
+        #[test]
+        fn sector_selection_excludes_only_its_root_budget_when_optional_proof_is_absent() {
+            let mut excluded = std::collections::BTreeMap::new();
+            apply_sector_selection(&mut excluded, ResearchCapture::Ultra, true).unwrap();
+            assert!(excluded.is_empty());
+            apply_sector_selection(&mut excluded, ResearchCapture::Gap, false).unwrap();
+            assert!(excluded.is_empty());
+            apply_sector_selection(&mut excluded, ResearchCapture::Ultra, false).unwrap();
+            assert_eq!(excluded.len(), 1);
+            assert_eq!(excluded["finite_root_budget"], NO_SECTOR_CERTIFICATE);
+            excluded.insert(
+                "sector_gap_certificate".into(),
+                "unsupported configuration".into(),
+            );
+            assert!(apply_sector_selection(&mut excluded, ResearchCapture::Ultra, true).is_err());
         }
 
         #[test]
@@ -2428,7 +3260,7 @@ mod hp {
                                 return Err(CaptureFailure::failed("unexpected prefix failure"));
                             }
                             xc_cache::CapturedDiagnostic::new(
-                                &serde_json::json!({"test":true}),
+                                &serde_json::json!({"expected_rows":1,"rows":[{"outcome":"point_measurement"}]}),
                                 vec![],
                             )
                             .map_err(CaptureFailure::failed)

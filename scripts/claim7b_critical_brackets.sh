@@ -12,20 +12,11 @@ set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
 claim_working_budget 16
 
-PUBLISH_AFTER_SWEEP=${XC_PUBLISH_EXECUTE:-false}
 
 echo "=== Claim 7b: Critical-N crossings at λ²=13 ==="
-if [[ "$PUBLISH_AFTER_SWEEP" == "true" ]]; then
-  echo "Publication: staged throughout the sweep; one cumulative execution after HP-1000/N=60"
-fi
 echo
 for PREC in 200 1000; do
   for N in 31 32 33 34 35 36 37 38 39 40 51 52 53 54 55 56 57 58 59 60; do
-    if [[ "$PREC" == "1000" && "$N" == "60" ]]; then
-      export XC_PUBLISH_EXECUTE="$PUBLISH_AFTER_SWEEP"
-    else
-      export XC_PUBLISH_EXECUTE=false
-    fi
     echo "--- N=$N, HP-${PREC} ---"
     run_claim run \
       --lambda-sq 13 \

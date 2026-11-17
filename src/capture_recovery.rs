@@ -29,7 +29,10 @@ pub(super) fn validate_stream_scalar_override(value: Option<u64>) -> Result<()> 
     Ok(())
 }
 
-pub(super) fn bind_stream_scalar_override(identity: &mut serde_json::Value, value: Option<u64>) -> Result<()> {
+pub(super) fn bind_stream_scalar_override(
+    identity: &mut serde_json::Value,
+    value: Option<u64>,
+) -> Result<()> {
     validate_stream_scalar_override(value)?;
     // Omit absent overrides so existing recovery identities remain replayable.
     if let Some(value) = value {
@@ -80,6 +83,12 @@ const ORIGINAL_REQUIRED_FILES: &[&str] = &[
 ];
 const ORIGINAL_OPTIONAL_FILES: &[&str] = &[
     "capture-explicit.json",
+    "capture-explicit-values.json",
+    "convergence-observation.json",
+    "spectral-isolation.json",
+    "spectral-isolation-status.json",
+    "component-preparation-status.json",
+    "external-research-inputs-status.json",
     "primary.json",
     "status.json",
     "research-sources.json",
@@ -101,7 +110,7 @@ fn optional_original_inputs(
             Err(error) => return Err(error.into()),
             Ok(_) => {}
         }
-        let digest = if ["research-sources.json", "input-preparation-status.json"].contains(&name) {
+        let digest = if ["research-sources.json", "input-preparation-status.json", "status.json"].contains(&name) {
             let (value, digest) = frozen_json(&journal.join(name))?;
             inputs.insert(name.into(), value);
             digest
@@ -111,6 +120,85 @@ fn optional_original_inputs(
         digests.insert(name.into(), serde_json::to_value(digest)?);
     }
     Ok((digests, inputs))
+}
+
+// Recovery can complete diagnostic acquisitions. These original primary products
+// and independently requested receipts have no producer on the recovery route.
+fn check_original_support(
+    journal: &Path,
+    request: &serde_json::Value,
+    digests: &serde_json::Map<String, serde_json::Value>,
+    inputs: &serde_json::Map<String, serde_json::Value>,
+) -> Result<()> {
+    let required_isolation = request["requires_spectral_isolation"]
+        .as_bool()
+        .context("original request does not identify its isolation requirement")?;
+    let explicit: Vec<String> = serde_json::from_value(request["explicit_diagnostics"].clone())
+        .context("original request does not identify explicit diagnostics")?;
+    let status = inputs.get("status.json");
+    anyhow::ensure!(
+        digests.contains_key("convergence-observation.json")
+            && status.is_none_or(|s| s["convergence_observation_error"].is_null()),
+        "original convergence observation unavailable"
+    );
+    anyhow::ensure!(
+        (!required_isolation || digests.contains_key("spectral-isolation.json"))
+            && !digests.contains_key("spectral-isolation-status.json"),
+        "original spectral isolation unavailable"
+    );
+    anyhow::ensure!(
+        !digests.contains_key("external-research-inputs-status.json")
+            && !digests.contains_key("component-preparation-status.json")
+            && inputs
+                .get("input-preparation-status.json")
+                .and_then(component_preparation_error)
+                .is_none(),
+        "original capture input admission, export or component preparation incomplete"
+    );
+    anyhow::ensure!(
+        digests.contains_key("capture-explicit.json") != explicit.is_empty(),
+        "original explicit receipt differs from request"
+    );
+    if !explicit.is_empty() {
+        let (receipt, digest) = frozen_document::<xc_cache::CaptureArtifact>(
+            &journal.join("capture-explicit.json"),
+            xc_spectral::ccm::capture_runtime::RESEARCH_INPUT_MAXIMUM_BYTES,
+        )?;
+        receipt.validate()?;
+        anyhow::ensure!(
+            serde_json::to_value(digest)? == digests["capture-explicit.json"]
+                && digests.contains_key("capture-explicit-values.json")
+                && receipt.resolved_plan["paper_capture"] == *request
+                && receipt.resolved_plan["explicit_diagnostics"] == request["explicit_diagnostics"]
+                && receipt
+                    .requested_diagnostics
+                    .iter()
+                    .collect::<BTreeSet<_>>()
+                    == explicit.iter().collect()
+                && receipt.receipt.is_complete(),
+            "original explicit acquisition incomplete or mismatched"
+        );
+    }
+    Ok(())
+}
+
+fn recovery_coverage(
+    original: &xc_cache::CaptureArtifact,
+    supplement: &xc_cache::CaptureArtifact,
+) -> Result<(bool, bool)> {
+    let completed = |id: &str| {
+        matches!(
+            supplement.receipt.outcomes().get(id),
+            Some(xc_core::DiagnosticOutcome::Completed { .. })
+        )
+    };
+    let accounted = original.receipt.outcomes().iter().all(|(id, outcome)| {
+        matches!(outcome, xc_core::DiagnosticOutcome::Completed { .. }) || completed(id)
+    });
+    let affected = supplement.resolved_plan["affected_diagnostics"]
+        .as_object()
+        .context("supplement has no affected diagnostic inventory")?;
+    Ok((accounted, affected.keys().all(|id| completed(id))))
 }
 
 fn verify_original_inventory(journal: &Path, inventory: &serde_json::Value) -> Result<()> {
@@ -318,7 +406,10 @@ fn verify_staged_draft_inventory(
     Ok(())
 }
 
-fn verify_completed_capture(output: &Path, completion: &serde_json::Value) -> Result<()> {
+fn verify_completed_capture(
+    output: &Path,
+    completion: &serde_json::Value,
+) -> Result<xc_cache::CaptureArtifact> {
     let files = completion["files"]
         .as_object()
         .context("invalid completed capture inventory")?;
@@ -347,10 +438,14 @@ fn verify_completed_capture(output: &Path, completion: &serde_json::Value) -> Re
         serde_json::from_value(frozen_json(&output.join("capture.json"))?.0)?;
     record.validate()?;
     anyhow::ensure!(
+        record.receipt.is_complete(),
+        "retained capture receipt is incomplete"
+    );
+    anyhow::ensure!(
         record.resolved_plan == frozen_json(&output.join("capture-request.json"))?.0,
         "retained capture request differs"
     );
-    Ok(())
+    Ok(record)
 }
 
 // Authenticated recovery state is append-only. A temporary file is synced
@@ -440,12 +535,32 @@ fn verify_diagnostic_sources(
             .context("completed diagnostic source is unavailable; no computation attempted")?;
         resolver.validate_dependency_closure(&source.manifest, policy)?;
     }
-    for measurement in record.measurements.values() {
-        // Exact reference digests and their coverage retain the normal Toolkit
-        // validation; a missing/corrupt source never authorizes a fresh solve.
-        if measurement.value_reference.is_some() {
-            xc_cache::measurement_value(measurement, resolver, policy)?;
+    verify_retained_values(record, &[], cache)
+}
+
+/// A supplement supersedes only the diagnostics it requested. Check the actual
+/// artifacts behind every other completed original measurement before it counts.
+pub(super) fn verify_retained_values(
+    record: &xc_cache::CaptureArtifact,
+    superseded: &[String],
+    cache: &ArtifactCacheContext<'_>,
+) -> Result<()> {
+    for (id, measurement) in &record.measurements {
+        let Some(reference) = &measurement.value_reference else {
+            continue;
+        };
+        if superseded.contains(id) {
+            continue;
         }
+        let value = xc_cache::measurement_value(
+            measurement,
+            cache.resolver.context("retained evidence requires a resolver")?,
+            cache.acceptance.context("retained evidence requires an acceptance policy")?,
+        ).with_context(|| format!("{id}: could not verify retained evidence"))?;
+        anyhow::ensure!(
+            xc_cache::NumericalCoverage::from_value(&value) == reference.coverage,
+            "{id}: retained coverage differs from the source artifact"
+        );
     }
     Ok(())
 }
@@ -514,7 +629,7 @@ where
     Ok(record)
 }
 
-fn bounded_file_digest(path: &Path) -> Result<xc_cache::ContentDigest> {
+pub(super) fn bounded_file_digest(path: &Path) -> Result<xc_cache::ContentDigest> {
     anyhow::ensure!(
         fs::symlink_metadata(path)?.file_type().is_file(),
         "retained identity file must be regular"
@@ -602,7 +717,8 @@ fn producer_identity(configuration: &str) -> Result<serde_json::Value> {
         "source_coefficient_limit":std::env::var("XC_SMOOTH_SOURCE_MAXIMUM_COEFFICIENTS").ok(),
         "cargo_lock_sha256":xc_cache::ContentDigest::sha256(include_bytes!("../Cargo.lock")),
         "driver_sha256":xc_cache::ContentDigest::sha256_chunks([
-            include_bytes!("capture.rs").as_slice(), include_bytes!("capture_recovery.rs").as_slice()]),
+            include_bytes!("capture.rs").as_slice(), include_bytes!("capture_recovery.rs").as_slice(),
+            include_bytes!("windows_process.rs").as_slice()]),
         "root_certification":cfg!(feature="root-certification"),
         "experimental_gl_root_parallel":cfg!(feature="experimental-gl-root-parallel")}),
     )
@@ -1261,7 +1377,7 @@ pub fn recover_capture_with_mode(
     )
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 fn recover_capture_configured(
     journal: &Path,
     output: &Path,
@@ -1282,7 +1398,7 @@ fn recover_capture_configured(
     )
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 fn recover_capture_configured_mode(
     journal: &Path,
@@ -1344,6 +1460,24 @@ fn recover_capture_configured_mode_with_override(
     let (original_capture, capture_digest) = frozen_json(&journal.join("capture.json"))?;
     let original: xc_cache::CaptureArtifact = serde_json::from_value(original_capture)?;
     original.validate()?;
+    if configuration["capture"]["level"] == "ultra"
+        && !configuration["sector_gap_certificate_storage"].is_null()
+    {
+        anyhow::ensure!(
+            configuration["applicability"]["excluded_diagnostics"]["finite_root_budget"].is_null()
+            && original.requested_diagnostics.iter().any(|id| id == "finite_root_budget")
+            && configuration["explicit_diagnostics"].as_array().is_some_and(|ids| ids.iter().any(|id| id == "sector_gap_certificate")),
+            "original Ultra request for sector certification must retain its certificate and root budget"
+        );
+    }
+    if configuration["applicability"]["excluded_diagnostics"]["finite_root_budget"] == NO_SECTOR_CERTIFICATE {
+        anyhow::ensure!(original.resolved_plan == configuration
+            && configuration["sector_gap_certificate_storage"].is_null()
+            && configuration["explicit_diagnostics"].as_array().is_some_and(|ids| !ids.iter().any(|id| id == "sector_gap_certificate"))
+            && !original.requested_diagnostics.iter().any(|id| id == "finite_root_budget")
+            && !selected.iter().any(|id| id == "finite_root_budget"),
+            "certificate-dependent root budget exclusion disagrees with the frozen request");
+    }
     if let Some(requested) = configuration["applicability"]["requested_diagnostics"].as_array() {
         let declared: BTreeSet<String> = requested
             .iter()
@@ -1358,8 +1492,24 @@ fn recover_capture_configured_mode_with_override(
             "original applicability and capture receipt disagree"
         );
     }
-    let initial_diagnostics = recovery_diagnostics(&original, selected)?;
+    let overlap = overlap_bound_to_primary(&configuration, &manifests)?;
+    if overlap {
+        anyhow::ensure!(original.resolved_plan == configuration
+            && RESPONSE_DIAGNOSTICS.iter().all(|id| !original.requested_diagnostics.iter().any(|item| item == id)
+                && !selected.iter().any(|item| item == id)),
+            "response exclusion differs from the original source-bound capture");
+    }
+    let claim1c = configuration["applicability"]["policy"] == "claim1c-hp1000" && !overlap;
+    let mut initial_diagnostics = recovery_diagnostics(&original, selected)?;
+    if selected.is_empty() {
+        for id in unresolved_response_diagnostics(claim1c, &original, None) {
+            if !initial_diagnostics.iter().any(|item| item == id) {
+                initial_diagnostics.push(id.to_owned());
+            }
+        }
+    }
     let (optional_digests, optional_inputs) = optional_original_inputs(&journal)?;
+    check_original_support(&journal, &configuration, &optional_digests, &optional_inputs)?;
     let response_options = recovery_response_options(
         &journal,
         &configuration,
@@ -1466,10 +1616,30 @@ fn recover_capture_configured_mode_with_override(
     };
     let managed =
         xc_cache::ManagedArtifactCacheSession::new_with_resources(managed_config, resources)?;
+    if overlap {
+        // A numerical exemption must come from the original producer. Matching
+        // JSON files in the journal alone cannot authenticate a new exemption.
+        let mut reader = managed.context();
+        reader.mode = xc_cache::ArtifactExecutionCacheMode::RequireReuse;
+        reader.write_on_miss = false;
+        reader.production_sink = None;
+        let saved = xc_cache::persist_capture(&original, &reader)
+            .context("original source-bound response exclusion could not be authenticated")?;
+        anyhow::ensure!(saved.reused_manifest.is_some() && saved.value == original,
+            "response exclusion does not match the original persisted receipt");
+    }
     // Both retry modes authenticate the previous committed capture and queue
     // before any preparation, capture or staging can append legitimate work.
     if let Some(completion) = &completion {
-        verify_completed_capture(&output, completion)?;
+        let previous = verify_completed_capture(&output, completion)?;
+        verify_retained_values(&original, &previous.requested_diagnostics, &managed.context())?;
+        verify_retained_values(&previous, &[], &managed.context())?;
+        let (accounted, refreshed) = recovery_coverage(&original, &previous)?;
+        anyhow::ensure!(accounted && refreshed, "retained supplement omits required acquisitions or refreshes");
+        anyhow::ensure!(
+            unresolved_response_diagnostics(claim1c, &original, Some(&previous)).is_empty(),
+            "retained supplemental capture has incomplete diagnostic coverage"
+        );
         verify_original_inventory(&journal, &frozen)?;
         verify_staged_draft_inventory(&completion["staged_drafts"], &managed.staged_drafts()?)?;
     }
@@ -1516,6 +1686,15 @@ fn recover_capture_configured_mode_with_override(
                             original_request["base_inputs"].clone(),
                         )?)
                     };
+                let old_base = cluster_policy_inputs(
+                    old_base,
+                    &configuration,
+                    &manifests,
+                    &configuration_digest,
+                    initial_diagnostics
+                        .iter()
+                        .any(|id| id == "spectral_cluster_full" || id == "spectral_cluster"),
+                )?;
                 let base = sources.prepare_recovery_inputs(old_base.as_ref())?;
                 recovery_request(
                     &original_request,
@@ -1586,7 +1765,7 @@ fn recover_capture_configured_mode_with_override(
                 let spec = xc_spectral::target::TargetProfileSpec::from_json(&serde_json::to_vec(
                     &target_value,
                 )?)?;
-                let definition = xc_cache::ContentDigest(spec.digest()?);
+                let definition = xc_cache::ContentDigest(spec.base_value_digest()?);
                 let original_base: ExternalResearchInputs =
                     serde_json::from_value(original_base.clone())?;
                 Ok((original_base, definition))
@@ -1602,48 +1781,16 @@ fn recover_capture_configured_mode_with_override(
         } else {
             None
         };
-        // An explicitly excluded old sector solve supplies provenance for an
-        // assessment of unavailable vectors. It is not evidence that a new
-        // sector solve ran, nor a substitute set of cluster eigenvectors.
-        if initial_diagnostics
-            .iter()
-            .any(|id| id == "spectral_cluster_full" || id == "spectral_cluster")
-            && input.cluster.is_empty()
-            && input.cluster_preparation_assessment.is_none()
-        {
-            if let Some(reason) =
-                configuration["applicability"]["excluded_diagnostics"]["sector_analysis"].as_str()
-            {
-                let state = manifests
-                    .iter()
-                    .find(|m| m.key.kind == "ccm_weil_eigenpair")
-                    .context("retained eigenpair required")?;
-                let matrix = manifests
-                    .iter()
-                    .find(|m| m.key.kind == "ccm_tau_matrix")
-                    .context("retained Tau required")?;
-                input.cluster_preparation_assessment = Some(
-                    xc_spectral::ccm::extended_research::ClusterPreparationAssessment {
-                        source_eigenpair: state.content_digest.clone(),
-                        source_matrix: matrix.content_digest.clone(),
-                        source_precision_bits: u32::try_from(
-                            configuration["precision_bits"]
-                                .as_u64()
-                                .context("original precision missing")?,
-                        )?,
-                        requested_eigenpairs_per_sector: usize::try_from(
-                            configuration["capture"]["sector_eigenpairs"]
-                                .as_u64()
-                                .context("original sector request missing")?,
-                        )?,
-                        eigenvalue_route: "complete_qr".into(),
-                        origin: "declared_prior_capture_policy".into(),
-                        evidence_digest: configuration_digest.clone(),
-                        reason: reason.into(),
-                    },
-                );
-            }
-        }
+        input = cluster_policy_inputs(
+            Some(input),
+            &configuration,
+            &manifests,
+            &configuration_digest,
+            initial_diagnostics
+                .iter()
+                .any(|id| id == "spectral_cluster_full" || id == "spectral_cluster"),
+        )?
+        .context("recovery research input unavailable")?;
         sources.validate_recovery_input(&input)?;
         checkpoint_save(&output.join("external-research-inputs.json"), &input)?;
         let mut preparation_evidence = serde_json::Map::new();
@@ -1734,6 +1881,14 @@ fn recover_capture_configured_mode_with_override(
                         id,
                         reference_preparation_failure.as_ref(),
                         || {
+                            if !configuration["sector_gap_certificate_storage"].is_null()
+                                && matches!(id.trim_end_matches("_full"), "transform_enclosure" | "capture_preflight" | "finite_root_budget")
+                                && !parents.iter().any(|m| m.key.kind == "ccm_sector_gap_certificate")
+                            {
+                                return Err(xc_cache::CaptureFailure::Blocked {
+                                    reason: "requested sector-gap certificate unavailable during recovery".into(),
+                                });
+                            }
                             sources.capture_recovery_outcome_with_response_options(
                                 id,
                                 &input,
@@ -1758,27 +1913,28 @@ fn recover_capture_configured_mode_with_override(
         })?;
         recovery_replace_file(&output.join("capture-values.json"), &export, &export_digest)?;
         verify_original_inventory(&journal, &frozen)?;
-        let accounted = original.receipt.outcomes().iter().all(|(id, outcome)| {
-            matches!(outcome, xc_core::DiagnosticOutcome::Completed { .. })
-                || matches!(
-                    record.value.receipt.outcomes().get(id),
-                    Some(xc_core::DiagnosticOutcome::Completed { .. })
-                )
-        });
-        let refreshed = affected.keys().all(|id| {
-            matches!(
-                record.value.receipt.outcomes().get(id),
-                Some(xc_core::DiagnosticOutcome::Completed { .. })
-            )
-        });
+        let unresolved = unresolved_response_diagnostics(claim1c, &original, Some(&record.value));
+        let (accounted, refreshed) = recovery_coverage(&original, &record.value)?;
+        let covered = record.value.receipt.is_complete() && unresolved.is_empty() && accounted && refreshed;
+        let retained_evidence = if covered {
+            verify_retained_values(&original, &record.value.requested_diagnostics, &cache)
+        } else {
+            Ok(())
+        };
+        let complete = covered && retained_evidence.is_ok();
         recovery_replace(
             &output.join("status.json"),
-            &serde_json::json!({"schema_version":1,"capture_complete":record.value.receipt.is_complete(),
+            &serde_json::json!({"schema_version":1,"capture_complete":complete, "unresolved_response_diagnostics":unresolved,
             "all_original_requests_accounted":accounted,"primary_recomputed":false,"root_recomputed":false,
             "affected_refresh_complete":refreshed,"affected_diagnostics":affected,
             "original_claim_receipt_unchanged":true,"numerical_coverage":record.value.numerical_coverage,
             "scope":"supplemental retained-source acquisition; inspect qualified numerical outcomes; original claim verdict unchanged"}),
         )?;
+        retained_evidence?;
+        anyhow::ensure!(
+            complete,
+            "supplemental recovery incomplete; inspect the retained receipt"
+        );
         let mut completed_files = serde_json::Map::new();
         for name in [
             "capture.json",
@@ -1809,10 +1965,6 @@ fn recover_capture_configured_mode_with_override(
             &output.join("publication-status.json"),
             &serde_json::json!({"status":"finalized","capture_recomputed":false}),
         )?;
-        anyhow::ensure!(
-            record.value.receipt.is_complete(),
-            "supplemental recovery incomplete; inspect the retained receipt"
-        );
         Ok(())
     })();
     if let Err(error) = &result {
@@ -2110,6 +2262,44 @@ mod tests {
     }
 
     #[test]
+    fn claim1c_recovery_requires_resolved_rows_in_each_effective_response() {
+        let diagnostics = ["directional_response_full", "root_transport"];
+        let original = xc_cache::collect_capture(
+            &serde_json::json!({}),
+            diagnostics.iter().map(|id| (*id).to_owned()).collect(),
+            |_| {
+                xc_cache::CapturedDiagnostic::new(
+                    &serde_json::json!({"expected_rows":2,"rows":[{"outcome":"point_measurement"},{"outcome":"point_measurement"}]}),
+                    vec![],
+                )
+                .map_err(CaptureFailure::failed)
+            },
+        )
+        .unwrap();
+        assert!(original.receipt.is_complete());
+        assert!(unresolved_response_diagnostics(true, &original, None).is_empty());
+        let mut supplement = original.clone();
+        supplement.requested_diagnostics = vec!["root_transport".into()];
+        for count in [0, 1] {
+            let row = supplement
+                .numerical_coverage
+                .get_mut("root_transport")
+                .unwrap();
+            row.resolved_rows = count;
+            row.unresolved_rows = 2 - count;
+            assert_eq!(
+                unresolved_response_diagnostics(true, &original, Some(&supplement)),
+                ["root_transport"]
+            );
+            assert_eq!(unresolved_response_diagnostics(false, &original, Some(&supplement)), ["root_transport"]);
+        }
+        supplement.requested_diagnostics.clear();
+        supplement.numerical_coverage.clear();
+        assert!(unresolved_response_diagnostics(false, &supplement, None).is_empty());
+        assert_eq!(unresolved_response_diagnostics(true, &supplement, None), diagnostics);
+    }
+
+    #[test]
     fn interrupted_committed_generation_transition_refuses_stale_completion() {
         let root = std::env::temp_dir().join(format!(
             "paper-capture-generation-{}-{}",
@@ -2160,7 +2350,7 @@ mod tests {
             "staged_drafts":staged_draft_inventory(&[]).unwrap()});
         checkpoint_save(&root.join("capture-completed.json"), &completion).unwrap();
         let before = fs::read(root.join("capture-completed.json")).unwrap();
-        verify_completed_capture(&root, &completion).unwrap();
+        assert!(verify_completed_capture(&root, &completion).is_err());
         // A new valid measurement can become durable before the new aggregate
         // completion is committed. Its old completion cannot authorize it.
         let completed = xc_cache::collect_capture(&plan, vec!["energy_allowance".into()], |_| {
@@ -2178,6 +2368,10 @@ mod tests {
             fs::read(root.join("capture-completed.json")).unwrap(),
             before
         );
+        let mut valid = completion.clone();
+        valid["files"]["capture.json"] =
+            serde_json::to_value(bounded_file_digest(&root.join("capture.json")).unwrap()).unwrap();
+        verify_completed_capture(&root, &valid).unwrap();
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -2581,6 +2775,105 @@ mod tests {
     }
 
     #[test]
+    fn recovery_requires_original_support_and_explicit_receipts() {
+        let root = std::env::temp_dir().join(format!(
+            "paper-support-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&root).unwrap();
+        let mut request =
+            serde_json::json!({"explicit_diagnostics":[],"requires_spectral_isolation":true});
+        let check = |request: &serde_json::Value| {
+            let (digests, inputs) = optional_original_inputs(&root)?;
+            check_original_support(&root, request, &digests, &inputs)
+        };
+        assert!(check(&request).is_err());
+        save(
+            &root.join("convergence-observation.json"),
+            &serde_json::json!({"fixture":1}),
+        )
+        .unwrap();
+        assert!(check(&request).is_err());
+        save(
+            &root.join("spectral-isolation.json"),
+            &serde_json::json!({"fixture":1}),
+        )
+        .unwrap();
+        assert!(check(&request).is_ok());
+        for name in [
+            "external-research-inputs-status.json",
+            "component-preparation-status.json",
+            "spectral-isolation-status.json",
+        ] {
+            save(&root.join(name), &serde_json::json!({"status":"failed"})).unwrap();
+            assert!(check(&request).is_err());
+            fs::remove_file(root.join(name)).unwrap();
+        }
+        for component in [
+            "resource_blocked",
+            "unavailable",
+            "retained_independent_components_prepared",
+        ] {
+            let status = serde_json::json!({"status":"prepared","component_preparation":component});
+            recovery_replace(&root.join("input-preparation-status.json"), &status).unwrap();
+            assert_eq!(
+                check(&request).is_ok(),
+                component == "retained_independent_components_prepared"
+            );
+        }
+        request["explicit_diagnostics"] = serde_json::json!(["root_certificate"]);
+        assert!(check(&request).is_err());
+        let plan =
+            serde_json::json!({"paper_capture":request,"explicit_diagnostics":["root_certificate"]});
+        save(
+            &root.join("capture-explicit-values.json"),
+            &serde_json::json!({}),
+        )
+        .unwrap();
+        for refused in [true, false] {
+            let receipt = xc_cache::collect_capture(&plan, vec!["root_certificate".into()], |_| {
+                if refused {
+                    return Err(CaptureFailure::failed("fixture refusal"));
+                }
+                xc_cache::CapturedDiagnostic::new(&serde_json::json!({"value":1}), vec![])
+                    .map_err(CaptureFailure::failed)
+            })
+            .unwrap();
+            recovery_replace(&root.join("capture-explicit.json"), &receipt).unwrap();
+            assert_eq!(check(&request).is_ok(), !refused);
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn successful_selected_receipt_does_not_cover_omitted_originals_or_refreshes() {
+        let original = original_capture();
+        for (id, accounted, refreshed) in [
+            ("compactness", false, true),
+            ("energy_allowance", true, false),
+        ] {
+            let supplement = xc_cache::collect_capture(
+                &serde_json::json!({"affected_diagnostics":{"compactness":{}}}),
+                vec![id.into()],
+                |_| {
+                    xc_cache::CapturedDiagnostic::new(&serde_json::json!({"value":1}), vec![])
+                        .map_err(CaptureFailure::failed)
+                },
+            )
+            .unwrap();
+            assert!(supplement.receipt.is_complete());
+            assert_eq!(
+                recovery_coverage(&original, &supplement).unwrap(),
+                (accounted, refreshed)
+            );
+        }
+    }
+
+    #[test]
     fn recovery_refuses_inconsistent_completed_inventory() {
         let mut record = original_capture();
         record.measurements.remove("compactness");
@@ -2888,8 +3181,8 @@ mod tests {
         assert!(validate_recovery_request(&request, &configuration, &[], &digest).is_err());
     }
 
-    #[cfg(unix)]
     #[test]
+    #[cfg_attr(windows, ignore = "requires CLAIM_PYTHON pointing to a working Python 3 interpreter")]
     fn tiny_retained_recovery_is_additive_and_source_misses_never_solve() {
         use xc_cache::*;
         let root = std::env::temp_dir().join(format!(
@@ -2956,7 +3249,9 @@ mod tests {
         )
         .unwrap();
         let target_digest = frozen_json(&target).unwrap().1;
-        let configuration = serde_json::json!({"schema_version":1,"precision_bits":128,"capture":{"sector_eigenpairs":2},
+        save(&original.join("convergence-observation.json"), &serde_json::json!({"fixture":true})).unwrap();
+        let configuration = serde_json::json!({"schema_version":1,"precision_bits":128,"explicit_diagnostics":[],
+            "requires_spectral_isolation":false,"capture":{"sector_eigenpairs":2},
             "research_inputs":{"XC_TARGET_SPEC_FILE":{"status":"supplied","sha256":target_digest}}});
         save(&original.join("request.json"), &configuration).unwrap();
         save(&original.join("input-preparation-request.json"),&serde_json::json!({"schema_version":1,"configuration":configuration,
@@ -2996,7 +3291,8 @@ mod tests {
             execute_remote_mutations: false,
             output_validation: None,
         };
-        let preparer = serde_json::json!({"argv":["python3","-c",
+        let python = std::env::var("CLAIM_PYTHON").unwrap_or_else(|_| "python3".into());
+        let preparer = serde_json::json!({"argv":[python,"-c",
             "import json,pathlib,sys; marker=pathlib.Path(sys.argv[2]).parents[2]/'preparer-ran'; assert not marker.exists(), 'preparation reran'; marker.touch(); r=json.loads(pathlib.Path(sys.argv[2]).read_text()); pathlib.Path(sys.argv[4]).write_text(json.dumps(r['base_inputs']))"],"timeout_seconds":10}).to_string();
         let output = root.join("supplement");
         recover_capture_configured(&original, &output, None, &[], &preparer, config.clone())

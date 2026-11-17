@@ -23,6 +23,8 @@ mod benchmark;
 mod capture;
 #[cfg(feature = "hp")]
 mod cohort;
+#[cfg(all(windows, feature = "hp"))]
+mod windows_process;
 use benchmark::{BenchmarkComparisonMode, BenchmarkOptions, BenchmarkRecorder};
 
 #[derive(Debug, Parser)]
@@ -138,6 +140,27 @@ fn sector_gap_certificate_selection(
     Ok(selected)
 }
 
+#[cfg(feature = "hp")]
+fn with_sector_certificate(
+    mut options: ccm::hp::CcmResearchCaptureOptions,
+    storage: Option<SectorGapCertificateStorage>,
+) -> ccm::hp::CcmResearchCaptureOptions {
+    let Some(format) = storage else {
+        return options;
+    };
+    println!("  sector-gap certification: {format:?} storage (explicit request)");
+    let rules = ccm::sector_gap_certificate::CcmSectorGapCertificationOptions::default();
+    #[cfg(feature = "compact-sector-certificates")]
+    if format == SectorGapCertificateStorage::Compact {
+        let source = ccm::sector_gap_certificate::compact::ReconstructionSourceIdentity::current(
+            benchmark::TOOLKIT_REVISION,
+        );
+        return options.with_compact_sector_gap_certification(rules, source);
+    }
+    options.sector_gap_certification = Some(rules);
+    options
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum GroundIndex {
     /// Admit the selected state only when the ground-index proof concludes.
@@ -210,6 +233,9 @@ impl ResearchCapture {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Reassemble a compact sector certificate from JSON on stdin and print its verified SHA-256.
+    #[cfg(feature = "compact-sector-certificates")]
+    VerifyCompactSectorCertificate,
     #[cfg(feature = "hp")]
     /// Freeze an optional adjacent-pair cohort from explicitly selected journals.
     PlanCohort {
@@ -425,6 +451,9 @@ enum Command {
         /// Root acquisition policy for supplemental research capture.
         #[arg(long, value_enum, default_value_t = RootAcquisitionMode::Seeded)]
         root_acquisition: RootAcquisitionMode,
+        /// Certify the supplemental analytic finite sector gap using the selected storage.
+        #[arg(long, value_enum, value_name = "FORMAT")]
+        sector_gap_certificate: Option<SectorGapCertificateStorage>,
     },
     /// Analyze the low even and odd CCM parity sectors and report GapLog.
     /// This is separate from ordinary root reproduction because it computes
@@ -523,6 +552,22 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     validate_capture_stream_scalar_mode(&cli)?;
     validate_publication_mode(&cli)?;
+    #[cfg(feature = "compact-sector-certificates")]
+    if matches!(cli.command, Command::VerifyCompactSectorCertificate) {
+        anyhow::ensure!(
+            !cli.preflight_only,
+            "certificate verification requires replay"
+        );
+        // Read-only verification must not open the claim's cache or publication session.
+        use ccm::sector_gap_certificate::compact::reconstruct_verified_compact_sector_gap;
+        use std::io::Read;
+        let mut bytes = Vec::new();
+        std::io::stdin().lock().read_to_end(&mut bytes)?;
+        let certificate = serde_json::from_slice(&bytes)?;
+        reconstruct_verified_compact_sector_gap(&certificate)?;
+        println!("{}", xc_cache::ContentDigest::sha256(&bytes).0);
+        return Ok(());
+    }
     if cli.preflight_only {
         if !matches!(
             &cli.command,
@@ -642,6 +687,8 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
     validate_publication_mode(&cli)?;
     print_runtime_parallelism();
     match cli.command {
+        #[cfg(feature = "compact-sector-certificates")]
+        Command::VerifyCompactSectorCertificate => unreachable!("handled before claim sessions"),
         #[cfg(feature = "hp")]
         Command::PlanCohort {
             journal,
@@ -1001,8 +1048,12 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                                         last: requested_last_root_index,
                                     }
                                 };
+                                let scope = match root_acquisition {
+                                    RootAcquisitionMode::Seeded => "reference labels matched to independently certified finite ranks",
+                                    RootAcquisitionMode::Independent => "independently indexed finite-source roots",
+                                };
                                 println!(
-                                    "  root validation: certified exact finite-source ordinals {}..={} at {} digits (separate certificate artifact)",
+                                    "  root validation: {scope} {}..={} at {} digits (separate certificate artifact)",
                                     first_root_index,
                                     requested_last_root_index,
                                     root_enclosure_digits
@@ -1020,10 +1071,6 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                         ccm::hp::CcmResearchCaptureOptions::maximum(research_sector_eigenpairs);
                     capture_options.capture_evenness = sector_analysis.is_some();
                     capture_options.sector_analysis = sector_analysis;
-                    capture_options.sector_gap_certification =
-                        sector_gap_certificate.is_some().then(
-                            ccm::sector_gap_certificate::CcmSectorGapCertificationOptions::default,
-                        );
                     capture_options.root_certification = root_certification;
                     // Maximum and Ultra enable distance automatically. The
                     // journal preserves unavailable target inputs as outcomes.
@@ -1043,23 +1090,8 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                         capture_prime_power_response || research_capture.includes_ultra();
                     capture_options.capture_u_flow_response =
                         capture_u_flow_response || research_capture.includes_ultra();
-                    #[cfg(feature = "compact-sector-certificates")]
-                    if sector_gap_certificate == Some(SectorGapCertificateStorage::Compact) {
-                        let source = ccm::sector_gap_certificate::compact::ReconstructionSourceIdentity::current(
-                            option_env!("XC_TOOLKIT_SOURCE_REVISION")
-                                .unwrap_or("paper1-compact-build-see-retained-cargo-lock"),
-                        );
-                        capture_options = capture_options.with_compact_sector_gap_certification(
-                            ccm::sector_gap_certificate::CcmSectorGapCertificationOptions::default(
-                            ),
-                            source,
-                        );
-                    }
-                    if let Some(format) = sector_gap_certificate {
-                        println!(
-                            "  sector-gap certification: {format:?} storage (explicit request)"
-                        );
-                    }
+                    let capture_options =
+                        with_sector_certificate(capture_options, sector_gap_certificate);
                     if cli.preflight_only {
                         capture::validate_configuration(
                             &params,
@@ -1067,6 +1099,7 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                             research_capture,
                             research_sector_eigenpairs,
                             &cli.capture_journal,
+                            sector_gap_certificate.is_some(),
                         )?;
                         cfg.validate_source_admission(&params)?;
                         println!(
@@ -1184,7 +1217,7 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                             xc_zeta::zeros::bundled_dataset_identity()?.decimal_digits,
                         );
                         // Enough significant digits to display guard-space
-                        // measurements such as 1019.0 at HP-1000.
+                        // measurements such as 1019.7 at HP-1000.
                         let column_digits =
                             ((precision_digits as f64).log10().ceil() as usize + 2).max(5);
 
@@ -1382,7 +1415,17 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
             research_capture,
             research_sector_eigenpairs,
             root_acquisition,
+            sector_gap_certificate,
         } => {
+            let sector_gap_certificate =
+                sector_gap_certificate_selection(false, sector_gap_certificate)?;
+            if sector_gap_certificate.is_some()
+                && research_capture
+                    .sector_eigenpairs(research_sector_eigenpairs)
+                    .is_none()
+            {
+                anyhow::bail!("sector-gap certification requires gap, maximum or ultra capture");
+            }
             #[cfg(not(feature = "hp"))]
             {
                 let _ = (
@@ -1393,6 +1436,7 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                     research_capture,
                     research_sector_eigenpairs,
                     root_acquisition,
+                    sector_gap_certificate,
                 );
                 anyhow::bail!("check-evenness requires --features hp at build time");
             }
@@ -1411,6 +1455,7 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                         research_capture,
                         research_sector_eigenpairs,
                         &cli.capture_journal,
+                        sector_gap_certificate.is_some(),
                     )?;
                     let mut natural = cfg.clone();
                     natural.set_parity_policy(ccm::hp::CcmParityPolicy::Natural);
@@ -1434,9 +1479,10 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
 
                 let claim_started = std::time::Instant::now();
                 let toolkit_started = std::time::Instant::now();
-                let result = capture::measure_evenness(&params, &cfg, &cli.capture_journal)?;
+                let (result, publication) =
+                    capture::measure_evenness(&params, &cfg, &cli.capture_journal)?;
                 benchmark.record_duration("toolkit_primary", toolkit_started.elapsed());
-                capture::write_evenness(
+                let direct = capture::write_evenness(
                     &cli.capture_journal,
                     &serde_json::json!({
                         "schema_version":1,"command":"check-evenness","lambda_squared":lambda_sq,"n_modes":n_modes,
@@ -1502,14 +1548,19 @@ fn run(cli: Cli, benchmark: &mut BenchmarkRecorder) -> Result<()> {
                 }
 
                 if research_capture != ResearchCapture::Claim {
-                    capture_supplemental_research_artifacts(
+                    let journal = capture_supplemental_research_artifacts(
                         &params,
                         &cfg,
                         research_capture,
                         research_sector_eigenpairs,
                         root_acquisition,
+                        sector_gap_certificate,
                         &cli.capture_journal,
                     )?;
+                    capture::bind_evenness(&direct, &journal)?;
+                }
+                if let Some(session) = publication {
+                    session.finalize_publication_inventory()?;
                 }
                 benchmark.record_duration("claim_and_research_capture", claim_started.elapsed());
             }
@@ -2097,8 +2148,9 @@ fn capture_supplemental_research_artifacts(
     level: ResearchCapture,
     count: usize,
     acquisition: RootAcquisitionMode,
+    sector_certificate: Option<SectorGapCertificateStorage>,
     journal: &capture::CaptureJournalArgs,
-) -> Result<()> {
+) -> Result<std::path::PathBuf> {
     let mut cfg = cfg.clone().with_adaptive_root_precision();
     cfg.n_eigenvalues = cfg.n_eigenvalues.min(params.n_modes).max(1);
     let target = ccm::window::ZeroTarget::FirstK {
@@ -2117,11 +2169,12 @@ fn capture_supplemental_research_artifacts(
         params.n_modes + 1,
     )?
     .primary_options()?;
+    let options = with_sector_certificate(options, sector_certificate);
     // The evenness claims report the even-state spectral isolation with the
     // parity-sector separations; it needs the even-sector route.
     let even_state_isolation = level != ResearchCapture::Claim
         && cfg.effective_parity_policy() == ccm::hp::CcmParityPolicy::EvenSector;
-    capture::execute(
+    let captured = capture::execute(
         params,
         &cfg,
         level,
@@ -2154,7 +2207,7 @@ fn capture_supplemental_research_artifacts(
             }
         },
     )?;
-    Ok(())
+    Ok(captured.directory)
 }
 
 fn print_results_f64(result: &CcmResult, top: usize) -> Result<()> {

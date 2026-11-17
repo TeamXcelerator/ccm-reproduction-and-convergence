@@ -145,6 +145,7 @@ pub fn execute(plan: &Path, output: &Path, defer_publication: bool) -> Result<()
             .saturating_mul(8)
             .saturating_add(1 << 20),
     )?;
+    let request_digest = ContentDigest::sha256(&bytes);
     let request: RequestFile = serde_json::from_slice(&bytes)?;
     ensure!(
         request.schema_version == 1
@@ -217,6 +218,7 @@ pub fn execute(plan: &Path, output: &Path, defer_publication: bool) -> Result<()
             save_new(
                 &output.join("status.json"),
                 &serde_json::json!({
+                    "request_sha256":request_digest, "numerical_identity":null,
                     "execution_complete":false, "requested_coverage_complete":false,
                     "primary_recomputed":false, "error":format!("{error:#}")
                 }),
@@ -232,13 +234,14 @@ pub fn execute(plan: &Path, output: &Path, defer_publication: bool) -> Result<()
     save_new(
         &output.join("status.json"),
         &serde_json::json!({
+            "request_sha256":request_digest, "numerical_identity":result.measurements.numerical_identity,
             "execution_complete":result.measurements.execution_complete,
             "requested_coverage_complete":result.measurements.requested_coverage_complete,
             "primary_recomputed":false,"original_claim_verdicts_unchanged":true,
             "cache_status":result.cache_status,"publication_deferred":defer_publication
         }),
     )?;
-    if !defer_publication {
+    if complete && !defer_publication {
         match managed.finalize_publication_inventory() {
             Ok(inventory) => save_new(
                 &output.join("publication-status.json"),

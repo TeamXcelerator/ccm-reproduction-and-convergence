@@ -185,7 +185,17 @@
       "parity_bound_from_reported_residual_and_gap": "4.608908630851e-964",
       "gap_manifest": "62a2c34e33d1d48318d063a9f05280b7f3dd7aa40b8c676ef32ba2b726af87a5",
       "response_manifest": "05bd2d44533065e5ffe0652429ed1dbf0438e00a746f1468639d9d7425d97f9d",
-      "natural_state_manifest": "9bcf7ce0a0c90211952bfdab5d0d747d80dd64f0c57575f0f3abea720a368421"
+      "natural_state_manifest": "9bcf7ce0a0c90211952bfdab5d0d747d80dd64f0c57575f0f3abea720a368421",
+      "even_state_manifest": "b53d63b910770414bfafd23fb7cd0368dcdea959ece7b8260ddd1a5b269b88cb",
+      "natural_state_payload_sha256": "945e2dd46f31d38fa40349969257b6c275f5b4bcb4f91ea703dca5912a88de77",
+      "even_state_payload_sha256": "24f9f33889c272f72f1a23599aed214bf85c3297a8e0314901afc678f72f89de",
+      "relative_eigenvalue_difference": "1.107201030018e-962",
+      "evenness_reference": {
+        "natural_state_payload_sha256": "d4641cce85fc564b616963a97eda3ea3faa4cb119e604212ed73bcfee67ebfdf",
+        "even_state_payload_sha256": "6bc371eefe3ea35783a1a99b82b8653f4da91ca36a269ab6c8e48f37d3298df9",
+        "parity_defect_recomputed": "6.44672633199240370713e-967",
+        "relative_eigenvalue_difference": "4.50134405228086938684e-963"
+      }
     },
     {
       "configuration": [
@@ -203,7 +213,17 @@
       "parity_bound_from_reported_residual_and_gap": "1.844951862248e-560",
       "gap_manifest": "bdc7e8987c4b8921e79c5425afd8423cba8a8959f472d29f75965208d359f071",
       "response_manifest": "4e4a1226ba2de9a6c99081d69e228b4e6694d92fdf86cdcaa98884a7097033bd",
-      "natural_state_manifest": "364215d0ade36afcbaad391f5ad96c01b513388275c60011a1273c7d8e706315"
+      "natural_state_manifest": "364215d0ade36afcbaad391f5ad96c01b513388275c60011a1273c7d8e706315",
+      "even_state_manifest": "7896a2e87956f86b1cce5c847c5365a74d7bb97d4a40f8818d23e718aefc2260",
+      "natural_state_payload_sha256": "e40189f6d992758f0c79462254fa9ea726a86b3e24ca3834721bc519abf6efc8",
+      "even_state_payload_sha256": "e9b434b5a06ef6d92edc1a711b02075151e7c24c3bcf42c9b2c7de3a8d953325",
+      "relative_eigenvalue_difference": "2.44377891866e-559",
+      "evenness_reference": {
+        "natural_state_payload_sha256": "d073dfba412709ac15e3c83054725d93eb60f670b4edc11c03979f46d9d70b55",
+        "even_state_payload_sha256": "70dcf3bf65ec5555f55de3cb8ebe2d42db3b5ca3da6ac155abc9843e605dd0d6",
+        "parity_defect_recomputed": "6.78560379795283580983874e-565",
+        "relative_eigenvalue_difference": "1.41978889151595654039530e-558"
+      }
     },
     {
       "configuration": [
@@ -221,7 +241,11 @@
       "parity_bound_from_reported_residual_and_gap": "3.196651333352e-760",
       "gap_manifest": "0063b4579c1781577b41fb529aa4cd1e2e487f2fdd4a1f6ecfde8de0ac3fea56",
       "response_manifest": "fc2569b3c2157639c97e371cfae80c1af1bdb8f61bb5fff68895d8cd6c6ef946",
-      "natural_state_manifest": "2945854f997664e80ab8155a8425df76975f207719b51765d55ffc9f52390d6c"
+      "natural_state_manifest": "2945854f997664e80ab8155a8425df76975f207719b51765d55ffc9f52390d6c",
+      "even_state_manifest": "67b6c016ae07f31101e6cba16a82f0d38aa7cad5fab17b97e7323e3946033ccd",
+      "natural_state_payload_sha256": "9107fce06b58f45769fba1f2485571be9d99aba23bef61d07904abefc3f43ed5",
+      "even_state_payload_sha256": "b9a01f0e509770bcc5914aef801fa5f09cceb70eb87fb0864c428d0dfad872a5",
+      "relative_eigenvalue_difference": "1.558831841488e-758"
     },
     {
       "configuration": [
@@ -239,7 +263,11 @@
       "parity_bound_from_reported_residual_and_gap": "1.225272193249e-661",
       "gap_manifest": "130ad1ec10ca465bb2cf8157f81c30b60a4a9eb7525033843e8b76ab2a543bfd",
       "response_manifest": "8f302beb14461939f43adacbc23ec8c155c20596958da5de1cacbd42abe7acb7",
-      "natural_state_manifest": "191e730dfe5ff0758b84db2fa0180096fa38c737e8ad1570c7ed856f238b2c19"
+      "natural_state_manifest": "191e730dfe5ff0758b84db2fa0180096fa38c737e8ad1570c7ed856f238b2c19",
+      "even_state_manifest": "e0693180f0c265b242448b00055208b1e53da3f95dd990310e4b25fdbae5f76c",
+      "natural_state_payload_sha256": "eb09dbc84384307ece7e8f3edb4cd4886e04ec9bd58776cd2ca4e50a03e08c85",
+      "even_state_payload_sha256": "6de84048e3d6546ac253cb6bf34a40150dff5a79f51b4fd8f04e93f7dbdc9897",
+      "relative_eigenvalue_difference": "1.806949012076e-660"
     },
     {
       "configuration": [
@@ -257,7 +285,11 @@
       "parity_bound_from_reported_residual_and_gap": "8.141951154628e-526",
       "gap_manifest": "34993a644cd0a8ec8da6808dfe97ad329fbb63492eb75891f464fff191aeaedf",
       "response_manifest": "118b09ab017c79d452d7d3cf5bbd2e02cc842da58ef300dab268f32b01d0590e",
-      "natural_state_manifest": "3bd40ec9b3b45469d75df999e9f3e88429ec2155de4b5df6065d2ad99068691a"
+      "natural_state_manifest": "3bd40ec9b3b45469d75df999e9f3e88429ec2155de4b5df6065d2ad99068691a",
+      "even_state_manifest": "8c549252f08d6796dabfcfb665e08446683bb3d64e7800186c695e79430eb896",
+      "natural_state_payload_sha256": "7e9bac429eb93adf7cee3e9530f6fed3cfe79ddf0c78f8035d9388f8e7475ac2",
+      "even_state_payload_sha256": "1d16a55cafed365f1d8fd79b46943c801b836c97903c492cd0a397c07954092c",
+      "relative_eigenvalue_difference": "7.926552548533e-526"
     }
   ],
   "critical_N": {

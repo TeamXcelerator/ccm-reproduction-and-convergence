@@ -6,20 +6,38 @@ holds. PASS applies to the stated check, not a theorem or an interval
 certificate.
 """
 import argparse
+from collections import Counter
+import hashlib
+import importlib.util
 import json
+import math
+import re
 import sys
 from decimal import Decimal, localcontext
 from pathlib import Path
+from zipfile import BadZipFile
 
 D = Decimal
+_spec = importlib.util.spec_from_file_location('manuscript_cells', Path(__file__).with_name('manuscript_cells.py'))
+manuscript = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(manuscript)
 # Retained rational roots can exceed Python's default decimal conversion limit.
 # Each scalar still has an explicit admission limit before conversion.
 if hasattr(sys, 'set_int_max_str_digits') and 0 < sys.get_int_max_str_digits() < 40000:
     sys.set_int_max_str_digits(40000)
 HEADLINE = {(13, 120): {1: D('55.764'), 20: D('25.339')},
             (100, 500): {1: D('460.09'), 20: D('422.44')},
-            (1000, 800): {1: D('1019.0'), 20: D('1020.3')}}
+            (1000, 800): {1: D('1019.7'), 20: D('1020.3')}}
+# At the HP-1000 arithmetic floor the reproduction minima were fixed separately
+# from the measured values printed to one decimal place.
+CLAIM1C_MINIMUM = {1: D('1018.0'), 20: D('1019.3')}
 LAMBDA = {13: '55.764', 20: '92.817', 30: '131.80', 50: '170.19', 100: '211.29'}
+# tab:lambda_sweep, HP-1000 eigenvalue and conversion gap.
+LAMBDA_HP1000 = {
+    13: ('3.48399e-59', '2.694'), 20: ('2.50471e-96', '2.784'),
+    30: ('2.19404e-135', '2.859'), 50: ('6.89051e-174', '2.976'),
+    100: ('3.48656e-215', '3.170'),
+}
 CRITICAL = {(50, 200): ('217.34', '207.24'), (50, 250): ('235.45', '225.42'),
             (100, 300): ('364.37', '354.03'), (100, 400): ('419.28', '409.04')}
 EPSILON = {(13, 120): '3.48399e-59', (100, 500): '9.56481e-464', (1000, 800): '3.92215e-1264',
@@ -82,15 +100,17 @@ def evenness_relative_difference(natural, even):
         return abs(natural - even) / abs(even)
 
 
-def root_digits(point, index):
+def root_digits(point, index, *, allow_lower_bound=False):
     row = next((r for r in point['roots'] if r['reference_index'] == index), None)
     if row is None or row['status'] != 'converged':
         raise ValueError(f'zero {index} is missing or not converged')
     value = row.get('matching_digits')
+    if value is None and not allow_lower_bound:
+        raise ValueError(f'zero {index} has only a lower bound on matching digits')
     return number(value if value is not None else row['matching_digits_lower_bound'])
 
 
-def assess_point(claim, point):
+def assess_point(claim, point, *, for_publication=False):
     """Return explicit check rows; modified configurations without a baseline fail closed."""
     c, n = point['lambda_squared'], point['n_modes']
     checks = []
@@ -105,26 +125,41 @@ def assess_point(claim, point):
         checks.append((f'both eigenvalues positive and relative difference {relative_text} < 1e-8', natural > 0 and even > 0 and relative < D('1e-8')))
     elif claim.startswith(('claim1', 'claim8')):
         baseline = HEADLINE[(c,n)]
-        # A guarded arithmetic floor is not reproducible to its last digit.
-        allowance = D('1.0') if c == 1000 else D('0.05')
+        check_printed = for_publication and claim.startswith('claim1c')
         for index, expected in baseline.items():
-            observed = root_digits(point,index)
-            checks.append((f'zero {index}: {observed:.5f} matching digits >= {expected-allowance}', observed >= expected-allowance))
+            observed = root_digits(point, index, allow_lower_bound=not check_printed)
+            minimum = CLAIM1C_MINIMUM[index] if (c, n) == (1000, 800) else expected - D('0.05')
+            checks.append((f'zero {index}: {observed:.5f} matching digits >= {minimum}', observed >= minimum))
+            if check_printed:
+                checks.append((f'zero {index} matching digits round to {expected}',
+                               observed.quantize(D('0.1')) == expected))
     elif claim.startswith('claim2'):
         if n != 120:
             raise ValueError('published lambda sweep baseline requires N=120')
         observed, expected = root_digits(point,1), D(LAMBDA[c])
         checks.append((f'first-zero accuracy agrees with {expected} within 0.05 digit', abs(observed-expected) <= D('0.05')))
+        if claim.startswith('claim2b'):
+            epsilon = number(point['epsilon_N'])
+            if epsilon <= 0:
+                raise ValueError('Claim 2b requires a positive eigenvalue for its logarithmic depth')
+            printed_epsilon, printed_gap = LAMBDA_HP1000[c]
+            with localcontext() as context:
+                context.prec = max(100, len(epsilon.as_tuple().digits), len(observed.as_tuple().digits)) + 16
+                gap = -epsilon.log10() - observed
+                checks.append((f'eigenvalue rounds to {printed_epsilon}', six_digits(epsilon) == six_digits(printed_epsilon)))
+                checks.append((f'conversion gap rounds to {printed_gap}', gap.quantize(D('0.001')) == D(printed_gap)))
+                if for_publication:
+                    checks.append((f'first-zero accuracy rounds to {expected}', observed.quantize(expected) == expected))
     elif claim.startswith('claim3'):
         for index, expected in zip((1,5), CRITICAL[(c,n)]):
-            checks.append((f'zero {index} matching digits >= {D(expected)-D("0.05")}', root_digits(point,index) >= D(expected)-D('0.05')))
+            checks.append((f'zero {index} matching digits >= {D(expected)-D("0.05")}', root_digits(point,index, allow_lower_bound=True) >= D(expected)-D('0.05')))
     elif claim.startswith('claim6'):
         observed, expected = number(point['epsilon_N']), D(EPSILON[(c,n)])
         checks.append(('positive epsilon_N agrees with the tabulated value within 5e-5 relative', observed > 0 and abs(observed/expected-1) <= D('5e-5')))
     elif claim.startswith('claim7b'):
         if c != 13 or not any(n in window for _, window, _ in BRACKETS):
             raise ValueError('published Critical-N brackets require lambda_squared=13 and N in 31-40 or 51-60')
-        checks.append(('zero 1 converged with retained matching digits', root_digits(point,1) > 0))
+        checks.append(('zero 1 converged with retained matching digits', root_digits(point,1, allow_lower_bound=True) > 0))
     elif claim.startswith('claim7'):
         if c != 13:
             raise ValueError('published N sweep baseline requires lambda_squared=13')
@@ -135,27 +170,54 @@ def assess_point(claim, point):
     return checks
 
 
+def claim_recipe(group):
+    """Cutoff, basis, decimal precision, command, parity, acquisition and root count."""
+    configs = {
+        'claim1a': [(13, 120, 1000)], 'claim1b': [(100, 500, 1000)], 'claim1c': [(1000, 800, 1000)],
+        'claim2a': [(c, 120, 200) for c in LAMBDA], 'claim2b': [(c, 120, 1000) for c in LAMBDA],
+        'claim3': [(c, n, 1000) for c, n in CRITICAL],
+        'claim4a': [(13, 120, 1000)], 'claim4b': [(100, 500, 1000)],
+        'claim4c': [(1000, 800, 2000), (1000, 890, 2000)], 'claim4d': [(1200, 970, 2000)],
+        'claim6': [(13, 120, 1000), (100, 500, 1000), (1000, 800, 2000)],
+        'claim6b': [(c, n, 1500 if c <= 800 else 2000) for c, n in EPSILON if (c, n) not in HEADLINE],
+        'claim7': [(13, n, hp) for n in CONVERGENCE for hp in (200, 1000)],
+        'claim7b': [(13, n, hp) for _, window, _ in BRACKETS for n in window for hp in (200, 1000)],
+        'claim8': [(13, 120, 1000), (100, 500, 1000)],
+    }[group]
+    if group.startswith('claim4'):
+        return [(*cfg, 'check-evenness', None, None, 0) for cfg in configs]
+    roots = 25 if group.startswith('claim1') or group == 'claim8' else 5 if group in ('claim3', 'claim7') else 1
+    parities = ('even-sector', 'natural') if group == 'claim8' else ('even-sector',)
+    return [(*cfg, 'run', parity, 'Seeded', roots) for cfg in configs for parity in parities]
+
+
+def measurement_route(point):
+    coords = tuple(point[k] for k in ('lambda_squared', 'n_modes', 'precision_digits'))
+    if not all(type(x) is int for x in coords):
+        raise ValueError('expected integer cutoff, basis and precision')
+    roots = point.get('roots', [])
+    ordinals = [r['reference_index'] for r in roots]
+    if (any(type(i) is not int for i in ordinals) or sorted(ordinals) != list(range(1, len(roots)+1))
+            or any(r.get('status') != 'converged' for r in roots)):
+        raise ValueError('expected a complete, converged reference-root window starting at ordinal 1')
+    return (*coords, point['command'], point.get('parity_policy'), point.get('root_acquisition'), len(roots))
+
+
+def recipe_matches(claim, points):
+    return Counter(map(measurement_route, points)) == Counter(claim_recipe(claim.split('_', 1)[0]))
+
+
 def assess_series(claim, points):
-    checks = []
     group = claim.split('_',1)[0]
-    expected = {
-        'claim1a': [(13,120)], 'claim1b': [(100,500)], 'claim1c': [(1000,800)],
-        'claim2a': [(c,120) for c in LAMBDA], 'claim2b': [(c,120) for c in LAMBDA],
-        'claim3': list(CRITICAL), 'claim4a': [(13,120)], 'claim4b': [(100,500)],
-        'claim4c': [(1000,800),(1000,890)], 'claim4d': [(1200,970)],
-        'claim6': [(13,120),(100,500),(1000,800)],
-        'claim6b': [(500,630),(600,690),(700,740),(800,790),(1000,890),(1200,970)],
-        'claim7': [(13,n) for n in CONVERGENCE for _ in range(2)],
-        'claim7b': [(13,n) for _, window, _ in BRACKETS for n in window for _ in range(2)],
-        'claim8': [(13,120),(13,120),(100,500),(100,500)],
-    }.get(group)
-    actual=[(p['lambda_squared'],p['n_modes']) for p in points]
-    checks.append(('all configurations for this individual claim are present exactly once per planned route',expected is not None and sorted(actual)==sorted(expected)))
-    if group == 'claim3' and sorted(actual)==sorted(expected):
+    matched = recipe_matches(group, points)
+    checks = [('measurements cover the exact published configurations and root windows once each', matched)]
+    if not matched:
+        return checks
+    if group == 'claim3':
         indexed={(p['lambda_squared'],p['n_modes']):p for p in points}
         for c,low,high in ((50,200,250),(100,300,400)):
-            checks.append((f'c={c}: accuracy increases with N',root_digits(indexed[c,high],1)>root_digits(indexed[c,low],1)))
-    if group in ('claim6','claim6b') and sorted(actual)==sorted(expected):
+            checks.append((f'c={c}: accuracy increases with N',root_digits(indexed[c,high],1, allow_lower_bound=True)>root_digits(indexed[c,low],1)))
+    if group in ('claim6','claim6b'):
         ordered=sorted(points,key=lambda p:p['lambda_squared'])
         checks.append(('epsilon_N decreases across the published series',all(number(a['epsilon_N'])>number(b['epsilon_N'])>0 for a,b in zip(ordered,ordered[1:]))))
     if claim.startswith('claim8'):
@@ -168,7 +230,7 @@ def assess_series(claim, points):
             ea,eb = number(a['epsilon_N']),number(b['epsilon_N'])
             checks.append((f'c={c}: matched-policy eigenvalues agree within 1e-20 relative',same and ea>0 and eb>0 and abs(ea/eb-1)<D('1e-20')))
             checks.append((f'c={c}: root accuracy agrees across parity routes within 0.05 digit',same and all(abs(root_digits(a,i)-root_digits(b,i))<=D('0.05') for i in (1,20))))
-    if group == 'claim7b' and sorted(actual)==sorted(expected):
+    if group == 'claim7b':
         by_precision = {}
         for p in points:
             by_precision.setdefault(p['precision_digits'], {})[p['n_modes']] = root_digits(p,1)
@@ -191,19 +253,134 @@ def assess_series(claim, points):
     return checks
 
 
-def read_log(log):
+def evidence_paths(log):
     text = log.read_text(encoding='utf-8', errors='replace')
     measurements, journals = [], []
     for line in text.splitlines():
         if line.startswith('Claim measurements: '):
-            measurements.append(json.loads(Path(line.split(': ',1)[1]).read_text(encoding='utf-8')))
+            measurements.append(Path(line.split(': ',1)[1]))
         if line.strip().startswith('private claim journal: '):
             journals.append(Path(line.strip().split(': ',1)[1]))
     return measurements, journals
 
 
+def read_log(log):
+    paths, journals = evidence_paths(log)
+    return [json.loads(path.read_text(encoding='utf-8')) for path in paths], journals
+
+
+def verified_evenness(measurement, journal):
+    measurement, journal = measurement.resolve(strict=True), journal.resolve(strict=True)
+    direct = measurement.parent
+    binding = json.loads((direct/'supplemental-journal.json').read_text(encoding='utf-8'))
+    if (binding['schema_version'] != 1 or measurement.name != 'claim-measurements.json'
+            or direct.parent != journal.parent or direct == journal
+            or (binding['measurement_directory'], binding['journal_directory']) != (direct.name, journal.name)):
+        raise ValueError('direct evenness measurement belongs to a different journal')
+    files = {'measurement_sha256': measurement, 'request_sha256': journal/'request.json',
+             'inventory_sha256': journal/'primary-sources.json', 'capture_sha256': journal/'capture.json',
+             'isolation_sha256': journal/'spectral-isolation.json'}
+    for key, path in files.items():
+        with path.open('rb') as stream:
+            digest = hashlib.sha256()
+            for block in iter(lambda: stream.read(1 << 20), b''):
+                digest.update(block)
+        if digest.hexdigest() != binding[key]:
+            raise ValueError(f'evenness binding differs for {path.name}')
+    point = json.loads(measurement.read_text(encoding='utf-8'))
+    request = json.loads((journal/'request.json').read_text(encoding='utf-8'))
+    if (point['command'] != 'check-evenness' or request['parity_policy'] != 'even-sector'
+            or (point['lambda_squared'], point['n_modes']) != (request['lambda_squared'], request['n_modes'])
+            or math.ceil(point['precision_digits'] * math.log2(10)) + 64 != request['precision_bits']):
+        raise ValueError('supplemental request disagrees with direct evenness measurement')
+    return point
+
+
 def six_digits(value):
     return f'{number(value):.5e}'
+
+
+def source_verifier():
+    path = Path(__file__).resolve().parents[1]/'verification/evenness_sources.py'
+    spec = importlib.util.spec_from_file_location('evenness_sources',path)
+    verifier = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(verifier)
+    return verifier
+
+
+def verify_assembly_rows(primary, analysis, verifier):
+    exact = analysis['exact_form_roots']
+    limitation = analysis.get('exact_form_roots_limitation')
+    if exact is None:
+        if not isinstance(limitation, str) or not limitation.strip():
+            raise ValueError('missing reason for unavailable assembly root enclosures')
+        return 'qualified: '+limitation
+    if limitation is not None:
+        raise ValueError('assembly reports both root enclosures and a limitation')
+    roots = {}
+    for i, outcome in enumerate(primary['eigenvalues_pos'], primary['first_positive_root_index']):
+        if outcome['status'] not in ('converged','approximate','stagnated','failed'):
+            raise ValueError(f'unknown primary outcome at root {i}')
+        if outcome['status'] != 'failed':
+            roots[i] = outcome['value']['value']
+    rows = exact['rows']
+    if any(type(row['ordinal']) is not int for row in rows) or [row['ordinal'] for row in rows] != list(roots):
+        raise ValueError(f'assembly root ordinals differ from primary (retained {len(rows)}, expected {len(roots)})')
+    for row in rows:
+        root = roots[row['ordinal']]
+        mantissa, exponent = verifier.dyadic(row['computed_value'],root['precision_bits'])
+        primary_mantissa = int(root['significand_hex'],16)
+        shift = root['binary_exponent'] - exponent
+        if mantissa << max(-shift,0) != primary_mantissa << max(shift,0):
+            raise ValueError(f"assembly input differs at root {row['ordinal']}")
+    return f'{len(rows)} assembly root inputs matched the primary'
+
+
+def verify_assembly_journal(journal, cache=None):
+    request = json.loads((journal/'request.json').read_bytes())
+    requested = 'assembly_error' in (request.get('applicability') or {}).get('requested_diagnostics', [])
+    if not (journal/'capture.json').is_file() and not requested and (request.get('capture') or {}).get('level') != 'ultra':
+        return None
+    record = json.loads((journal/'capture.json').read_bytes())
+    if not requested and 'assembly_error' not in record.get('requested_diagnostics',[]) and 'assembly_error' not in record['measurements']:
+        return None
+    measurement = record['measurements']['assembly_error']
+    verifier = source_verifier()
+    analysis = measurement.get('value')
+    if analysis is None:
+        ref, = measurement['value_reference']['artifacts']
+        key = ref['key']
+        if key['kind'] != 'ccm_assembly_error_analysis' or not re.fullmatch(r'[0-9a-f]{64}',key['parameters_digest']):
+            raise ValueError('invalid assembly artifact reference')
+        cache = cache or verifier.cache_root()
+        directory = cache/'artifacts-v3'/hashlib.sha256(key['kind'].encode()).hexdigest()
+        for path in directory.glob('*/'+key['parameters_digest']+'/manifests/*.json'):
+            manifest = verifier.read(path)
+            if (manifest['content_digest']==ref['content_digest'] and manifest['key']['kind']==key['kind']
+                    and manifest['key']['parameters_digest']==key['parameters_digest']):
+                analysis = verifier.payload(cache,manifest)
+                break
+        if analysis is None:
+            raise ValueError('referenced assembly payload is unavailable')
+    primary = verifier.read(journal/'primary.json')
+    return verify_assembly_rows(primary,analysis,verifier)
+
+
+def verify_evenness_sources(point, journal, cache=None, binary=None, *, reference_table='sector_separations'):
+    """Replay bound sources against the named table's reference pair.
+
+    The original reference in the sector-separations record also identifies
+    its historical residual. The evenness table can cite a different pair.
+    """
+    root = Path(__file__).resolve().parents[1]
+    verifier = source_verifier()
+    rows = json.loads((root/'docs/research-evidence.json').read_text(encoding='utf-8'))['sector_separations']
+    reference, = [r for r in rows if r['configuration'][:2] == [str(point['lambda_squared']), point['n_modes']]]
+    if reference_table == 'sector_separations':
+        reference.pop('evenness_reference', None)
+    elif reference_table != 'evenness':
+        raise ValueError(f'unknown reference table {reference_table!r}')
+    return verifier.replay(point, journal, cache or verifier.cache_root(), reference, binary)
 
 
 def assess_residual_ratio(c, n, isolation):
@@ -252,43 +429,102 @@ def assess_separations(directory):
     return checks
 
 
-def summarize(claim, logs):
-    checks, points = [], []
+def summarize(claim, logs, *, for_publication=False):
+    checks, points, journals_by_point = [], [], []
+    assembly_checks = []
     for log in logs:
         try:
-            measurement, journals = read_log(log)
+            paths, journals = evidence_paths(log)
             status = dict(line.split('=',1) for line in log.with_suffix('.status').read_text().splitlines())
-            checks.append((f'{log.name}: process completed with retained measurements',status.get('binary_exit')=='0' and status.get('log_exit')=='0' and bool(measurement)))
-            for point in measurement:
-                points.append(point)
-                label=f'c={point["lambda_squared"]}, N={point["n_modes"]}, HP-{point["precision_digits"]}'
-                checks.extend((f'{label}: {description}',passed) for description,passed in assess_point(claim,point))
+            if status.get('binary_exit') != '0' or status.get('log_exit') != '0':
+                checks.append((f"{log.name}: failed invocation (binary={status.get('binary_exit')}, log={status.get('log_exit')})", False))
+                for journal in journals:
+                    for receipt in ('capture.json', 'capture-explicit.json'):
+                        if (journal/receipt).is_file():
+                            outcomes = json.loads((journal/receipt).read_text(encoding='utf-8'))['receipt']['outcomes']
+                            checks.extend((f"{name}: {row['status']}: {row.get('reason', '')}", False)
+                                          for name, row in outcomes.items() if row['status'] != 'completed')
+                continue
+            if len(paths) != 1:
+                raise ValueError(f'expected one measurement per invocation, found {len(paths)}')
             if claim.startswith('claim4'):
                 if len(journals) != 1:
                     raise ValueError(f'expected one evenness journal, found {len(journals)}')
+                point = verified_evenness(paths[0], journals[0])
+            else:
+                if for_publication and (len(journals) != 1 or
+                        paths[0].resolve(strict=True) != (journals[0]/'claim-measurements.json').resolve(strict=True)):
+                    raise ValueError('publication requires the measurement from its recorded claim journal')
+                point = json.loads(paths[0].read_text(encoding='utf-8'))
+            checks.append((f'{log.name}: process completed with retained measurements',status.get('binary_exit')=='0' and status.get('log_exit')=='0'))
+            points.append(point)
+            journals_by_point.append(journals[0] if claim.startswith('claim4') else None)
+            label=f'c={point["lambda_squared"]}, N={point["n_modes"]}, HP-{point["precision_digits"]}'
+            checks.extend((f'{label}: {description}',passed) for description,passed in
+                          assess_point(claim, point, for_publication=for_publication))
+            if for_publication:
+                for journal in journals:
+                    try:
+                        coverage = verify_assembly_journal(journal)
+                        if coverage:
+                            assembly_checks.append((f'{label}: {coverage}', True))
+                    except (OSError, ArithmeticError, KeyError, TypeError, ValueError, BadZipFile) as error:
+                        assembly_checks.append((f'{label}: {error}',False))
+            if claim.startswith('claim4'):
                 checks.extend(assess_separations(journals[0]))
-        except (OSError, ValueError, KeyError, IndexError, TypeError, ArithmeticError) as error:
+                if for_publication:
+                    verified = verify_evenness_sources(point, journals[0], reference_table='evenness')
+                    checks.append((f"{label}: replayed natural/even sources {verified['natural']} / {verified['even']}", True))
+                    sector = verified.get('sector_budget')
+                    if sector and sector['storage'] == 'compact':
+                        checks.append((f"{label}: replayed compact sector certificate {sector['certificate']}", True))
+        except (OSError, ValueError, KeyError, IndexError, TypeError, ArithmeticError, BadZipFile) as error:
             checks.append((f'{log.name}: missing/unassessed evidence: {error}',False))
     try:
         checks.extend(assess_series(claim,points))
-    except (ValueError, KeyError, ArithmeticError) as error:
+    except (ValueError, KeyError, TypeError, ArithmeticError) as error:
         checks.append((f'series could not be assessed: {error}',False))
-    passed=bool(checks) and all(ok for _,ok in checks)
-    return {'claim':claim,'passed':passed,'checks':[{'description':name,'passed':ok} for name,ok in checks]}
+    numerical_passed = bool(checks) and all(ok for _, ok in checks)
+    checks.extend(assembly_checks)
+    group = claim.split('_', 1)[0].partition('claim')[2]
+    rows = []
+    complete = len(points) == len(logs)
+    try:
+        table = manuscript.tables(Path(__file__).resolve().parents[1] / 'paper.tex')
+        for point, journal in zip(points, journals_by_point):
+            rows.extend(manuscript.compare_point(group, point, points, journal, table,
+                                                 root_digits, evenness_relative_difference))
+        complete = complete and recipe_matches(claim, points)
+        verdict = manuscript.printed_verdict(group, rows, complete=complete)
+    except (OSError, ArithmeticError, ValueError, KeyError, TypeError, IndexError, StopIteration) as error:
+        verdict = 'INCOMPLETE'
+        checks.append((f'could not assess manuscript cells: {error}', False))
+    checks.append((f'manuscript comparison: {verdict}', verdict in ('MATCH', 'QUALIFIED_MATCH')))
+    return dict(claim=claim, passed=all(ok for _, ok in checks), numerical_checks_passed=numerical_passed,
+                assembly_root_checks=[dict(description=name,passed=ok) for name,ok in assembly_checks],
+                manuscript_printed_values=verdict, manuscript_rows=rows,
+                checks=[{'description': name, 'passed': ok} for name, ok in checks])
 
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--claim', required=True)
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--for-publication', action='store_true',
+                        help='verify publication evidence, including assembly root windows and Claim 4 source pairs')
     parser.add_argument('logs',nargs='+',type=Path)
     args=parser.parse_args()
     with localcontext() as context:
         context.prec=100  # ratios/logarithmic digit counts; original HP scalars stay exact strings
-        result=summarize(args.claim,args.logs)
+        result=summarize(args.claim, args.logs, for_publication=args.for_publication)
     print(f'\n=== {args.claim}: claim summary ===')
     for row in result['checks']:
         print(f'[{"PASS" if row["passed"] else "FAIL"}] {row["description"]}')
+    for row in result['manuscript_rows']:
+        if row['verdict'] != 'MATCH':
+            print(f"[{row['verdict']}] C={row['cutoff']} N={row['modes']} HP-{row['precision_digits']} "
+                  f"{row['metric']}: manuscript {row['expected']}, "
+                  f"observed {row.get('rounded', row.get('reason', 'unavailable'))}")
     print(f'Claim {args.claim}: {"PASS" if result["passed"] else "FAIL"}')
     print('These are finite numerical reproduction checks, not theorems or interval certificates.')
     args.output.write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')

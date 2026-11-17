@@ -159,10 +159,11 @@ while (($# > 0)); do
       echo "               credentials and XC_PUBLISH_AUTHOR_EMAIL required); --publish-plan stages"
       echo "               and plans the same publication without pushing. Claim 1a publishes to"
       echo "               public and private; every other claim publishes to private only."
-      echo "               --publish stages every configuration, then finalizes once before the"
-      echo "               claim summary. --publication-per-configuration retains the old policy."
+      echo "               --publish stages every configuration, then finalizes once after the"
+      echo "               claim checks pass. --publication-per-configuration uses a separate queue for each configuration."
       echo "  JOURNALS: --capture-output DIR is the parent of the private claim journals"
       echo "  PREFLIGHT: --preflight-only checks source admission without computing"
+      echo "  PYTHON: CLAIM_PYTHON selects a Python 3 executable; otherwise python3 or python is detected"
       echo "  CACHE VALIDATION: --verify-cache recomputes and compares claim artifacts; disabled by default"
       echo "  EXPERIMENTAL GL ROOTS: --parallel-gl-roots or XC_GL_ROOT_PARALLEL=true; qualified native Linux/Windows, never WSL"
       echo "  BENCHMARK: one process/report; gl-root-policy-delta permits only the intentional"
@@ -240,6 +241,9 @@ if [[ "$CLAIM_RESEARCH_CAPTURE" != ultra ]]; then
   done
   unset CLAIM_INHERITED_NAME
 else
+  # Ultra is an explicit complete-acquisition request. Preserve every receipt,
+  # but report any incomplete configuration before deferred publication.
+  JOURNAL_ARGS+=(--require-complete-capture)
   case "$(basename "${BASH_SOURCE[1]}" .sh)" in
     claim1c_lambda1000)
       if [[ "$CLAIM_SECTOR_CERTIFICATE" == true || -n "$CLAIM_SECTOR_CERTIFICATE_FORMAT" ]]; then
@@ -248,8 +252,8 @@ else
       fi
       ;;
     claim4*)
-      if [[ "$CLAIM_ROOT_VALIDATION_SET" == true || "$CLAIM_SECTOR_CERTIFICATE" == true || -n "$CLAIM_SECTOR_CERTIFICATE_FORMAT" ]]; then
-        echo "Root validation and the sector-gap certificate switches are not supported by check-evenness" >&2
+      if [[ "$CLAIM_ROOT_VALIDATION_SET" == true ]]; then
+        echo "Root validation is not supported by check-evenness" >&2
         exit 2
       fi
       ;;
@@ -265,6 +269,7 @@ esac
 if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
   PUBLICATION=none
 fi
+export XC_PUBLISH_REPLACE=false
 case "$PUBLICATION" in
   none)
     # Inherited managed-session settings must not bypass --publish or the
@@ -344,13 +349,41 @@ if [[ "$GL_ROOT_PARALLEL_ENABLED" == "true" ]]; then
 fi
 
 # Validate the complete invocation before starting a potentially expensive build.
+# Windows may expose a Store alias named python3 even when a working python.exe
+# is available. Probe interpreters before building or starting any claim work.
+claim_python_works() {
+  local resolved
+  resolved=$(command -v -- "$1") || return 1
+  case "$resolved" in
+    */Microsoft/WindowsApps/*|*\\Microsoft\\WindowsApps\\*) return 1 ;;
+  esac
+  "$1" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' >/dev/null 2>&1
+}
+if [[ ${CLAIM_PYTHON+x} ]]; then
+  if ! claim_python_works "$CLAIM_PYTHON"; then
+    echo "CLAIM_PYTHON must name a working Python 3.8+ executable: $CLAIM_PYTHON" >&2
+    exit 2
+  fi
+else
+  CLAIM_PYTHON=
+  for candidate in python3 python; do
+    if claim_python_works "$candidate"; then CLAIM_PYTHON=$candidate; break; fi
+  done
+  if [[ -z "$CLAIM_PYTHON" ]]; then
+    echo 'Python 3.8+ is required; set CLAIM_PYTHON to its executable path.' >&2
+    exit 2
+  fi
+fi
+
 if [[ -z "${BIN+x}" ]]; then
   CLAIM_TARGET_DIR="$CLAIM_REPO_ROOT/target"
-  BIN="$CLAIM_TARGET_DIR/release/ccm-reproduction"
   # Cargo's incremental freshness check is quick and prevents an executable
   # built from an older toolkit lockfile, without HP, or in an externally
   # overridden CARGO_TARGET_DIR from being mistaken for the current binary.
   CLAIM_FEATURES=hp
+  case "${OSTYPE:-}" in
+    msys*|cygwin*) CLAIM_FEATURES=native-windows ;;
+  esac
   if [[ "$CLAIM_RESEARCH_CAPTURE" == ultra ]]; then
     CLAIM_FEATURES=$CLAIM_FEATURES,root-certification
   fi
@@ -360,29 +393,72 @@ if [[ -z "${BIN+x}" ]]; then
   if [[ "$GL_ROOT_PARALLEL_ENABLED" == "true" ]]; then
     CLAIM_FEATURES=$CLAIM_FEATURES,experimental-gl-root-parallel
   fi
-  cargo build --quiet --release --features "$CLAIM_FEATURES" --locked --bin ccm-reproduction \
-    --target-dir "$CLAIM_TARGET_DIR"
-elif [[ ! -x "$BIN" ]]; then
+  # Cargo reports the actual executable, including configured target triples
+  # and the Windows suffix. Never guess a path or reuse a stale host binary.
+  if ! BIN=$(
+    set -o pipefail
+    cargo build --quiet --release --features "$CLAIM_FEATURES" --locked --bin ccm-reproduction \
+      --target-dir "$CLAIM_TARGET_DIR" --message-format=json-render-diagnostics |
+      "$CLAIM_PYTHON" -c '
+import json, sys
+from pathlib import Path
+executables = set()
+finished = False
+for line in sys.stdin:
+    if not line.startswith("{"):
+        print(line, end="", file=sys.stderr)
+        continue
+    message = json.loads(line)
+    if message.get("reason") == "build-finished":
+        finished = message.get("success") is True
+    if (message.get("reason") == "compiler-artifact"
+            and message.get("target", {}).get("name") == "ccm-reproduction"
+            and "bin" in message.get("target", {}).get("kind", [])
+            and not message.get("profile", {}).get("test")
+            and message.get("executable")):
+        executables.add(message["executable"])
+if not finished or len(executables) != 1:
+    sys.exit("Cargo did not report one successfully built ccm-reproduction executable")
+sys.stdout.write(Path(executables.pop()).as_posix())
+'
+  ); then
+    echo 'Reproduction build failed; no claim computation was started.' >&2
+    exit 1
+  fi
+fi
+if [[ ! -x "$BIN" ]]; then
   echo "Configured reproduction binary is not executable: $BIN" >&2
   exit 1
 fi
+export BIN
 
-# A failed configuration must not skip the claim's other independent
-# configurations. Each binary exit status is retained, and the script itself
-# fails after attempting every configuration.
+# Author runs stop on a failed invocation. Admission checks and nonpublishing
+# runs can report the outcomes of all independent configurations.
 CLAIM_FAILURES=0
 CLAIM_LOGS=()
+CLAIM_QUEUES=()
 CLAIM_SCRIPT_NAME=$(basename "${BASH_SOURCE[1]}" .sh)
 CLAIM_DEFERRED_PUBLICATION=false
 CLAIM_PUBLICATION_LOCK=
 CLAIM_PUBLICATION_STATUS_FILE=
 claim_publication_state() {
-  python3 - "$CLAIM_PUBLICATION_STATUS_FILE" "$1" "$XC_PUBLISH_STAGING_ROOT" "$CLAIM_PUBLISH_TARGET" "${#CLAIM_LOGS[@]}" <<'PUBLICATION_STATE'
+  "$CLAIM_PYTHON" - "$CLAIM_PUBLICATION_STATUS_FILE" "$1" "${2:-$XC_PUBLISH_STAGING_ROOT}" "$CLAIM_PUBLISH_TARGET" "${3:-${#CLAIM_LOGS[@]}}" <<'PUBLICATION_STATE'
 import json, os, sys, tempfile
 from pathlib import Path
 path=Path(sys.argv[1])
 value=dict(schema_version=1,status=sys.argv[2],staging_root=sys.argv[3],target=sys.argv[4],
            invocations=int(sys.argv[5]),semantics='operational publication status; numerical verdict is separate')
+if value['status'] == 'ready':
+    import hashlib
+    root = Path(value['staging_root']).resolve()
+    drafts = {f.relative_to(root).as_posix(): hashlib.sha256(f.read_bytes()).hexdigest()
+              for f in (root / 'drafts').rglob('draft.json')}
+    binding = dict(schema_version=1, target=value['target'], drafts=drafts, invocations=value['invocations'])
+    with tempfile.NamedTemporaryFile(mode='w', dir=root, delete=False) as ready:
+        json.dump(binding, ready)
+        ready.flush()
+        os.fsync(ready.fileno())
+    os.replace(ready.name, root / 'claim-complete.json')
 with tempfile.NamedTemporaryFile(mode='w',dir=path.parent,prefix=path.name+'.',delete=False) as output:
     temporary=Path(output.name)
     json.dump(value,output,indent=2); output.write('\n'); output.flush(); os.fsync(output.fileno())
@@ -390,7 +466,7 @@ os.replace(temporary,path)
 PUBLICATION_STATE
 }
 claim_prepare_publication() {
-  if [[ "$PUBLICATION" != execute || "$PUBLICATION_PER_CONFIGURATION" == true ]]; then return 0; fi
+  if [[ "$PUBLICATION" != execute ]]; then return 0; fi
   local log_root=${CLAIM_LOG_ROOT:-$CLAIM_REPO_ROOT/.xcelerator-cache/claim-logs}
   mkdir -p "$log_root"
   if [[ -z "${XC_PUBLISH_STAGING_ROOT:-}" ]]; then
@@ -412,8 +488,16 @@ claim_prepare_publication() {
   if [[ -L "$XC_PUBLISH_STAGING_ROOT/drafts" ]] ||
      [[ -e "$XC_PUBLISH_STAGING_ROOT/drafts" && ! -d "$XC_PUBLISH_STAGING_ROOT/drafts" ]] ||
      [[ -d "$XC_PUBLISH_STAGING_ROOT/drafts" && -n "$(find "$XC_PUBLISH_STAGING_ROOT/drafts" -mindepth 1 ! -type d -print -quit)" ]]; then
-    echo "Deferred publication requires an empty draft queue; use publish-staged explicitly for retained drafts" >&2
+    echo "Deferred publication requires an empty draft queue; select fresh staging for a rerun. Only a completed claim inventory can be published" >&2
     return 2
+  fi
+  if [[ -e "$XC_PUBLISH_STAGING_ROOT/claim-complete.json" || -e "$XC_PUBLISH_STAGING_ROOT/configurations" || -L "$XC_PUBLISH_STAGING_ROOT/configurations" ]]; then
+    echo "Publication staging belongs to a completed claim" >&2; return 2
+  fi
+  if [[ "$PUBLICATION_PER_CONFIGURATION" == true ]]; then
+    mkdir "$XC_PUBLISH_STAGING_ROOT/configurations"
+  else
+    CLAIM_QUEUES+=("$XC_PUBLISH_STAGING_ROOT")
   fi
   CLAIM_PUBLICATION_STATUS_FILE=$(mktemp "$log_root/claim-publication-XXXXXX.status.json")
   CLAIM_DEFERRED_PUBLICATION=true
@@ -422,57 +506,72 @@ claim_prepare_publication() {
   echo "Publication status: $CLAIM_PUBLICATION_STATUS_FILE"
 }
 claim_exit() {
-  local status=$? publication_complete=true cohort_status=0
+  local status=$? cohort_status=0 queue queue_index retry_queue count publication_log
   trap - EXIT
+  if ((${#CLAIM_LOGS[@]} > 0)); then
+    local summary="${CLAIM_LOGS[0]%.log}.summary.json"
+    local -a summary_args=(--claim "$CLAIM_SCRIPT_NAME" --output "$summary")
+    if [[ "$PUBLICATION" != none ]]; then summary_args+=(--for-publication); fi
+    if ! "$CLAIM_PYTHON" "$CLAIM_REPO_ROOT/scripts/claim_summary.py" "${summary_args[@]}" "${CLAIM_LOGS[@]}"; then
+      status=1
+    fi
+  fi
+  if ((CLAIM_FAILURES > 0)); then status=1; fi
+  if [[ "$CLAIM_DEFERRED_PUBLICATION" == true ]]; then
+    if ((${#CLAIM_LOGS[@]} == 0)); then status=1; fi
+    if ((status == 0)) && [[ -n "${CLAIM_PREPUBLICATION_CHECK:-}" ]]; then
+      if ! "$CLAIM_PYTHON" "$CLAIM_PREPUBLICATION_CHECK" "$CLAIM_SCRIPT_NAME" "$summary"; then
+        echo "Additional claim publication check failed." >&2
+        status=1
+      fi
+    fi
+  fi
   if [[ -n "$CLAIM_COHORT_PLAN" && "$PREFLIGHT_ONLY" != true ]]; then
-    if ((status == 0 && CLAIM_FAILURES == 0 && ${#CLAIM_LOGS[@]} > 0)); then
+    if ((status == 0 && ${#CLAIM_LOGS[@]} > 0)); then
       local -a cohort_args=(cohort --plan "$CLAIM_COHORT_PLAN" --output "$CLAIM_COHORT_OUTPUT")
-      if [[ "$CLAIM_DEFERRED_PUBLICATION" == true ]]; then cohort_args+=(--defer-publication); fi
-      if "$BIN" "${cohort_args[@]}"; then :; else cohort_status=$?; fi
+      if [[ "$CLAIM_DEFERRED_PUBLICATION" == true ]]; then
+        cohort_args+=(--defer-publication)
+        XC_PUBLISH_STAGING_ROOT="${CLAIM_QUEUES[${#CLAIM_QUEUES[@]}-1]}" "$BIN" "${cohort_args[@]}" || cohort_status=$?
+      else
+        "$BIN" "${cohort_args[@]}" || cohort_status=$?
+      fi
     else
-      echo 'Requested cohort not started because primary execution was incomplete; retained plan preserved.' >&2
       cohort_status=1
     fi
   fi
   if [[ "$CLAIM_DEFERRED_PUBLICATION" == true ]]; then
-    publication_complete=false
-    if ((status == 0 && ${#CLAIM_LOGS[@]} > 0)); then
-      local publication_log="${CLAIM_PUBLICATION_STATUS_FILE%.status.json}.log"
-      local -a publication_statuses
-      if XC_PUBLISH_EXECUTE=true "$BIN" publish-staged --staging-root "$XC_PUBLISH_STAGING_ROOT" 2>&1 | tee "$publication_log"; then
-        publication_statuses=("${PIPESTATUS[@]}")
-      else
-        publication_statuses=("${PIPESTATUS[@]}")
+    count=${#CLAIM_LOGS[@]}
+    if [[ "$PUBLICATION_PER_CONFIGURATION" == true ]]; then count=1; fi
+    if ((status == 0 && cohort_status == 0)); then
+      for queue in "${CLAIM_QUEUES[@]}"; do
+        claim_publication_state ready "$queue" "$count" || { status=1; break; }
+      done
+      if ((status == 0)); then
+        publication_log="${CLAIM_PUBLICATION_STATUS_FILE%.status.json}.log"
+        for queue_index in "${!CLAIM_QUEUES[@]}"; do
+          queue=${CLAIM_QUEUES[queue_index]}
+          if ! XC_PUBLISH_STAGING_ROOT="$queue" "$BIN" publish-staged --staging-root "$queue" 2>&1 | tee -a "$publication_log"; then
+            echo "Publication failed for $queue. Retry this and subsequent sealed queues with the same destination and staging root." >&2
+            for retry_queue in "${CLAIM_QUEUES[@]:queue_index}"; do
+              {
+                printf 'Retry: XC_RUN_PROFILE=author XC_PUBLISH_EXECUTE=true XC_PUBLISH_REPLACE=false XC_PUBLISH_TARGET=%q ' "$CLAIM_PUBLISH_TARGET"
+                printf 'XC_PUBLISH_AUTHOR_EMAIL="${XC_PUBLISH_AUTHOR_EMAIL:?set the original author email}" '
+                if [[ -n ${XC_CACHE_ROOT:-} ]]; then printf 'XC_CACHE_ROOT=%q ' "$XC_CACHE_ROOT"; fi
+                printf 'XC_CACHE_REPOSITORY_OWNER=%q XC_CACHE_REMOTE=%q ' "${XC_CACHE_REPOSITORY_OWNER:-TeamXcelerator}" "${XC_CACHE_REMOTE:-public}"
+                printf 'XC_PUBLISH_STAGING_ROOT=%q %q publish-staged --staging-root %q\n' "$retry_queue" "$BIN" "$retry_queue"
+              } >&2
+            done
+            status=1
+            break
+          fi
+        done
       fi
-      if ((publication_statuses[0] == 0 && publication_statuses[1] == 0)); then
-        if claim_publication_state completed; then publication_complete=true
-        else status=1
-        fi
-      else
-        status=1
-        if claim_publication_state failed; then :; else status=1; fi
-      fi
-    else
-      if claim_publication_state pending; then :; else
-        if ((status == 0)); then status=1; fi
-      fi
-    fi
-    if [[ "$publication_complete" != true ]]; then
-      echo "Publication remains pending or failed; retained staging: $XC_PUBLISH_STAGING_ROOT" >&2
-      echo "Retry explicitly with the same author/destination environment: $BIN publish-staged --staging-root $XC_PUBLISH_STAGING_ROOT" >&2
-    fi
-  fi
-  if ((${#CLAIM_LOGS[@]} > 0)); then
-    local summary="${CLAIM_LOGS[0]%.log}.summary.json"
-    if [[ "$publication_complete" == true ]]; then
-      if python3 "$CLAIM_REPO_ROOT/scripts/claim_summary.py" --claim "$CLAIM_SCRIPT_NAME" --output "$summary" "${CLAIM_LOGS[@]}"; then :
-      elif ((status == 0)); then status=1
+      if ((status == 0)); then claim_publication_state completed || status=1
+      else claim_publication_state failed || status=1
       fi
     else
-      # Preserve numerical assessment without printing a premature claim PASS.
-      if python3 "$CLAIM_REPO_ROOT/scripts/claim_summary.py" --claim "$CLAIM_SCRIPT_NAME" --output "$summary" "${CLAIM_LOGS[@]}" > "${summary%.json}.pending-publication.log" 2>&1; then :
-      elif ((status == 0)); then status=1
-      fi
+      echo "Publication held; inspect the evidence and staged drafts: $XC_PUBLISH_STAGING_ROOT" >&2
+      claim_publication_state pending || status=1
     fi
   fi
   if [[ -n "$CLAIM_PUBLICATION_LOCK" ]]; then
@@ -511,12 +610,14 @@ run_claim() {
     exit 2
   fi
   local -a command=("$BIN" "${BENCHMARK_ARGS[@]}" "${RUNTIME_ARGS[@]}" "${JOURNAL_ARGS[@]}" "$@")
-  local invocation_publish_execute=${XC_PUBLISH_EXECUTE:-false}
   if [[ "$CLAIM_DEFERRED_PUBLICATION" == true ]]; then
     command+=(--defer-publication)
-    # Older sweep scripts toggle execution on their last configuration. Every
-    # deferred process stages under the same explicit policy; none finalizes.
-    invocation_publish_execute=true
+    if [[ "$PUBLICATION_PER_CONFIGURATION" == true ]]; then
+      local queue="$XC_PUBLISH_STAGING_ROOT/configurations/$(printf '%03d' "$((${#CLAIM_QUEUES[@]} + 1))")"
+      mkdir "$queue"
+      CLAIM_QUEUES+=("$queue")
+      local -x XC_PUBLISH_STAGING_ROOT="$queue"
+    fi
   fi
   local cutoff= digits= parity=even-sector previous= argument capture_policy=full
   if [[ "$CLAIM_RESEARCH_CAPTURE" == ultra ]]; then
@@ -540,11 +641,6 @@ run_claim() {
     run)
       if [[ "$CLAIM_RESEARCH_CAPTURE" == ultra ]]; then
         command+=(--research-capture ultra --research-sector-eigenpairs "$CLAIM_SECTOR_EIGENPAIRS" --root-acquisition seeded --root-validation "$CLAIM_ROOT_VALIDATION")
-        if [[ "$CLAIM_SECTOR_CERTIFICATE" == true ]]; then
-          command+=(--capture-sector-gap-certificate)
-        elif [[ -n "$CLAIM_SECTOR_CERTIFICATE_FORMAT" ]]; then
-          command+=(--sector-gap-certificate "$CLAIM_SECTOR_CERTIFICATE_FORMAT")
-        fi
       else
         command+=(--research-capture claim --root-acquisition seeded --root-validation off)
       fi
@@ -559,19 +655,27 @@ run_claim() {
     *)
       echo "run_claim requires run or check-evenness" >&2
       CLAIM_FAILURES=$((CLAIM_FAILURES + 1))
+      if [[ "$CLAIM_DEFERRED_PUBLICATION" == true ]]; then return 1; fi
       return 0
       ;;
   esac
+  if [[ "$CLAIM_SECTOR_CERTIFICATE" == true ]]; then
+    command+=(--sector-gap-certificate full)
+  elif [[ -n "$CLAIM_SECTOR_CERTIFICATE_FORMAT" ]]; then
+    command+=(--sector-gap-certificate "$CLAIM_SECTOR_CERTIFICATE_FORMAT")
+  fi
   if [[ "$CLAIM_RESEARCH_CAPTURE" == ultra && -n "${XC_TARGET_SPEC_DIR:-}" ]]; then
     if [[ ! "$cutoff" =~ ^[0-9]+$ || ! "$digits" =~ ^[0-9]+$ ]]; then
       echo "Ultra target selection requires the claim's explicit cutoff and precision" >&2
       CLAIM_FAILURES=$((CLAIM_FAILURES + 1))
+      if [[ "$CLAIM_DEFERRED_PUBLICATION" == true ]]; then return 1; fi
       return 0
     fi
     export XC_TARGET_SPEC_FILE="${XC_TARGET_SPEC_DIR%/}/c${cutoff}-d${digits}.json"
     if [[ ! -f "$XC_TARGET_SPEC_FILE" ]]; then
       echo "Prepared target specification is missing: $XC_TARGET_SPEC_FILE" >&2
       CLAIM_FAILURES=$((CLAIM_FAILURES + 1))
+      if [[ "$CLAIM_DEFERRED_PUBLICATION" == true ]]; then return 1; fi
       return 0
     fi
   fi
@@ -590,7 +694,7 @@ run_claim() {
   CLAIM_LOGS+=("$log")
   echo "Claim log: $log"
   local -a statuses
-  if XC_PUBLISH_EXECUTE="$invocation_publish_execute" XC_PERF_REPORT="${XC_PERF_REPORT:-${log%.log}.performance.json}" "${command[@]}" 2>&1 | tee "$log"; then
+  if XC_PERF_REPORT="${XC_PERF_REPORT:-${log%.log}.performance.json}" "${command[@]}" 2>&1 | tee "$log"; then
     statuses=("${PIPESTATUS[@]}")
   else
     statuses=("${PIPESTATUS[@]}")
@@ -598,7 +702,8 @@ run_claim() {
   printf 'binary_exit=%s\nlog_exit=%s\n' "${statuses[0]}" "${statuses[1]}" > "${log%.log}.status"
   if ((statuses[0] != 0 || statuses[1] != 0)); then
     CLAIM_FAILURES=$((CLAIM_FAILURES + 1))
-    echo "Claim invocation failed; preserved output and continuing independent configurations: $log" >&2
+    echo "Claim invocation failed; output retained: $log" >&2
+    if [[ "$CLAIM_DEFERRED_PUBLICATION" == true ]]; then return 1; fi
   fi
   return 0
 }

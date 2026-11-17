@@ -3,8 +3,8 @@
 This supplement closes the analytic finite matrix-to-root chain at C=13 and
 records independent controls on assembly, entry precision, and prime response.
 The complete numeric reports are in [research-evidence.json](research-evidence.json).
-The verification reported in this supplement was performed with the v2.5 release (Toolkit v0.15.0);
-the current software integration pins Toolkit v0.17.1 at `e466a413713a23df0ae550b307c256e7b1313bea`.
+The original finite verification reports accompany Paper v2.5 and Toolkit v0.15.0.
+The current Paper v2.7 software pins Toolkit v0.17.2 at `8a1df4c33a53b8fd898211da971612f9a3804281`.
 Here C is lambda-squared and the full matrix dimension is 2N+1. These results
 were reported in the v2.5 manuscript and remain part of the
 [revised manuscript](../paper.pdf). The broader campaign, revised C=1200
@@ -56,8 +56,9 @@ python3 verification/verify_analytic_roots.py \
 
 For N=120, use its matrix, sector certificate, and state, and supply
 `verification/headline-root-certificates.json` as the brackets file. The existing
-certificate binds the exact retained state; a different state needs newly
-computed root brackets. Do not disable assertions with Python's `-O` option.
+certificate binds the exact retained state. The repository includes the brackets and
+reported results. A byte-for-byte replay also needs the matching matrix, sector
+certificate and state payloads. For a newly generated state, compute new root brackets. Do not disable assertions with Python's `-O` option.
 
 ## Independent controls
 
@@ -93,10 +94,11 @@ the displayed Arb arithmetic does not make it an interval certificate.
 
 `verification/check_response_decomposition.py` checks the one-sided prime-13
 matrix activation and reconciles full-precision, source-matched derivative
-channels. The aggregate moving-pole first-root derivative is about
+channels. It also differences the defining Archimedean integral on independently generated quadrature panels and compares every component of its action on the bound state and its eigenvalue derivative. The aggregate moving-pole first-root derivative is about
 -4.61362e-53 after cancellation of components of order hundreds. This is
-a retained-data reconciliation, not an independent certification of every
-nonprime derivative. These matrix directions do not represent removing
+a retained-data reconciliation. The amended verifier also checks the eigenpair,
+25 secular roots and the channel tangents by bordered solves using the retained
+Tau matrix. The pole and prime channel actions remain inputs. These matrix directions do not represent removing
 a prime or taking a finite cutoff step.
 
 ```bash
@@ -105,6 +107,7 @@ python3 verification/check_prime_response.py \
   --response /path/to/prime-response.json --output /path/to/prime-check.json
 python3 verification/check_response_decomposition.py \
   --prime-response /path/to/prime-response.json --u-flow /path/to/u-flow.json \
+  --state /path/to/c13-n120-state.json --tau /path/to/tau-n120.json \
   --output /path/to/decomposition-check.json
 ```
 

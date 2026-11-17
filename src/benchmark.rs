@@ -8,8 +8,14 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const BENCHMARK_SCHEMA_VERSION: u32 = 1;
-const TOOLKIT_VERSION: &str = "0.17.1";
-const TOOLKIT_REVISION: &str = "e466a413713a23df0ae550b307c256e7b1313bea";
+pub(crate) const TOOLKIT_VERSION: &str = match option_env!("XC_TOOLKIT_SOURCE_VERSION") {
+    Some(version) => version,
+    None => "0.17.2",
+};
+pub(crate) const TOOLKIT_REVISION: &str = match option_env!("XC_TOOLKIT_SOURCE_REVISION") {
+    Some(revision) => revision,
+    None => "8a1df4c33a53b8fd898211da971612f9a3804281",
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct BenchmarkOptions {
@@ -566,7 +572,23 @@ mod tests {
     #[test]
     fn benchmark_toolkit_identity_matches_the_locked_dependency() {
         let lock = include_str!("../Cargo.lock");
-        assert!(lock.contains(&format!("version = \"{TOOLKIT_VERSION}\"")));
-        assert!(lock.contains(&format!("#{TOOLKIT_REVISION}")));
+        let package = lock
+            .split("[[package]]")
+            .find(|section| section.lines().any(|line| line == "name = \"xc-spectral\""))
+            .expect("locked Toolkit spectral package");
+        assert!(package
+            .lines()
+            .any(|line| line == format!("version = \"{TOOLKIT_VERSION}\"")));
+        if let Some(digest) = option_env!("XC_TOOLKIT_SOURCE_DIGEST") {
+            assert_eq!(digest.len(), 64);
+            assert!(digest.bytes().all(|byte| byte.is_ascii_hexdigit()));
+            assert_eq!(TOOLKIT_REVISION.len(), 40);
+            assert!(TOOLKIT_REVISION
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit()));
+            assert!(!package.lines().any(|line| line.starts_with("source = ")));
+        } else {
+            assert!(package.contains(&format!("#{TOOLKIT_REVISION}\"")));
+        }
     }
 }

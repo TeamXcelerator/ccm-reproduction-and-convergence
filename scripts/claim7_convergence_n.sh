@@ -14,24 +14,15 @@ source "$(dirname -- "${BASH_SOURCE[0]}")/claim_common.sh"
 claim_working_budget 16
 
 N_VALUES=(10 20 30 40 50 60 80 100 120)
-PUBLISH_AFTER_SWEEP=${XC_PUBLISH_EXECUTE:-false}
 
 echo "=== Claim 7: Convergence in N at λ²=13 ==="
 echo "N values: ${N_VALUES[*]}"
-if [[ "$PUBLISH_AFTER_SWEEP" == "true" ]]; then
-  echo "Publication: staged throughout the sweep; one cumulative execution after HP-1000/N=120"
-fi
 echo
 for PREC in 200 1000; do
   echo "================================================================"
   echo "  HP-${PREC} sweep"
   echo "================================================================"
   for N in "${N_VALUES[@]}"; do
-    if [[ "$PREC" == "1000" && "$N" == "120" ]]; then
-      export XC_PUBLISH_EXECUTE="$PUBLISH_AFTER_SWEEP"
-    else
-      export XC_PUBLISH_EXECUTE=false
-    fi
     echo "--- N=$N, HP-${PREC} ---"
     run_claim run \
       --lambda-sq 13 \

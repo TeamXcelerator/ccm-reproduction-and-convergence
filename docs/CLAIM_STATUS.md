@@ -10,11 +10,18 @@ and supplied remote completion reports. It is not a new campaign execution or
 an independent audit of every remote payload. The machine-readable inventory
 is [campaign-status.json](campaign-status.json).
 
+The November 26 v2.7 publication check also compares each assembly-error
+diagnostic with its primary root window. Three later Ultra results require a
+new diagnostic. Claim 2b at cutoff 13 retained 25 roots for a one-root
+primary. Claims 4a and 4b each retained 25 roots for a 50-root primary.
+Their comparable manuscript measurements passed the printed-digit checks.
+The table below records the November 2 campaign.
+
 | Claim | Invocations | Numerical acceptance | Applicable acquisition and publication |
 |---|---:|---|---|
 | 1a | 1 | PASS | Complete |
 | 1b | 1 | PASS | Complete |
-| 1c | 1 | PASS with precision-floor scope | Complete through supplements |
+| 1c | 1 | PASS with precision-floor scope | Complete through supplements under the historical policy. Current response-row coverage has not been verified |
 | 2a | 5 | PASS | Complete |
 | 2b | 5 | PASS | Complete through five supplements |
 | 3 | 4 | PASS | Complete |
@@ -36,6 +43,12 @@ The retained calculation fails the original `<2.01e-533` comparison. That
 failure remains preserved. The revised comparison requires the audited
 arithmetic method, even-sector isolated indices 0/1, and the displayed six
 significant digits; it passes on the authenticated retained response.
+
+The natural/even eigenvalue comparison is a separate measurement. The October
+23 run recorded a relative difference of `3.60615e-524` and passed the `1e-8`
+tolerance then in use. The manuscript's reference pair gives `7.927e-526`.
+The v2.7 printed-value check would reject the October result for that cell.
+Its rounded console value alone cannot establish which pair is more accurate.
 
 Independent directed residual evaluation and analytic even-sector matrix
 assembly support the revised calculation. The positive gaps still agree with
